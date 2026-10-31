@@ -27,6 +27,7 @@ ShellRoot {
             p.move(cx - p.width / 2 + 10, top + 10);
             p.release(cx - p.width / 2 + 10, top + 10);
         }
+        function hook(event) { Clawd.ingest(JSON.stringify({ agent: "claude", event, session_id: "w1", dir: "proj" })); }
         function cx() { return p.x + p.width / 2; }
         function seat() { return p.y + (Clawd.manifest.animations.perch && Clawd.manifest.animations.perch.grip ? Clawd.manifest.animations.perch.grip[1] : Clawd.manifest.frame.h) * Clawd.scale; }
         onTriggered: {
@@ -171,9 +172,142 @@ ShellRoot {
             case 21:
                 if (!wait(Clawd.screenName === main && p.mode === "idle", "back on a screen that exists")) break;
                 expect(w.refreshes > 10, "snapshots counted");
-                Config.setSetting("addonsV2Clawd", false);
+                // 5b: the bar's underside (no layers known: the display minus its margins), then hanging from it
+                expect(w.inject({ clients: [], layers: {}, bar: { position: "top", height: 36, autohide: false } }), "bar and layers injected");
+                expect(w.bars[main] && w.bars[main].y === 40 && w.bars[main].x === 4 && w.bars[main].w === 1272, "bar underside: " + JSON.stringify(w.bars));
+                expect(p.hangBar(400), "hangs under the bar");
                 break;
             case 22:
+                expect(p.mode === "hang" && p.support && p.support.kind === "bar" && !p.grounded(), "hanging: " + p.mode);
+                expect(Math.abs(p.contact().y - 40) < 0.01 && Math.abs(p.contact().x - 400) < 0.01, "hands on the bar's underside: " + JSON.stringify(p.contact()));
+                expect(p.animation === "hang" && Clawd.manifest.animations.hang, "hang animation");
+                feed([]);
+                break;
+            case 23:
+                expect(p.mode === "hang" && Math.abs(p.contact().y - 40) < 0.01, "still hanging after a world update");
+                // a bar popup opens (qs-master): he lets go, startled
+                expect(w.inject({ layers: { [main]: { 2: [{ namespace: "qs-master", x: 0, y: 0, w: 1280, h: 720 }] } } }), "popup opens");
+                expect(w.openLayers.length === 1, "open layers: " + JSON.stringify(w.openLayers));
+                expect(p.mode === "drop" && p.dropStartled, "drops, startled: " + p.mode);
+                break;
+            case 24:
+                if (!wait(p.mode === "fall" && p.animation === "startled" || p.mode === "land", "falls after the drop")) break;
+                expect(!p.support, "no support while falling");
+                break;
+            case 25:
+                if (!wait(p.mode === "land" || p.mode === "idle", "lands on the floor")) break;
+                expect(Math.abs(p.y + p.height - 720) < 1, "back on the floor");
+                p.idle();
+                p.mind = ({ last: {}, recent: [] });
+                // popup closes, then opens again while he stands: he looks up
+                expect(w.inject({ layers: {} }), "popup closes");
+                expect(w.inject({ layers: { [main]: { 2: [{ namespace: "qs-master", x: 0, y: 0, w: 1280, h: 720 }] } } }), "popup opens again");
+                expect(p.mode === "react" && p.animation === "look_up" && p.mind.last.layer > 0, "looks up at the bar: " + p.mode + " " + p.animation);
+                break;
+            case 26:
+                if (!wait(p.mode === "idle", "reaction over")) break;
+                expect(w.inject({ layers: {} }), "popup closes");
+                // 5b: a window whose bottom is near the floor has climbable sides
+                feed([win("0xc1", 600, 500, 300, 200)]);
+                expect(w.sides[main].length === 2 && w.sides[main][0].side === -1 && w.sides[main][0].x === 600 && w.sides[main][1].x === 900, "its sides: " + JSON.stringify(w.sides));
+                seen = p.climbSpot();
+                expect(seen && seen.id === "0xc1" && seen.side === -1, "the nearest side: " + JSON.stringify(seen));
+                expect(p.climb(seen), "walks to the foot of it");
+                break;
+            case 27:
+                if (!wait(p.mode === "climb" && p.support && p.support.kind === "side", "climbing")) break;
+                expect(p.mirrored === false && p.animation === "climb" && Math.abs(p.contact().x - 600) < 0.01, "wall column on the edge: " + JSON.stringify(p.contact()));
+                expect(!p.grounded(), "not standing");
+                Config.setSetting("general.performance", true);
+                break;
+            case 28:
+                Config.setSetting("general.performance", false);
+                expect(p.mode === "climb", "keeps climbing in low motion");
+                break;
+            case 29:
+                if (!wait(p.mode === "perch" && p.support && p.support.kind === "win" && p.support.id === "0xc1", "mantled onto the window top, perched")) break;
+                expect(Math.abs(seat() - 500) < 1, "seated on its top: " + seat());
+                // 5b: from the window top he jumps up to the bar (an arc, no teleport), then hangs from it
+                expect(w.inject({ bar: { position: "top", height: 36, autohide: false } }) && p.hopBar(1100), "hops for the bar");
+                expect(p.mode === "hop" && !p.support && p.hop && p.hop.kind === "bar", "in the air: " + p.mode);
+                break;
+            case 30:
+                if (!wait(p.mode === "hang", "grabs the bar")) break;
+                expect(p.support && p.support.kind === "bar" && Math.abs(p.contact().y - 40) < 0.01 && Math.abs(p.contact().x - 1100) < 30, "hands on the bar: " + JSON.stringify(p.contact()));
+                hook("UserPromptSubmit");  // the agent gets busy while he hangs: drop -> land -> work
+                expect(Clawd.activity === "work" && p.mode === "drop" && !p.dropStartled, "lets go: " + p.mode);
+                break;
+            case 31:
+                if (!wait(p.mode === "fall" || p.mode === "land" || p.mode === "work", "drops")) break;
+                expect(!p.support, "no support while falling");
+                break;
+            case 32:
+                if (!wait(p.mode === "work", "lands, then works")) break;
+                expect(Math.abs(p.y + p.height - 720) < 1 && !p.support && p.animation !== "land", "working on the floor: " + p.animation);
+                hook("SessionEnd");
+                break;
+            case 33:
+                if (!wait(Clawd.activity === "" && p.mode === "idle", "idle again")) break;
+                feed([win("0xc1", 600, 500, 300, 200)]);
+                seen = p.climbSpot();
+                expect(seen && p.climb(seen), "climbs again");
+                break;
+            case 34:
+                if (!wait(p.mode === "climb" && p.support && p.support.kind === "side", "climbing")) break;
+                hook("UserPromptSubmit");  // busy while climbing: straight down, then work
+                expect(p.mode === "fall" && !p.support, "lets go of the wall: " + p.mode);
+                break;
+            case 35:
+                if (!wait(p.mode === "work", "lands, then works")) break;
+                expect(Math.abs(p.y + p.height - 720) < 1, "on the floor");
+                hook("SessionEnd");
+                break;
+            case 36:
+                // 5d: a widget is a ledge (its layer inset by the 8 px aura); he hops onto it, the widget editor takes it away
+                if (!wait(Clawd.activity === "" && p.mode === "idle", "idle again")) break;
+                feed([]);
+                expect(w.inject({ layers: { [main]: { 0: [{ namespace: "qs-widget-time-4", x: 500, y: 520, w: 316, h: 120 }, { namespace: "qs-widget-visualizer-1", x: 100, y: 520, w: 316, h: 120 }] } } }), "widget layers");
+                expect(w.widgets.length === 1 && w.ledges.some(l => l.id === "qs-widget-time-4" && l.kind === "widget" && l.x === 508 && l.y === 528 && l.w === 300), "widget ledge: " + JSON.stringify(w.ledges));
+                expect(p.widgetOn("clock") && p.widgetOn("clock").id === "qs-widget-time-4" && !p.widgetOn("music"), "the clock widget on his display");
+                drop(560, 620);
+                break;
+            case 37:
+                if (!wait(p.mode === "idle" && !p.support && Math.abs(p.y + p.height - 720) < 1, "on the floor beside it")) break;
+                expect(p.visit(w.ledge("qs-widget-time-4")) && p.mode === "hop", "hops for the widget: " + p.mode);
+                break;
+            case 38:
+                if (!wait(p.mode === "perch" && p.support && p.support.kind === "widget", "perched on the widget")) break;
+                expect(Math.abs(seat() - 528) < 1, "seated on its top: " + seat());
+                w.setRedact(true);
+                break;
+            case 39:
+                expect(!w.ledges.some(l => l.kind === "widget") && !p.support, "widget editor: no widget ledge, he lost it: " + p.mode);
+                break;
+            case 40:
+                if (!wait(p.mode === "idle" && !p.support, "back on the floor")) break;
+                w.setRedact(false);
+                p.mind = ({ last: {}, recent: [] });
+                break;
+            case 41:
+                if (!wait(w.ledges.some(l => l.kind === "widget"), "ledge is back")) break;
+                // the hourly chime: to the clock widget, then the chime itself (no clock widget on his display: nothing)
+                expect(p.hourChime() && p.agenda && p.agenda.kind === "chime", "goes to the clock: " + JSON.stringify(p.agenda));
+                break;
+            case 42:
+                if (!wait(p.animation === "chime" && p.support && p.support.kind === "widget", "chimes on the widget")) break;
+                expect(p.agenda === null, "agenda done");
+                p.idle();
+                p.mind = ({ last: {}, recent: [] });
+                expect(w.inject({ layers: {} }), "widgets gone");
+                break;
+            case 43:
+                if (!wait(p.mode === "idle" && !p.support, "no widget: back on the floor")) break;
+                expect(!p.hourChime() && p.mode === "idle" && !p.agenda, "no clock widget on his display: no chime");
+                break;
+            case 44:
+                Config.setSetting("addonsV2Clawd", false);
+                break;
+            case 45:
                 if (!wait(Clawd.instances === 0 && !host.world, "OFF unloads the world")) break;
                 console.log("CLAWD_PASS");
                 Qt.quit();

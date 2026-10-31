@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
 import "../"
+import "js/mind.mjs" as Mind
 
 // Exists separately in the shell and the Settings process; share state only through Config.
 QtObject {
@@ -18,6 +19,9 @@ QtObject {
     // The windows around him (perching, peeking, exploring, window reactions); following the cursor to another screen.
     readonly property bool world: Config.getSetting("addonsV2ClawdWorld", true) !== false
     readonly property bool follow: Config.getSetting("addonsV2ClawdFollow", true) !== false
+    // How much he reacts to the shell (music, notifications, volume...): all | quiet (urgent, bubbles, moods) | off (urgent only).
+    readonly property string reactions: ["all", "quiet", "off"].indexOf(Config.getSetting("addonsV2ClawdReactions", "all")) >= 0 ? Config.getSetting("addonsV2ClawdReactions", "all") : "all"
+    readonly property bool dnd: Config.getSetting("notifications.dnd", false) === true
     property string screenName: ""
     property int instances: 0
     property var manifest: null
@@ -79,12 +83,28 @@ QtObject {
         return s < 60 ? s + "s" : s < 3600 ? Math.floor(s / 60) + "m " + pad(s % 60) + "s" : Math.floor(s / 3600) + "h " + pad(Math.floor(s / 60) % 60) + "m";
     }
     function actionText(s) { return s && s.tool ? clip(s.target ? s.tool + " " + s.target : s.tool, 40) : ""; }
-    // What the info cycle can show for a session, strained values flagged.
+    // "claude-sonnet-5-5" -> "Sonnet 5.5"; other ids as they are.
+    function modelName(id) {
+        const m = /^claude-(opus|sonnet|haiku)-(\d+)-(\d+)(?:-\d{8})?$/.exec(String(id || ""));
+        return m ? m[1][0].toUpperCase() + m[1].slice(1) + " " + m[2] + "." + m[3] : String(id || "");
+    }
+    // The sub-agent of session s that moved last (its stats known, not stale), or null.
+    function activeSub(s) {
+        let best = null;
+        for (const sub of Object.values((s && s.subs) || {})) if ((sub.model || Number.isFinite(sub.tokens)) && (!best || sub.last >= best.last)) best = sub;
+        // a sub-agent in one long reply fires no hooks for a while: kept until its SubagentStop (or 10 min, as pruned in ingest)
+        return best && Date.now() - best.last < 600000 ? best : null;
+    }
+    // What the info cycle can show for a session, strained values flagged. While a sub-agent works, its model and
+    // context replace the lead's (the lead's effort stays: a sub-agent runs with the session's effort).
     function infos(s) {
         if (!s) return [];
-        const out = [], pct = v => Math.round(v) + "%";
-        if (s.model) out.push({ text: s.model + (s.effort ? " · " + s.effort : ""), warn: false });
-        if (Number.isFinite(s.ctx)) out.push({ text: "ctx " + pct(s.ctx), warn: s.ctx >= 80 });
+        const out = [], pct = v => Math.round(v) + "%", sub = activeSub(s);
+        const model = sub && sub.model ? modelName(sub.model) : s.model;
+        if (model) out.push({ text: model + (s.effort ? " · " + s.effort : ""), warn: false });
+        // a sub-agent's context needs the window size: unknown until a status line has come, then its % is left out
+        const ctx = sub && Number.isFinite(sub.tokens) ? (s.ctx_size > 0 ? sub.tokens / s.ctx_size * 100 : undefined) : s.ctx;
+        if (Number.isFinite(ctx)) out.push({ text: "ctx " + pct(ctx), warn: ctx >= 80 });
         if (Number.isFinite(s.cost)) out.push({ text: "$" + s.cost.toFixed(2), warn: false });
         if (Number.isFinite(s.five_hour)) out.push({ text: "5h " + pct(s.five_hour) + (Number.isFinite(s.seven_day) ? " · 7d " + pct(s.seven_day) : ""), warn: s.five_hour >= 90 });
         return out;
@@ -165,7 +185,7 @@ QtObject {
             if (pids.length) s.pids = pids;
             if (model) s.model = model;
             if (str(e.effort, 16)) s.effort = str(e.effort, 16);
-            for (const k of ["ctx", "cost", "five_hour", "seven_day", "five_hour_resets", "seven_day_resets"]) if (typeof e[k] === "number" && Number.isFinite(e[k])) s[k] = e[k];
+            for (const k of ["ctx", "ctx_size", "cost", "five_hour", "seven_day", "five_hour_resets", "seven_day_resets"]) if (typeof e[k] === "number" && Number.isFinite(e[k])) s[k] = e[k];
             if (was && Number.isFinite(was.cost) && Number.isFinite(s.cost) && Math.floor(s.cost / 5) > Math.floor(was.cost / 5)) react = "coin";
             updateQuotas(e.agent, e);
             // status refreshes are frequent: no churn when nothing moved
@@ -173,9 +193,24 @@ QtObject {
             next[key] = s;
             break;
         }
+        case "SubagentStart":
+        case "SubagentStop":
+            // the sub-agent's own entry is written below; an untracked session starts idle, as with a status line
+            if (was) set(was.phase);
+            break;
         case "Interrupt": set("idle"); dismiss(key); break;
         case "SessionEnd": delete next[key]; dismiss(key); break;
         default: return;
+        }
+        // sub-agents of the session (hooks fired inside one carry its id): the model and tokens of its last reply, gone at its stop
+        if (typeof e.agent_id === "string" && e.agent_id) {
+            const base = next[key] || { agent: e.agent, dir, phase: "idle", last: now, tool: "", target: "", pids, since: now };
+            const id = e.agent_id.replace(/[^\w-]/g, "").slice(0, 80), subs = Object.assign({}, base.subs);
+            if (e.event === "SubagentStop") delete subs[id];
+            else subs[id] = Object.assign({}, subs[id], { type: str(e.agent_type, 40), last: now },
+                str(e.sub_model, 40) ? { model: str(e.sub_model, 40) } : {}, Number.isFinite(e.sub_tokens) ? { tokens: e.sub_tokens } : {});
+            const live = Object.entries(subs).filter(([, v]) => now - v.last < 600000).sort((a, b) => b[1].last - a[1].last).slice(0, 4);
+            next[key] = Object.assign({}, base, { subs: Object.fromEntries(live) });
         }
         sessions = next;
         if (react) command("react", react);
@@ -281,7 +316,11 @@ QtObject {
         onExited: busy = false
     }
     Component.onCompleted: loadVerbs()
-    function say(key, kind, text) { bubble = { key, kind, text }; }
+    // A lower rank never replaces a higher one, unless the same key (that session moved on); shell bubbles (key "shell:...") fade sooner.
+    function say(key, kind, text) {
+        if (bubble && bubble.key !== key && !Mind.outranks(kind, bubble.kind)) return;
+        bubble = { key, kind, text };
+    }
     function dismiss(key, kind) {
         if (bubble && (key === undefined || bubble.key === key) && (kind === undefined || bubble.kind === kind)) bubble = null;
     }
@@ -296,8 +335,12 @@ QtObject {
         running: Object.keys(clawd.sessions).length > 0
         onTriggered: clawd.purge()
     }
-    readonly property QtObject bubbleTimer: Timer { interval: 8000; onTriggered: clawd.bubble = null }
-    onBubbleChanged: bubble && bubble.kind !== "permission" ? bubbleTimer.restart() : bubbleTimer.stop()
+    readonly property QtObject bubbleTimer: Timer { onTriggered: clawd.bubble = null }
+    onBubbleChanged: {
+        if (!bubble || bubble.kind === "permission") return bubbleTimer.stop();
+        bubbleTimer.interval = String(bubble.key).startsWith("shell:") ? 4000 : 8000;
+        bubbleTimer.restart();
+    }
 
     function play(name) {
         if (!enabled) return "off";

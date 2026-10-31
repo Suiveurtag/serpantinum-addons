@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { TIERS, EVENTS, GLANCE_MODES, memory, decide, commit } from '../../payload/clawd/js/mind.mjs';
+import { TIERS, EVENTS, GLANCE_MODES, RANKS, rank, outranks, memory, decide, commit } from '../../payload/clawd/js/mind.mjs';
 
 const calm = (more = {}) => ({ ...memory(), mode: 'idle', hook: '', reactions: 'all', ...more });
 const act = (state, kind, now, info) => decide(state, kind, now, info).act;
@@ -19,7 +19,7 @@ assert.equal(act(calm(), 'constructor', 0), 'none');
 assert.equal(act(calm(), 'toString', 0), 'none');
 
 // Input owns him.
-for (const k of ['drag', 'menu', 'petpet']) assert.equal(act(calm({ [k]: true }), 'notif_critical', 0), 'none', k);
+for (const k of ['drag', 'menu', 'petpet', 'dead', 'scene']) assert.equal(act(calm({ [k]: true }), 'notif_critical', 0), 'none', k);  // dead / scene: another system owns him
 
 // Focus is a glance, only in a resting pose.
 assert.deepEqual(GLANCE_MODES, ['idle', 'sit', 'perch']);
@@ -99,4 +99,16 @@ const after = commit(before, 'workspace', 5);
 assert.deepEqual(before.last, {});
 assert.deepEqual(commit(after, 'nope', 9).last, { workspace: 5 });
 assert.deepEqual(decide(undefined, 'window_open', 0).act, 'react');
+
+// 5c: bubble ranks (permission > error > done/waiting > notif/music; equal replaces), shell menus glance, the real reactions / dnd values.
+assert.ok(RANKS.permission > RANKS.error && RANKS.error > RANKS.done && RANKS.done === RANKS.waiting && RANKS.done > RANKS.notif && RANKS.notif === RANKS.music);
+assert.ok(!outranks('notif', 'done') && !outranks('music', 'permission') && !outranks('done', 'error') && outranks('error', 'done') && outranks('notif', 'music'));
+assert.equal(rank('toString'), 2);
+assert.equal(act(calm({ mode: 'sit' }), 'shell_menu', 0), 'glance');
+assert.equal(act(calm({ mode: 'walk' }), 'shell_menu', 0), 'none');
+assert.equal(act(calm({ reactions: 'quiet' }), 'shell_menu', 0), 'none');
+assert.equal(act(calm({ reactions: 'quiet' }), 'brightness_low', 0), 'mood');
+assert.equal(act(calm({ reactions: 'off' }), 'battery_critical', 0), 'react');
+assert.equal(act(calm({ reactions: 'off' }), 'music', 0), 'none');
+assert.equal(act(calm({ dnd: true }), 'timer_ring', 0), 'react');
 console.log('CLAWD_MIND_PASS');

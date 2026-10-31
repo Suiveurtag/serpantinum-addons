@@ -263,6 +263,25 @@ Rectangle {
             T { visible: !card.compact; color: card.dim; text: "  ⎿ perches on windows, follows your cursor" }
         }
         Line {
+            // how much he reacts to the shell: all, quiet (urgent, bubbles, moods), off (urgent only)
+            label: "reacts"
+            Repeater {
+                model: ["all", "quiet", "off"]
+                Row {
+                    required property string modelData
+                    required property int index
+                    T { visible: index > 0; text: " · "; color: card.faint }
+                    Key {
+                        objectName: "clawdReacts_" + modelData
+                        label: modelData
+                        selected: Clawd.reactions === modelData
+                        onActivated: Config.setSetting("addonsV2ClawdReactions", modelData)
+                    }
+                }
+            }
+            T { visible: !card.compact; color: card.dim; text: "  ⎿ music, notifications, volume…" }
+        }
+        Line {
             label: "summon"
             Key {
                 objectName: "clawdSummon"

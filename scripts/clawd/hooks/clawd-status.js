@@ -25,7 +25,7 @@ function status(evt) {
   return {
     agent: 'claude', event: 'Status', session_id: text(evt.session_id, 80), dir: text(typeof cwd === 'string' ? path.basename(cwd) : '', 40),
     model: clean(obj(evt.model).display_name, 40), effort: clean(obj(evt.effort).level, 16),
-    ctx: num(obj(evt.context_window).used_percentage), cost: num(obj(evt.cost).total_cost_usd),
+    ctx: num(obj(evt.context_window).used_percentage), ctx_size: num(obj(evt.context_window).context_window_size), cost: num(obj(evt.cost).total_cost_usd),
     five_hour: num(five.used_percentage), seven_day: num(obj(limits.seven_day).used_percentage), five_hour_resets: num(five.resets_at), seven_day_resets: num(obj(limits.seven_day).resets_at),
   };
 }

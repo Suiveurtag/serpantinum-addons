@@ -27,7 +27,8 @@ ANIMATIONS = ['idle', 'blink', 'look_left', 'look_right', 'look_up', 'walk', 'tu
               'read', 'bash', 'search', 'web', 'task', 'todo', 'compact', 'startled',
               'edit', 'edit_2', 'work_2', 'read_2', 'bash_2', 'search_2', 'web_2', 'task_2', 'todo_2', 'think_2', 'happy_2',
               'celebrate', 'sweat', 'coin', 'sad', 'wave', 'explode',
-              'perch', 'perch_look', 'hop', 'stumble', 'teeter', 'peek', 'nuke', 'dead', 'dead_land', 'revive', 'tada', 'recharge', 'conduct', 'surge']
+              'perch', 'perch_look', 'hop', 'stumble', 'teeter', 'peek', 'nuke', 'dead', 'dead_land', 'revive', 'tada', 'recharge', 'conduct', 'surge',
+              'climb', 'climb_top', 'hang', 'shimmy', 'swing', 'drop', 'dance', 'dance_2', 'cover_ears', 'shush', 'drowsy', 'exhausted', 'umbrella', 'shiver', 'chime']
 HOOKS = ROOT/'scripts/clawd/hooks.py'
 HOOK = ROOT/'scripts/clawd/hooks/clawd-hook.js'
 STATUS = ROOT/'scripts/clawd/hooks/clawd-status.js'
@@ -125,7 +126,7 @@ class ClawdInstallTests(unittest.TestCase):
         files = sorted(p for p in PAYLOAD.rglob('*') if p.is_file())
         names = {str(p.relative_to(PAYLOAD)) for p in files}
         expected = ({line.split()[-1].removeprefix('clawd/') for line in clawd.TYPES} | {'sprites/clawd.json'} | {f'sprites/{a}.png' for a in ANIMATIONS + ['hand', 'antimatter', 'smoke', 'mushroom', 'orchestra', 'clone']}
-                    | {'js/world.mjs', 'js/mind.mjs', 'shaders/manifest.json'} | {f'shaders/{n}.frag{q}' for n in SHADERS for q in ('', '.qsb')})
+                    | {'js/world.mjs', 'js/mind.mjs', 'js/beat.mjs', 'shaders/manifest.json'} | {f'shaders/{n}.frag{q}' for n in SHADERS for q in ('', '.qsb')})
         self.assertEqual(names, expected)  # nothing stray gets installed
         self.assertEqual(len(copied), len(files))
         hashed = {}
@@ -209,7 +210,8 @@ class ClawdSpriteTests(unittest.TestCase):
         self.assertEqual({n for n, c in manifest['animations'].items() if c['loop']}, {'idle', 'walk', 'sit', 'sleep', 'drag', 'fall', 'work', 'alert', 'petpet', 'petpetheart',
                                                                                                'read', 'bash', 'search', 'web', 'task', 'todo',
                                                                                                'edit', 'edit_2', 'work_2', 'read_2', 'bash_2', 'search_2', 'web_2', 'task_2', 'todo_2', 'sweat',
-                                                                                               'perch', 'teeter', 'peek', 'dead'})
+                                                                                               'perch', 'teeter', 'peek', 'dead',
+                                                                                               'climb', 'hang', 'shimmy', 'swing', 'dance', 'dance_2', 'drowsy', 'exhausted', 'cover_ears', 'umbrella', 'shiver'})
         self.assertEqual(manifest['animations']['perch'].get('grip'), [10.5, 12])  # seated on the ledge, legs below it
         self.assertEqual(manifest['hand']['frames'], manifest['animations']['petpet']['frames'])  # the hand is frame-locked to him
 
@@ -430,6 +432,39 @@ class ClawdHookScriptTests(unittest.TestCase):
 
 
 @unittest.skipUnless(shutil.which('node'), 'node unavailable')
+class ClawdSubagentTests(unittest.TestCase):
+    def test_subagent_events_carry_its_model_and_tokens_from_its_transcript(self):
+        root = Path(tempfile.mkdtemp(prefix='clawd-sub-'))
+        self.addCleanup(shutil.rmtree, root)
+        main = root/'s1.jsonl'
+        (root/'s1'/'subagents').mkdir(parents=True)
+        reply = {'type': 'assistant', 'message': {'role': 'assistant', 'model': 'claude-sonnet-5-5',
+                 'usage': {'input_tokens': 2, 'cache_creation_input_tokens': 509, 'cache_read_input_tokens': 155258}}}
+        (root/'s1'/'subagents'/'agent-abc.jsonl').write_text(
+            '{"cut": \n' + json.dumps({'type': 'user', 'message': {'role': 'user', 'content': 'secret prompt'}}) + '\n'
+            + json.dumps(reply) + '\n' + json.dumps({'type': 'user', 'message': {'role': 'user', 'content': 'tool result'}}) + '\n')
+        base = {'hook_event_name': 'PreToolUse', 'session_id': 's1', 'transcript_path': str(main), 'agent_type': 'general-purpose'}
+        events = [
+            dict(base, tool_name='Read', tool_input={'file_path': '/x/y.qml'}, agent_id='abc'),
+            dict(base, hook_event_name='SubagentStop', agent_id='abc'),
+            dict(base, tool_name='Read', agent_id='../etc'),   # never a file name
+            dict(base, tool_name='Read', agent_id='missing'),  # no transcript yet: the id only
+        ]
+        script = 'const {slim} = require(process.argv[1]); console.log(JSON.stringify(JSON.parse(require("fs").readFileSync(0, "utf8")).map(slim)))'
+        result = subprocess.run(['node', '-e', script, str(HOOK)], input=json.dumps(events), capture_output=True, text=True, timeout=10, check=True)
+        first, stop, invalid, missing = json.loads(result.stdout)
+        self.assertEqual((first['agent_id'], first['agent_type'], first['target']), ('abc', 'general-purpose', 'y.qml'))
+        self.assertEqual((first['sub_model'], first['sub_tokens']), ('claude-sonnet-5-5', 2 + 509 + 155258))
+        self.assertEqual((stop['event'], stop['sub_tokens']), ('SubagentStop', 2 + 509 + 155258))
+        self.assertNotIn('agent_id', invalid)
+        self.assertNotIn('sub_tokens', invalid)
+        self.assertEqual(missing['agent_id'], 'missing')
+        self.assertNotIn('sub_tokens', missing)
+        for leak in ('secret prompt', 'tool result', 'cut', str(root)):
+            self.assertNotIn(leak, result.stdout)
+
+
+@unittest.skipUnless(shutil.which('node'), 'node unavailable')
 class ClawdStatusLineTests(unittest.TestCase):
     STDIN = {'session_id': 'sess-1', 'cwd': '/home/u/Projects/Clawd', 'transcript_path': '/secret/t.jsonl',
              'model': {'id': 'claude-opus-5-5', 'display_name': 'Opus 5.5'}, 'workspace': {'current_dir': '/ignored'},
@@ -488,7 +523,7 @@ class ClawdStatusLineTests(unittest.TestCase):
         pids = evt.pop('pids')  # the status line's ancestors (the sh it runs through, this test...)
         self.assertTrue(pids and all(isinstance(p, int) and p > 1 for p in pids))
         self.assertEqual(evt, {'agent': 'claude', 'event': 'Status', 'session_id': 'sess-1', 'dir': 'Clawd', 'model': 'Opus 5.5', 'effort': 'xhigh',
-                               'ctx': 42.5, 'cost': 7.25, 'five_hour': 63, 'seven_day': 20, 'five_hour_resets': 1793000000})
+                               'ctx': 42.5, 'ctx_size': 200000, 'cost': 7.25, 'five_hour': 63, 'seven_day': 20, 'five_hour_resets': 1793000000})
         self.assertNotIn('secret', lines[0])
 
     def test_wrapped_forwards_original_stdout_byte_exact(self):
@@ -584,6 +619,9 @@ class ClawdJsTests(unittest.TestCase):
 
     def test_mind_rules_budget_cooldowns(self):
         self.node('mind.mjs', 'CLAWD_MIND_PASS')
+
+    def test_beat_detector(self):
+        self.node('beat.mjs', 'CLAWD_BEAT_PASS')
 
 
 @unittest.skipUnless(shutil.which('qml6'), 'Qt qml runtime unavailable')
@@ -771,7 +809,10 @@ class ClawdRuntimeTests(unittest.TestCase):
         self.run_fixture('clawd_runtime.qml', 90)
 
     def test_world_windows_ledges_peek_reactions(self):
-        self.run_fixture('clawd_world.qml', 90)
+        self.run_fixture('clawd_world.qml', 130)
+
+    def test_shell_events_music_notifications_moods(self):
+        self.run_fixture('clawd_events.qml', 150)
 
     def test_settings_card_controls(self):
         self.run_fixture('clawd_settings.qml', 40)
@@ -813,6 +854,25 @@ QtObject {
     function setSetting(key, value) { const next = Object.assign({}, rawSettings); next[key] = value; rawSettings = next; }
 }
 ''')
+            if scenario == 'clawd_events.qml':
+                # the shell's singletons, as the shell process has them (clawd_runtime.qml has none: the typeof guards)
+                stubs = {'MprisController': 'property bool isPlaying: false; property string trackTitle: ""',
+                         'OsdController': 'property real sysVolume: 50; property bool sysMuted: false; property int sysBrightness: 0; property bool isFullscreen: false',
+                         'SysNotif': 'property bool hasBattery: false; property int batteryPercentage: 0; property bool isCharging: false',
+                         'NotificationManager': 'signal popupAdded(int uid, var notif)',
+                         'LauncherController': 'property bool isVisible: false', 'ClipboardController': 'property bool isVisible: false',
+                         'DesktopMenuController': 'property bool isVisible: false; property string mode: "desktop"',
+                         'TimerState': 'property var entries: []; readonly property bool isActive: entries.length > 0', 'Weather': 'property string currentIcon: ""',
+                         'WidgetSync': 'signal geometryChanged(); signal positionChanged(); signal variantChanged(); signal widgetAdded(); signal widgetRemoved(); signal widgetsByTypeRemoved(); signal widgetsCleared(); signal presetApplied(); signal redactModeChanged(string monitor, bool active)',
+                         # Cava counts its consumers and plays a pulse (400 ms = 150 BPM) on the low bars
+                         'Cava': 'id: cava; property var barLevels: []; property int regs: 0; property int unregs: 0; readonly property int activeConsumers: regs - unregs\n'
+                                 '    function registerConsumer() { regs++; }\n    function unregisterConsumer() { unregs++; }\n'
+                                 '    property var pulse: Timer { interval: 25; repeat: true; running: cava.activeConsumers > 0; onTriggered: cava.barLevels = new Array(64).fill(Date.now() % 400 < 100 ? 0.8 : 0.05) }'}
+                declared = (fixture/'qmldir').read_text()
+                for name, body in stubs.items():
+                    (fixture/f'{name}.qml').write_text(f'pragma Singleton\nimport QtQuick\nQtObject {{\n    {body}\n}}\n')
+                    declared += f'singleton {name} 1.0 {name}.qml\n'
+                (fixture/'qmldir').write_text(declared)
             (fixture/'Scaler.qml').write_text('pragma Singleton\nimport QtQuick\nQtObject { function s(v) { return v; } }\n')
             runtime = fixture/'runtime'
             (runtime/'serpantinum').mkdir(mode=0o700, parents=True)

@@ -9,6 +9,7 @@ Scope {
     readonly property var overlays: loader.item ? loader.item.overlays : []
     readonly property var world: loader.item ? loader.item.world : null
     readonly property var blasts: loader.item ? loader.item.blasts : []
+    readonly property var events: loader.item ? loader.item.events : null
 
     IpcHandler {
         target: "clawd"
@@ -44,8 +45,10 @@ Scope {
             readonly property alias overlays: views.instances
             readonly property alias world: around
             readonly property alias blasts: singular.instances
+            readonly property alias events: shell
             ClawdWorld { id: around; pet: body }
             ClawdPet { id: body; world: around }
+            ClawdEvents { id: shell; pet: body }
             Variants {
                 id: views
                 model: Quickshell.screens

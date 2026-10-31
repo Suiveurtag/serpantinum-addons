@@ -56,6 +56,13 @@ ANIMS = {
     'conduct': (8, False),
     # the weekly limit, the superpowered way: startled, hit by a magic orb, absorbs it, dashes, slams, levitates (ClawdSurge.qml)
     'surge': (10, False),
+    # lot 5b: climb, hang (the grips: the wall at mid height, the bar at row 0, the ground for the mantle's end)
+    'climb': (6, True, (19, 7)), 'climb_top': (10, False, (10.5, 14)), 'hang': (2, True, (10.5, 0)),
+    'shimmy': (6, True, (10.5, 0)), 'swing': (4, True, (10.5, 0)), 'drop': (10, False, (10.5, 0)),
+    # lot 5c: dance, moods
+    'dance': (8, True), 'dance_2': (6, True), 'cover_ears': (4, True), 'shush': (6, False), 'drowsy': (2, True), 'exhausted': (2, True),
+    # lot 5d: weather, chime
+    'umbrella': (4, True), 'shiver': (12, True), 'chime': (6, False),
 }
 BLAST = {**PALETTE, **{k: tuple(bytes.fromhex(v)) + (255,) for k, v in {
     'a': 'e8946c', 'b': 'f4b68e', 'c': 'fcddc2', 'w': 'ffffff', 'v': '6e3bff'}.items()}}

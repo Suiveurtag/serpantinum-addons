@@ -365,6 +365,120 @@
       "frames": 22,
       "fps": 10,
       "loop": false
+    },
+    "climb": {
+      "file": "climb.png",
+      "frames": 8,
+      "fps": 6,
+      "loop": true,
+      "grip": [
+        19,
+        7
+      ]
+    },
+    "climb_top": {
+      "file": "climb_top.png",
+      "frames": 10,
+      "fps": 10,
+      "loop": false,
+      "grip": [
+        10.5,
+        14
+      ]
+    },
+    "hang": {
+      "file": "hang.png",
+      "frames": 2,
+      "fps": 2,
+      "loop": true,
+      "grip": [
+        10.5,
+        0
+      ]
+    },
+    "shimmy": {
+      "file": "shimmy.png",
+      "frames": 8,
+      "fps": 6,
+      "loop": true,
+      "grip": [
+        10.5,
+        0
+      ]
+    },
+    "swing": {
+      "file": "swing.png",
+      "frames": 8,
+      "fps": 4,
+      "loop": true,
+      "grip": [
+        10.5,
+        0
+      ]
+    },
+    "drop": {
+      "file": "drop.png",
+      "frames": 10,
+      "fps": 10,
+      "loop": false,
+      "grip": [
+        10.5,
+        0
+      ]
+    },
+    "dance": {
+      "file": "dance.png",
+      "frames": 8,
+      "fps": 8,
+      "loop": true
+    },
+    "dance_2": {
+      "file": "dance_2.png",
+      "frames": 8,
+      "fps": 6,
+      "loop": true
+    },
+    "cover_ears": {
+      "file": "cover_ears.png",
+      "frames": 4,
+      "fps": 4,
+      "loop": true
+    },
+    "shush": {
+      "file": "shush.png",
+      "frames": 6,
+      "fps": 6,
+      "loop": false
+    },
+    "drowsy": {
+      "file": "drowsy.png",
+      "frames": 2,
+      "fps": 2,
+      "loop": true
+    },
+    "exhausted": {
+      "file": "exhausted.png",
+      "frames": 2,
+      "fps": 2,
+      "loop": true
+    },
+    "umbrella": {
+      "file": "umbrella.png",
+      "frames": 3,
+      "fps": 4,
+      "loop": true
+    },
+    "shiver": {
+      "file": "shiver.png",
+      "frames": 10,
+      "fps": 12,
+      "loop": true
+    },
+    "chime": {
+      "file": "chime.png",
+      "frames": 8,
+      "fps": 6,
+      "loop": false
     }
   },
   "antimatter": {

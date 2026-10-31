@@ -99,7 +99,9 @@ It adds one group per event next to the existing ones (Capri's included), writes
 `<file>.clawd-backup-<date>` before every change, and removes only commands running
 `clawd-hook.js`. The hook (`scripts/clawd/hooks/clawd-hook.js`, node) sends one JSON line
 `{agent, event, session_id, tool_name, notification_type, dir, pids, target, model}` (`pids`: the hook's
-ancestor processes, used to find the terminal window) to
+ancestor processes, used to find the terminal window). An event fired inside a sub-agent also carries
+`agent_id`, `agent_type`, and `sub_model` / `sub_tokens`: the model and the input tokens of its last reply,
+read from its own transcript (`<session>/subagents/agent-<id>.jsonl`); nothing else of it leaves the hook. The line goes to
 `$XDG_RUNTIME_DIR/serpantinum/clawd.sock`. It always exits 0 within 500 ms and does nothing
 when the shell is not running.
 
@@ -153,8 +155,8 @@ sessions a `[n]` counter shows beside his head.
 The third toggle of the `hooks` row, `[ ] stats`, makes Claude Code's status line run
 `scripts/clawd/hooks/clawd-status.js` (`hooks.py <status|install|uninstall> statusline`).
 It relays one `Status` line per status refresh:
-`{agent: "claude", event: "Status", session_id, dir, pids, model, effort, ctx, cost, five_hour, seven_day, five_hour_resets}`
-(model display name, effort level, context used %, session cost in USD, 5-hour / 7-day usage %; numbers
+`{agent: "claude", event: "Status", session_id, dir, pids, model, effort, ctx, ctx_size, cost, five_hour, seven_day, five_hour_resets}`
+(model display name, effort level, context used %, context window size in tokens, session cost in USD, 5-hour / 7-day usage %; numbers
 that are not finite are left out). If you already had a status line, its command is wrapped
 (`node clawd-status.js -- <your command>`): it still runs with the same input and its output is
 shown unchanged; disconnecting restores it exactly. Without one, Clawd's prints nothing, so no
@@ -175,7 +177,9 @@ Claude Code is not installed.
 In `full` mode the line also shows, for 2.5 s, what the lead session just started
 (`Edit main.py`, `Bash npm`, at most one flash every 5 s), and every 14 s, for 4 s, the next of
 `<model> · <effort>`, `ctx 42%`, `$1.24`, `5h 63% · 7d 20%` (with stats connected); strained values
-show in peach and are preferred. `verbs` shows the verb and time only; `off` hides the line.
+show in peach and are preferred. While a sub-agent works, its model and its context (its last reply's
+input tokens over the session's window) replace the lead's in that cycle; its effort is the session's.
+`verbs` shows the verb and time only; `off` hides the line.
 It never takes clicks, and hides while a bubble, the menu or the journal is open.
 
 Clicking a bubble raises that session's terminal (`hyprctl dispatch focuswindow pid:…`,
@@ -183,6 +187,30 @@ the first of the hook's ancestors owning a window) and closes it. Left click on 
 the sessions journal, newest first: `⚠/✻/✓ agent dir tool elapsed ctx%` (context only with stats connected); click a row to raise
 that terminal. Terminals behind tmux/screen cannot be found (the multiplexer server is not an
 ancestor): nothing happens.
+
+## The shell (lot 5c)
+
+`ClawdEvents.qml` (inside AddonClawd's Loader, so Clawd OFF destroys it) listens to the shell's singletons, each guarded
+with `typeof` and each event arbitrated by `js/mind.mjs`: a new track shows `♪ <title>` (28 chars); while music plays and
+the reactions are `all` he registers as a Cava consumer (released on stop, OFF, performance mode, quiet/off and
+destruction) and dances (`dance`/`dance_2`, swing under the bar) at the pace `js/beat.mjs` finds in the low bars (no beat:
+normal pace); notifications make him look up and read (critical: alert, timer app: alert + `⏰ timer`; do-not-disturb mutes
+all but critical); bubbles name the app only, never the summary or body; loud or rising volume covers his ears, mute
+shushes, brightness ≤ 15 % makes him drowsy (shorter nap delay), a battery ≤ 15 % not charging exhausted (≤ 5 %: urgent
+reaction), charging cheers; the launcher, clipboard and menus make him look up. Moods (`drowsy`, `exhausted`, `rain`)
+slow his pauses, calm his walks and change how he sits. Bubble ranks: permission > error > done/waiting > notification/music
+(a lower one never replaces a higher one); shell bubbles last 4 s, a click only dismisses them. Performance mode: no dance,
+no Cava. Nothing starts while he is dead or in a scene.
+
+## Widgets and weather (lot 5d)
+
+The widgets of the shell (`qs-widget-<type>-<id>` layers, minus visualizers and huge ones, inset by their 8 px aura) are
+ledges like window tops, and a window in front covers them; the widget editor (`WidgetSync.redactModeChanged`) takes them
+away, and any other `WidgetSync` signal refetches the layers 450 ms later. On the hour (a timer aligned to :00) a clock
+(`time`) widget on his display makes him hop or walk to it and chime; while music plays he prefers a `music` widget as his
+dance spot. Rain or storm (`Weather.currentIcon`) puts him in the `rain` mood (an umbrella now and then), snow in the `snow`
+mood (shivering); both clear with the sky. A running timer (`TimerState.isActive`) makes him glance up toward the bar now
+and then. All of it follows the reactions setting and Mind's budget, and stops in performance mode, while he is dead or in a scene.
 
 ## Settings card
 
@@ -197,6 +225,7 @@ ancestor): nothing happens.
 | Hooks | Connect / disconnect Claude Code and Codex hooks, and the Claude status line relay (`stats`) |
 | Thoughts | `addonsV2ClawdThoughts`: full (default), verbs, off |
 | World | `addonsV2ClawdWorld` (`windows`: perching, peeking, exploring, window reactions) and `addonsV2ClawdFollow` (`follow` the cursor to other screens), both default on |
+| Reacts | `addonsV2ClawdReactions`: all (default), quiet (urgent events, bubbles, moods), off (urgent only) |
 
 Settings are shared with the separate Settings process through `settings.json`,
 so the card works in the Settings app and in the integrated `Super+Shift+P` panel.

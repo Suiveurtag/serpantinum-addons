@@ -5,6 +5,7 @@
 // Observe only: no output, always exit 0, give up fast; silent when the shell (or Clawd) is not running.
 // Usage: node clawd-hook.js [--agent codex]   (the hook event arrives on stdin)
 
+const fs = require('node:fs');
 const net = require('node:net');
 const path = require('node:path');
 
@@ -66,16 +67,49 @@ function ancestors(pid) {
   return pids;
 }
 
+// A sub-agent's model and the input tokens of its last reply, read from its own transcript (Claude Code writes it next
+// to the session's: <session>/subagents/agent-<id>.jsonl). Only the tail is read; no text leaves this function.
+const SUB_TAIL = 256 * 1024;
+function subagent(evt, id) {
+  const transcript = typeof evt.transcript_path === 'string' ? evt.transcript_path : '';
+  if (!transcript.endsWith('.jsonl')) return {};
+  const file = transcript.includes('/subagents/') ? transcript
+    : path.join(transcript.slice(0, -'.jsonl'.length), 'subagents', `agent-${id}.jsonl`);
+  let fd;
+  try {
+    fd = fs.openSync(file, 'r');
+    const size = fs.fstatSync(fd).size, length = Math.min(size, SUB_TAIL);
+    const buffer = Buffer.alloc(length);
+    fs.readSync(fd, buffer, 0, length, size - length);
+    const lines = buffer.toString('utf8').split('\n');
+    for (let i = lines.length - 1; i >= 0; i--) {  // the first line may be cut: it simply fails to parse
+      let message;
+      try { message = obj(JSON.parse(lines[i]).message); } catch { continue; }
+      if (message.role !== 'assistant' || !message.usage) continue;
+      const usage = obj(message.usage);
+      const tokens = ['input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens']
+        .reduce((sum, key) => sum + (Number.isFinite(usage[key]) ? usage[key] : 0), 0);
+      return { sub_model: clean(message.model, 40), sub_tokens: tokens };
+    }
+  } catch { /* no transcript yet, or not readable: the sub-agent shows without its stats */ } finally {
+    if (fd !== undefined) try { fs.closeSync(fd); } catch { /* closed already */ }
+  }
+  return {};
+}
+
 // Only what Clawd shows: never prompts, replies, full commands or paths (just the short target above).
 function slim(evt) {
   let event = evt.hook_event_name;
   let type = evt.notification_type;
   if (event === 'PermissionRequest') { event = 'Notification'; type = 'permission_prompt'; }
   if (event === 'PreToolUse' && evt.tool_name === 'request_user_input') { event = 'Notification'; type = 'agent_needs_input'; }
+  // events fired inside a sub-agent carry its id (validated: it becomes a file name) and type
+  const agentId = typeof evt.agent_id === 'string' && /^[\w-]{1,80}$/.test(evt.agent_id) ? evt.agent_id : undefined;
   return {
     agent: AGENT, event, session_id: text(evt.session_id, 80), tool_name: text(evt.tool_name, 40),
     notification_type: text(type, 40), dir: text(typeof evt.cwd === 'string' ? path.basename(evt.cwd) : '', 40),
     target: event === 'PreToolUse' ? target(evt.tool_name, evt.tool_input) : undefined, model: clean(evt.model, 40),
+    ...(agentId ? { agent_id: agentId, agent_type: clean(evt.agent_type, 40), ...subagent(evt, agentId) } : {}),
   };
 }
 

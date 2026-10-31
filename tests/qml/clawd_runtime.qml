@@ -32,7 +32,7 @@ ShellRoot {
                 break;
             case 1:
                 if (!wait(Clawd.instances === Quickshell.screens.length && Clawd.manifest && host.pet, "one overlay per screen")) break;
-                expect(!!Clawd.manifest.animations.explode && Object.keys(Clawd.manifest.animations).length === 59 && Clawd.manifest.frame.w === 21, "manifest loaded");
+                expect(!!Clawd.manifest.animations.explode && Object.keys(Clawd.manifest.animations).length === 74 && Clawd.manifest.frame.w === 21, "manifest loaded");
                 expect(p.mode === "spawn" && Clawd.screenName === Quickshell.screens[0].name, "spawns on a screen");
                 expect(Math.abs(p.y - floorY()) < 1 && p.height === Clawd.manifest.frame.h * 4, "spawn on the floor at x4");
                 break;

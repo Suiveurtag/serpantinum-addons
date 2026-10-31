@@ -79,13 +79,24 @@ export function ledges({ wins = [], widgets = [], displays = [], petW = 0, petH 
   return out;
 }
 
+// Settling on a ledge with his contact near cx: cx clamped so his body stays on the ledge, then moved to the nearest
+// uncovered point if a front window sits there; null when the ledge has none left.
+export function standAt(wins, ledge, cx, half) {
+  const h = Math.min(half, ledge.w / 2), lo = ledge.x + h, hi = ledge.x + ledge.w - h, clamp = v => Math.max(lo, Math.min(hi, v));
+  if (ledge.kind === 'floor') return clamp(cx);
+  const i = wins.findIndex(w => w.id === ledge.id), c = [clamp(cx), lo, hi];
+  for (const w of i < 0 ? wins : wins.slice(0, i)) if (ledge.y >= w.y && ledge.y < w.y + w.h) c.push(clamp(w.x - 1), clamp(w.x + w.w + 1));
+  const free = c.filter(v => span(wins, ledge, v)).sort((a, b) => Math.abs(a - cx) - Math.abs(b - cx));
+  return free.length ? free[0] : null;
+}
+
 // Falling with his feet at (cx, feetY): the first free ledge he meets (top at/below his feet, spans cx, not covered at cx),
 // else the floor of the display under cx.
 export function landing(ledges, wins, cx, feetY, displays) {
   let best = null;
   for (const l of ledges) {
     if (l.kind === 'floor' || l.y < feetY - 1 || cx < l.x || cx > l.x + l.w || best && l.y >= best.y) continue;
-    if (l.kind === 'win' && covered(wins, l.id, cx, cx, l.y)) continue;
+    if (l.kind !== 'floor' && !span(wins, l, cx)) continue;  // same edge rule as span: a window edge at cx covers it
     best = l;
   }
   if (best) return best;
@@ -118,4 +129,87 @@ export function diff(prev, next) {
   }
   for (const id of Object.keys(prev)) if (!next[id]) closed.push({ id, rect: prev[id] });
   return { opened, closed, moved };
+}
+
+// 5b. Climbable window sides on display d: a window whose bottom is near the floor (he can walk up to it), at least his
+// height tall, with room beside it; its outer strip must stay free of other windows (and its edge not hidden by a front
+// one) over >= 60 % of the height. side -1 = its left edge (he is on its left, the wall on his right), 1 = its right edge.
+export function sides(wins, d, petH) {
+  const out = [];
+  if (!d) return out;
+  for (const w of wins) {
+    if (w.display !== d.id || w.max || d.floor - (w.y + w.h) >= petH) continue;
+    const y0 = Math.max(w.y, d.top), y1 = Math.min(w.y + w.h, d.floor);
+    if (y1 - y0 < petH) continue;
+    for (const side of [-1, 1]) {
+      const x = side < 0 ? w.x : w.x + w.w, room = petH * 1.5;
+      if (side < 0 ? x - d.x < room : d.x + d.w - x < room) continue;
+      const s0 = side < 0 ? x - 12 : x + 2, s1 = side < 0 ? x - 2 : x + 12, n = Math.ceil((y1 - y0) / 16);
+      let free = 0;
+      for (let i = 0; i < n; i++) {
+        const y = y0 + (i + 0.5) * (y1 - y0) / n;
+        if (!wins.some(o => o.id !== w.id && !o.max && o.x < s1 && o.x + o.w > s0 && y >= o.y && y < o.y + o.h) && !covered(wins, w.id, x - 1, x + 1, y)) free++;
+      }
+      if (free / n >= 0.6) out.push({ id: w.id, side, x, y0, y1, display: d.id });
+    }
+  }
+  return out;
+}
+
+// 5b. The bar's underside on display d, where he can hang: {x, y, w} (y = the bar's bottom edge, d.top) or null (not at
+// the top, autohide, a fullscreen window, no reserved space). Its x extent comes from the matching `quickshell` layer
+// (level 2, near the top, about bar.height tall) when layers() knows it, else the display minus the 4 px margins.
+export function bar(d, raw, layers, fullscreen) {
+  const b = raw || {};
+  if (!d || fullscreen || (b.position || 'top') !== 'top' || b.autohide || !(d.top > d.y)) return null;
+  const h = Number(b.height);
+  const r = layers && (layers.rects || []).find(r => r.ns === 'quickshell' && r.level === 2 && r.display === d.id && r.y - d.y <= 16
+    && (!Number.isFinite(h) || Math.abs(r.h - h) <= 14));
+  const x = r ? r.x : d.x + 4, w = r ? r.w : d.w - 8;
+  return w > 0 ? { x, y: d.top, w } : null;
+}
+
+const KINDS = [['launcher', /launcher/], ['clipboard', /clipboard/], ['desktopmenu', /desktop[-_]?menu/], ['traymenu', /tray[-_]?menu/],
+  ['osd', /osd/], ['sidemusic', /side[-_]?music/]];
+
+// 5b. What a layer namespace is for the pet (null: nothing he cares about).
+export function layerKind(ns) {
+  const s = String(ns || '').toLowerCase();
+  if (s === 'qs-popups') return 'popups';
+  if (s === 'qs-master') return 'master';
+  const k = KINDS.find(([, re]) => re.test(s));
+  return k ? k[0] : null;
+}
+
+// 5b. Hyprland `j/layers` ({monitor: {level: [{namespace, x, y, w, h}]}}, monitor-local px) -> rects in global px
+// [{ns, level, display, x, y, w, h}], the widgets among them (`qs-widget-<type>-<id>`, inset by the 8 px aura; not
+// visualizers, not huge ones) and the namespaces of the layers with a kind.
+export function layers(json, displays = []) {
+  const rects = [], widgets = [];
+  if (json && typeof json === 'object') for (const mon of Object.keys(json)) {
+    const d = displays.find(d => d.id === mon), lv = json[mon] && typeof json[mon] === 'object' ? json[mon] : {};
+    for (const level of Object.keys(lv)) for (const l of Array.isArray(lv[level]) ? lv[level] : []) {
+      if (!l || typeof l.namespace !== 'string' || ![l.x, l.y, l.w, l.h].every(Number.isFinite)) continue;
+      const r = { ns: l.namespace, level: Number(level), display: mon, x: l.x + (d ? d.x : 0), y: l.y + (d ? d.y : 0), w: l.w, h: l.h };
+      rects.push(r);
+      const m = /^qs-widget-([^-]+)-/.exec(r.ns);
+      if (m && m[1] !== 'visualizer' && !(d && (r.h > d.h / 2 || r.w > d.w * 0.8)))
+        widgets.push({ id: r.ns, type: m[1], display: mon, x: r.x + 8, y: r.y + 8, w: r.w - 16, h: r.h - 16 });
+    }
+  }
+  const open = [...new Set(rects.filter(r => layerKind(r.ns)).map(r => r.ns))];
+  return { widgets, open, rects };
+}
+
+// 5d. A widget's type (the `<type>` of `qs-widget-<type>-<id>`) -> what Clawd does with it: clock (the hourly chime) | music (a dance spot) | null.
+export function widgetKind(type) {
+  const t = String(type || '').toLowerCase();
+  return t === 'time' || t === 'clock' ? 'clock' : t === 'music' ? 'music' : null;
+}
+
+// 5d. Weather.currentIcon (a nerd-font glyph from scripts/weather.sh wmo_map) -> rain | snow | storm | clear | other.
+// rainy U+F0597 (drizzle, rain, showers), snow U+F2DC, storm U+F0E7, sunny U+F185 / clear night U+F186.
+export function weatherKind(icon) {
+  const c = String(icon || '').trim().codePointAt(0);
+  return c === 0xf0597 ? 'rain' : c === 0xf2dc ? 'snow' : c === 0xf0e7 ? 'storm' : c === 0xf185 || c === 0xf186 ? 'clear' : 'other';
 }

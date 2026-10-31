@@ -10,9 +10,15 @@ import "js/mind.mjs" as Mind
 // playing Clawd.workAnim, the loop of the last tool used, or its "_2" variant; "sweat" now and then when strained),
 // perch (resting on a window top), hop (a parabolic jump), react (a one-shot that returns to his resting pose),
 // teeter (at the end of a window top), peek (2/3 hidden behind a window: cover), explode (frozen inside a limit scene),
-// corpse (his corpse falling back after it), dead (lying there, grey and smoking: nothing moves him), revive (ClawdRevive).
+// corpse (his corpse falling back after it), dead (lying there, grey and smoking: nothing moves him), revive (ClawdRevive),
+// climb (up a window side, then climb_top onto it), hang (under the bar or from a window's top corner; swing now and then),
+// shimmy (hand over hand along the bar), drop (lets go, then falls), dance (music: dance / dance_2 at the beat's pace).
+// mood: '' | drowsy | exhausted | rain | snow, a lasting state from the shell (dim light, low battery, weather): slower, calmer, sits tired,
+// under an umbrella or shivering.
 // support = what he stands on: null (the floor of `here`) | {kind: "win", id, dx} (dx = contact x - window x;
-// 5b+: widget, bar, side). He is placed through the animation's grip (clawd.json; default bottom centre).
+// a widget's top, 5d: kind "widget") | {kind: "bar", dx, display} (hanging: dx = contact x - bar x) | {kind: "side", id, side, dy} (a window edge:
+// climbing, or hanging from its top corner; dy = contact y - the side's top). He is placed through the animation's grip
+// (clawd.json; default bottom centre).
 Item {
     id: pet
     property var world: null       // ClawdWorld: displays, windows, ledges, cursor
@@ -29,7 +35,11 @@ Item {
     property bool reverse: false
     property bool menuOpen: false
     property bool journalOpen: false
-    property int sleepAfter: Clawd.sleepMinutes * 60000
+    property string mood: ""
+    property bool grooved: false   // the swing under the bar is a dance (music), not a natural one
+    property real beat: 1          // dance playback rate (bpm / 120)
+    property string chain: ""     // the reaction that follows the current one-shot (a look_up, then read)
+    property int sleepAfter: Clawd.sleepMinutes * 60000 / (mood === "drowsy" ? 2 : 1)
     property var target: null      // walk destination x
     property var intent: null      // why he walks there: {kind: edge | peek | out | cross | leave, ...}
     property var grab: null        // left press: {x, y, dx, dy, moved}
@@ -38,6 +48,7 @@ Item {
     property string coverId: ""
     property var peeking: null     // {id, side, ex} while peeking
     property var hop: null         // the ledge a hop lands on
+    property var agenda: null      // {kind: chime | dance, id, bpm, until}: what he does once he stands on that widget
     property var resume: null      // the pose a reaction returns to
     // The singularity (ClawdSingularity): {screen, x, y, animation, frame, mirrored, scale, clock}; clock = ms when its
     // timeline was at 0, set once his screen is captured. blasting: frozen inside it, nothing else moves him.
@@ -58,6 +69,7 @@ Item {
     property var fallTarget: null
     property real fallAt: 0
     property bool lost: false      // his support vanished under him: oops on landing
+    property bool dropStartled: false  // the drop in progress was a fright (startled while falling)
     property var mind: Mind.memory()
     property int awayChecks: 0
     property string awayScreen: ""
@@ -80,7 +92,7 @@ Item {
 
     // Working loops that have a variant, and how fast his hands go (the lead session's effort).
     readonly property var families: ["work", "edit", "read", "bash", "search", "web", "task", "todo"]
-    readonly property real speed: mode === "work" && families.indexOf(animation.replace(/_2$/, "")) >= 0 ? Clawd.effortSpeed : 1
+    readonly property real speed: mode === "dance" ? beat : mode === "work" && families.indexOf(animation.replace(/_2$/, "")) >= 0 ? Clawd.effortSpeed : 1
 
     function display(name) { return displays.find(d => d.id === name) || null; }
     function displayAt(gx, gy) { return World.displayAt(displays, gx, gy); }
@@ -89,7 +101,9 @@ Item {
 
     // An animation the manifest lacks (sprites not regenerated yet) falls back to a close one.
     function clipName(name) {
-        const m = Clawd.manifest, alt = { perch: "sit", perch_look: "sit", hop: "land", stumble: "oops", teeter: "idle", peek: "look_right" };
+        const m = Clawd.manifest, alt = { perch: "sit", perch_look: "sit", hop: "land", stumble: "oops", teeter: "idle", peek: "look_right",
+            climb: "walk", climb_top: "land", hang: "idle", shimmy: "walk", swing: "idle", drop: "fall",
+            dance: "happy", dance_2: "dance", cover_ears: "startled", shush: "idle", drowsy: "sit", exhausted: "sit", umbrella: "sit", shiver: "idle", chime: "happy" };
         return !m || m.animations[name] || !Object.prototype.hasOwnProperty.call(alt, name) ? name : alt[name];
     }
     function ownGrip(anim) {
@@ -107,6 +121,10 @@ Item {
     function contact() { const g = grip(animation, mirrored); return { x: x + g.x, y: y + g.y }; }
     function placeAt(cx, cy) { const g = grip(animation, mirrored); x = cx - g.x; y = cy - g.y; }
     function ledgeOf(s) { return s && world ? world.ledge(s.id) : null; }
+    function sideOf(s) { return s && world ? world.sideOf(s.id, s.side) : null; }
+    function barOf(s) { return s && world && world.bars ? world.bars[s.display] || null : null; }
+    function has(name) { return !!Clawd.manifest && !!Clawd.manifest.animations[name]; }
+    function holding() { return ["climb", "hang", "shimmy", "drop"].indexOf(mode) >= 0; }
 
     function enter(m, anim, flip, back) {
         if (blasting || dead && ["corpse", "dead", "revive", "carried"].indexOf(m) < 0) return;
@@ -126,12 +144,14 @@ Item {
         else if (m === "teeter") brain.interval = 1200 + Math.random() * 800;
         else if (m === "peek") brain.interval = 3000 + Math.random() * 3000;
         else if ((m === "play" || m === "react") && clip && clip.loop) brain.interval = 3000;
+        else if (m === "hang") brain.interval = 4000 + Math.random() * 11000;
+        else if (m === "dance") brain.interval = 8000 + Math.random() * 6000;
         else return;
         brain.start();
     }
     function pause() {
         if (Clawd.lowMotion) return 20000 + Math.random() * 20000;
-        const base = ({ calm: 5000, normal: 3000, active: 2000 })[Clawd.speed];
+        const base = ({ calm: 5000, normal: 3000, active: 2000 })[Clawd.speed] * (mood ? 1.8 : 1);
         return base + Math.random() * base * 1.2;
     }
     function next() {
@@ -140,6 +160,12 @@ Item {
         else if (mode === "fall") { if (animation !== "fall") enter("fall", "fall"); }  // a startle mid-air is over
         else if (mode === "teeter") edge();
         else if (mode === "peek") unpeek();
+        else if (mode === "react" && chain) { const a = chain; chain = ""; enter("react", a); }
+        else if (mode === "dance") enter("dance", Clawd.variant("dance"));
+        else if (mode === "climb") { if (animation === "climb_top") idle(); }
+        else if (mode === "hang") hangThink();
+        else if (mode === "drop") fell();
+        else if (mode === "shimmy") return;
         else if (mode === "react" && resume && grounded()) { const r = resume; resume = null; enter(r.mode, r.animation, r.mirrored); }
         else if (["sleep", "drag", "walk", "hop", "recharge", "weekly", "surge"].indexOf(mode) < 0) idle();
     }
@@ -149,6 +175,7 @@ Item {
         target = null;
         intent = null;
         resume = null;
+        chain = "";
         peeking = null;
         cover = null;
         coverId = "";
@@ -156,16 +183,18 @@ Item {
         if (!support && here) x = clampX(here, x);
         if (Clawd.activity) { touch(); enter("work", Clawd.activity === "alert" ? "alert" : Clawd.variant(Clawd.workAnim)); }
         else if (tired) sleep();
+        else if (due()) play();
         else if (support) enter("perch", "perch");
         else enter("idle", "idle");
     }
     function grounded() {
+        if (support && (support.kind === "bar" || support.kind === "side")) return false;  // held by his hands, not standing
         if (support) { const l = ledgeOf(support); return !!l && !!World.span(world.wins, l, l.x + support.dx); }
         return !here || contact().y >= here.floor - 0.5;
     }
     function think() {
         refresh();
-        const chance = Clawd.lowMotion ? 0.1 : ({ calm: 0.25, normal: 0.4, active: 0.6 })[Clawd.speed];
+        const chance = (Clawd.lowMotion ? 0.1 : ({ calm: 0.25, normal: 0.4, active: 0.6 })[Clawd.speed]) * (mood ? 0.5 : 1);  // a mood walks calmly
         const r = Math.random(), rest = (r - chance) / (1 - chance);
         if (menuOpen) enter(support ? "perch" : "idle", support ? "perch" : "idle");
         else if (r < chance) { if (!(r < chance / 4 && explore())) walk(); }  // a quarter of his walks explore
@@ -176,8 +205,14 @@ Item {
         }
         else if (rest < 0.35) enter("idle", "blink");
         else if (rest < 0.7 && !Clawd.lowMotion) enter("idle", look());
-        else if (rest < 0.85) enter("sit", "sit");
+        else if (rest < 0.85) enter("sit", moodSit());
         else enter("idle", "idle");
+    }
+    // The sitting pose of his mood: tired when drowsy or exhausted, under an umbrella in the rain (now and then).
+    function moodSit() {
+        if ((mood === "drowsy" || mood === "exhausted") && has(mood)) return mood;
+        const weather = mood === "rain" ? "umbrella" : mood === "snow" ? "shiver" : "";
+        return weather && !Clawd.lowMotion && has(weather) && Math.random() < 0.5 ? weather : "sit";
     }
     function lookAt(gx, gy) {
         const dx = gx - (x + width / 2), dy = gy - (y + height / 2);
@@ -206,7 +241,7 @@ Item {
     }
     function walkTo(to, why) {
         if (Math.abs(to - x) < 8) {
-            if (!why || why.kind !== "peek") return false;
+            if (!why || why.kind !== "peek" && why.kind !== "climb") return false;
             intent = why;
             arrive();
             return true;
@@ -243,10 +278,24 @@ Item {
             const c = contact(), ny = c.y + vy * dt;
             if (here && ny >= here.floor) { vy = 0; placeAt(c.x, here.floor); enter("dead", "dead_land"); }
             else placeAt(c.x, ny);
+        } else if (mode === "climb" && animation === "climb" && support && support.kind === "side") {
+            const s = sideOf(support);
+            if (!s) return slip(true);
+            const ny = contact().y - ({ calm: 40, normal: 70, active: 110 })[Clawd.speed] * dt;
+            if (ny <= s.y0 + 2) return topOut(s);
+            placeAt(s.x, ny);
+            support.dy = ny - s.y0;
+        } else if (mode === "shimmy" && support && support.kind === "bar") {
+            const b = barOf(support);
+            if (!b || target === null) return b ? hangAgain() : slip(true);
+            const to = Math.max(b.x, Math.min(b.x + b.w - width, target)), v = ({ calm: 25, normal: 40, active: 60 })[Clawd.speed] * dt;
+            if (Math.abs(to - x) > v) x += to > x ? v : -v;
+            else { x = to; hangAgain(); }
+            if (support) support.dx = contact().x - b.x;
         } else if (mode === "hop" && hop) {
             vy = Math.min(2400, vy + 2600 * dt);
             const c = contact(), nx = c.x + vx * dt, ny = c.y + vy * dt;
-            const l = hop.kind === "floor" ? hop : ledgeOf(hop);
+            const b = hop.kind === "bar" ? barOf(hop) : null, l = hop.kind === "floor" ? hop : b ? Object.assign(hop, { y: b.y }) : hop.kind === "bar" ? null : ledgeOf(hop);
             if (!l) { hop = null; vx = 0; enter("fall", "fall"); return; }  // its window went away mid-air
             if (vy > 0 && ny >= l.y) return settle(l, nx);
             placeAt(nx, ny);
@@ -260,6 +309,8 @@ Item {
         const i = intent;
         intent = null;
         if (i && i.kind === "edge" && support) return enter("teeter", "teeter", mirrored);
+        if (i && i.kind === "climb") return startClimb(i);
+        if (i && i.kind === "visit") { const l = world ? world.ledge(i.id) : null, tx = l ? reach(l) : null; return tx !== null && !owned() ? void hopTo(tx, l) : idle(); }
         if (i && i.kind === "peek") {
             // the window on his right (came to its left edge): peek out leftwards, mirrored
             const flip = i.side < 0;
@@ -304,8 +355,13 @@ Item {
     }
     // Touchdown on ledge l, his contact at cx.
     function settle(l, cx) {
+        if (l.kind === "bar") { hop = null; vx = 0; const b = barOf(l); if (b) hangOn(b, cx); else { lost = true; enter("fall", "fall"); } return; }  // grabbed the bar
         const win = l.kind !== "floor";
-        if (win) cx = Math.max(l.x + Math.min(width / 2, l.w / 2), Math.min(l.x + l.w - Math.min(width / 2, l.w / 2), cx));
+        if (win) {  // clamp onto the ledge, then off any front window; none left: fall again
+            const s = World.standAt(world ? world.wins : [], l, cx, width / 2);
+            if (s === null) { support = null; vy = 0; fallTarget = null; hop = null; lost = true; enter("fall", "fall"); return; }
+            cx = s;
+        }
         support = win ? { kind: l.kind, id: l.id, dx: cx - l.x } : null;
         vy = 0; vx = 0; fallTarget = null;
         const hopping = mode === "hop" && !clock.done && animation === clipName("hop");
@@ -324,8 +380,10 @@ Item {
         const d = displayAt(cx, feetY);
         return d ? { id: "floor:" + d.id, kind: "floor", x: d.x, y: d.floor, w: d.w, display: d.id } : null;
     }
+    // Modes the world must never disturb: input, physics in flight, and the scenes of other work.
+    function owned() { return blasting || dead || ["drag", "fall", "hop", "corpse", "dead", "revive", "carried", "explode", "recharge", "weekly", "surge"].indexOf(mode) >= 0; }
     function placeOnSupport() {
-        if (!here || ["drag", "fall", "hop", "corpse", "revive", "carried", "recharge", "weekly", "surge"].indexOf(mode) >= 0) return;
+        if (!here || owned()) return;  // special modes keep their support and revalidate after
         if (support) return revalidate();
         placeAt(contact().x, here.floor);
         if (!intent || ["cross", "leave"].indexOf(intent.kind) < 0) x = clampX(here, x);
@@ -341,7 +399,8 @@ Item {
                 else if (intent && intent.kind === "peek") idle();
             }
         }
-        if (!support || ["drag", "fall", "hop", "recharge", "weekly", "surge"].indexOf(mode) >= 0) return;
+        if (!support || owned()) return;
+        if (support.kind === "bar" || support.kind === "side") return holdOn();
         const l = ledgeOf(support), c = contact(), cx = l ? l.x + support.dx : 0;
         if (!l || !World.span(world.wins, l, cx)) return lose(false);
         if (Math.abs(cx - c.x) + Math.abs(l.y - c.y) > 200) return lose(true);  // yanked away: startled mid-air
@@ -351,12 +410,42 @@ Item {
         track();
     }
     function lose(startle) {
+        if (owned()) return;  // keeps its support: revalidate() finds it again afterwards
         support = null; hop = null; target = null; intent = null; fallTarget = null;
         vy = 0;
-        if (mode === "drag" || mode === "recharge" || mode === "weekly" || mode === "surge") return;
         lost = true;
         touch();
         enter("fall", startle ? "startled" : "fall");
+    }
+    // Hanging or climbing: follow the bar or the window edge, or let go when it is gone.
+    function holdOn() {
+        const s = support, c = contact();
+        let cx, cy;
+        if (s.kind === "bar") {
+            const b = barOf(s);
+            if (!b) return slip(true);
+            cx = Math.max(b.x + width / 2, Math.min(b.x + b.w - width / 2, b.x + s.dx));
+            cy = b.y;
+        } else {
+            const t = sideOf(s);
+            if (!t) return slip(true);
+            cx = t.x;
+            cy = mode === "climb" ? Math.max(t.y0, Math.min(t.y1, t.y0 + s.dy)) : t.y0;
+        }
+        const off = Math.abs(cx - c.x) + Math.abs(cy - c.y);
+        if (off > 200) return slip(true);
+        if (off > 0.01) placeAt(cx, cy);
+    }
+    // His hold vanished: falls from where he is (the sprite box stays, hands and feet differ), startled or not.
+    function slip(startle) {
+        if (owned()) return;
+        const bx = x, by = y;
+        support = null; hop = null; target = null; intent = null; fallTarget = null;
+        vy = 0;
+        lost = true;
+        touch();
+        enter("fall", startle ? "startled" : "fall");
+        x = bx; y = by;
     }
     // His centre went over to another screen.
     function track() {
@@ -379,8 +468,10 @@ Item {
         if (hopOn) ops.push(() => hopTo(hopOn.tx, hopOn.l));
         const spot = support ? null : peekSpot();
         if (spot) ops.push(() => peek(spot));
+        const edge = support || !has("climb") ? null : climbSpot();
+        if (edge) ops.push(() => climb(edge));
         const cur = World.cursor(displays, here, pointer);
-        if (cur && cur.display && !cur.inside && Clawd.follow) ops.push(() => cross(cur.display));
+        if (cur && cur.display && !cur.inside && Clawd.world && Clawd.follow) ops.push(() => cross(cur.display));
         else if (cur && cur.inside) ops.push(() => { const s = stand(); return !!s && walkTo(Math.max(s.x0, Math.min(s.x1, cur.x - width / 2))); });
         return ops.length > 0 && !!ops[Math.floor(Math.random() * ops.length)]();
     }
@@ -408,6 +499,153 @@ Item {
         coverId = "";
         return false;
     }
+    // The nearest climbable window side on his screen, from the floor: {id, side, x (his x at the foot of it), far}.
+    function climbSpot() {
+        if (!world || !here || !world.sides) return null;
+        let best = null;
+        for (const s of world.sides[here.id] || []) {
+            const tx = s.x - grip("climb", s.side > 0).x, far = Math.abs(tx - x);
+            if (tx < here.x || tx + width > here.x + here.w || far > 700 || best && far >= best.far) continue;
+            best = { id: s.id, side: s.side, x: tx, far };
+        }
+        return best;
+    }
+    function climb(spot) { return walkTo(spot.x, { kind: "climb", id: spot.id, side: spot.side }); }
+    // At the foot of the side: up he goes (the wall column of the sprite on the window edge).
+    function startClimb(i) {
+        const s = world ? world.sideOf(i.id, i.side) : null;
+        if (!s || owned() || Clawd.lowMotion || !has("climb")) return idle();
+        const top = y;
+        touch();
+        support = { kind: "side", id: s.id, side: s.side, dy: 0 };
+        enter("climb", "climb", s.side > 0);
+        placeAt(s.x, top + grip(animation, mirrored).y);
+        support.dy = contact().y - s.y0;
+    }
+    // Reached the top of the side: mantle onto the window if there is room, else hop to the bar (window top right under it),
+    // else hang from the window's top corner.
+    function topOut(s) {
+        const l = world.ledge(s.id), d = display(s.display) || here, b = d && world.bars ? world.bars[d.id] : null;
+        const cx = l && l.display === s.display ? World.standAt(world.wins, l, s.x + (s.side < 0 ? 1 : -1) * width / 2, width / 2) : null;
+        if (cx !== null) {
+            support = { kind: "win", id: l.id, dx: cx - l.x };
+            if (!has("climb_top")) return settle(l, cx);
+            enter("climb", "climb_top", s.side > 0);
+            placeAt(cx, l.y);
+        } else if (b && s.y0 - b.y < height * 1.2) { if (!hopBar(s.x)) slip(false); }
+        else if (has("hang") && !owned()) {
+            support = { kind: "side", id: s.id, side: s.side, dy: 0 };
+            enter("hang", "hang", s.side > 0);
+            placeAt(s.x, s.y0);
+        } else slip(false);
+    }
+    // A jump from where he is up to the bar: his hands fly to its underside at cx, then hangBar.
+    function hopBar(cx) {
+        const b = here && world && world.bars ? world.bars[here.id] : null;
+        if (!b || !has("hang") || owned() || Clawd.lowMotion) return false;
+        return hopTo(Math.max(b.x + width / 2, Math.min(b.x + b.w - width / 2, cx)), { kind: "bar", y: b.y, display: here.id });
+    }
+    // Hanging under the bar of his screen with his centre at cx.
+    function hangBar(cx) {
+        const b = here && world && world.bars ? world.bars[here.id] : null;
+        if (!b || !has("hang") || owned() || Clawd.lowMotion) return false;
+        hangOn(b, cx);
+        return true;
+    }
+    function hangOn(b, cx) {
+        cx = Math.max(b.x + width / 2, Math.min(b.x + b.w - width / 2, cx));
+        touch();
+        target = null; intent = null; resume = null; hop = null; fallTarget = null; cover = null; coverId = ""; peeking = null;
+        vy = 0;
+        support = { kind: "bar", dx: cx - b.x, display: here.id };
+        enter("hang", "hang", mirrored);
+        placeAt(cx, b.y);
+    }
+    // Brain tick while hanging (4-15 s): shimmy along the bar, swing, or let go.
+    function hangThink() {
+        if (!support || owned()) return;
+        const b = support.kind === "bar" ? barOf(support) : null, r = Math.random();
+        if (Clawd.lowMotion || Clawd.activity || r < 0.2) return void letGo(false);
+        if (animation === clipName("swing") && has("swing")) return hangAgain();
+        if (b && has("shimmy") && r < 0.6 && b.w > width * 2) {
+            const d = (Math.random() < 0.5 ? -1 : 1) * (80 + Math.random() * 240), fit = v => Math.max(b.x, Math.min(b.x + b.w - width, v));
+            let to = fit(x + d);
+            if (Math.abs(to - x) < 8) to = fit(x - d);
+            if (Math.abs(to - x) >= 8) { target = to; enter("shimmy", "shimmy", to < x); return; }
+        }
+        if (has("swing") && r < 0.85) enter("hang", "swing", mirrored);
+        else hangAgain();
+    }
+    function hangAgain() { target = null; enter("hang", "hang", mirrored); }
+    // Lets go (startled: a fright); a drop animation first when he hangs, straight down when he climbs.
+    function letGo(startled) {
+        if (owned() || !holding() || mode === "drop") return false;
+        target = null; intent = null;
+        dropStartled = !!startled;
+        if (mode === "climb" || !has("drop")) fell();
+        else enter("drop", "drop", mirrored);
+        return true;
+    }
+    function fell() {
+        const bx = x, by = y;
+        support = null; hop = null; fallTarget = null;
+        vy = 0;
+        lost = false;
+        touch();
+        enter("fall", dropStartled ? "startled" : "fall");
+        x = bx; y = by;
+        dropStartled = false;
+    }
+    // 5d widgets. The nearest widget of a kind (clock | music) on his display; none while the widget editor is on.
+    function widgetOn(kind) {
+        if (!world || !here || world.redact) return null;
+        let best = null;
+        for (const w of world.widgets) if (w.display === here.id && World.widgetKind(w.type) === kind && (!best || Math.abs(w.x + w.w / 2 - x - width / 2) < Math.abs(best.x + best.w / 2 - x - width / 2))) best = w;
+        return best;
+    }
+    // Where on ledge l (its middle) he could jump from where he is: null when it is too high, below him or covered.
+    function reach(l) {
+        const c = contact(), tx = l.x + l.w / 2, up = c.y - l.y;
+        return up >= 8 && up <= height * 4 && World.span(world.wins, l, tx) ? tx : null;
+    }
+    // Toward ledge l: a hop from here when it is near, else a walk along the floor to its foot first. False: out of reach or not now.
+    function visit(l) {
+        if (!l || !world || !here || owned() || holding() || Clawd.lowMotion || l.display !== here.id) return false;
+        const tx = reach(l), cx = contact().x;
+        if (tx === null) return false;
+        if (Math.abs(tx - cx) <= width * 3) return hopTo(tx, l);
+        const s = support ? null : stand();
+        return !!s && walkTo(Math.max(s.x0, Math.min(s.x1, tx - width / 2 - (tx > cx ? 2 : -2) * width)), { kind: "visit", id: l.id });
+    }
+    function due() { return !!agenda && Date.now() < agenda.until && !!support && support.id === agenda.id; }
+    // On the widget he came for: the chime, or the dance.
+    function play() {
+        const a = agenda;
+        agenda = null;
+        enter(support ? "perch" : "idle", support ? "perch" : "idle");
+        if (a.kind === "chime") react("chime");
+        else groove(a.bpm);
+    }
+    // The hour struck (ClawdEvents, on the hour): with a clock widget on his display he goes to it and chimes. False when he does not.
+    function hourChime() {
+        if (!world || !Clawd.world || Clawd.lowMotion || Clawd.activity || menuOpen || journalOpen || grab || owned() || holding() || ["idle", "sit", "perch", "walk", "turn"].indexOf(mode) < 0) return false;
+        const w = widgetOn("clock"), now = Date.now();
+        if (!w || verdict("clock_hour", now).act !== "react") return false;
+        mind = Mind.commit(mind, "clock_hour", now);
+        const l = world.ledge(w.id);
+        if (!(support && support.id === w.id) && l && visit(l)) agenda = { kind: "chime", id: w.id, until: now + 20000 };
+        else react("chime");
+        return true;
+    }
+
+    // A shell layer opened (Mind kind `layer`): under the bar he lets go, startled; otherwise he looks up at the bar.
+    function shellLayer(ns, monitor) {
+        const k = World.layerKind(ns);
+        if (["master", "launcher", "clipboard", "desktopmenu", "traymenu", "sidemusic"].indexOf(k) < 0 || monitor && monitor !== Clawd.screenName || !Clawd.world || owned()) return;
+        if (mode === "hang" || mode === "shimmy") { if (support && support.kind === "bar") letGo(true); }
+        else feel("layer", x + width / 2, y - 200);
+    }
+
     // Out from behind the window, the way he came.
     function unpeek() {
         const p = peeking;
@@ -420,7 +658,7 @@ Item {
     // Every 2 s: the cursor on another screen twice in a row and he is free -> he goes there.
     function follow() {
         const c = World.cursor(displays, here, pointer);
-        const elsewhere = Clawd.follow && !Clawd.lowMotion && !!c && !c.inside && !!c.display;
+        const elsewhere = Clawd.world && Clawd.follow && !Clawd.lowMotion && !!c && !c.inside && !!c.display;
         awayChecks = elsewhere ? (awayScreen === c.display ? awayChecks + 1 : 1) : 0;
         awayScreen = elsewhere ? c.display : "";
         if (awayChecks < 2 || ["idle", "sit", "perch"].indexOf(mode) < 0 || Clawd.activity || menuOpen || journalOpen || grab) return;
@@ -450,12 +688,16 @@ Item {
         y = d.y - height;
     }
 
+    // Mind's verdict on an event now, with the real context (the shell's settings included).
+    function verdict(kind, now, info) {
+        return Mind.decide(Object.assign({}, mind, { drag: !!grab, dead: dead || blasting, scene: owned(), menu: menuOpen, petpet: animation.startsWith("petpet"), hook: Clawd.activity,
+            asleep: mode === "sleep", reactions: Clawd.reactions, dnd: Clawd.dnd, lowMotion: Clawd.lowMotion, mode }), kind, now, info);
+    }
+    readonly property var free: ["idle", "sit", "perch", "walk", "turn", "react", "sleep", "work"]
     // A world event through Mind; a look toward (gx, gy) or the event's own one-shot.
     function feel(kind, gx, gy) {
-        if (!Clawd.world || ["idle", "sit", "perch", "walk", "turn", "react", "sleep", "work"].indexOf(mode) < 0) return false;
-        const now = Date.now();
-        const d = Mind.decide(Object.assign({}, mind, { drag: !!grab && grab.moved, menu: menuOpen, petpet: animation.startsWith("petpet"), hook: Clawd.activity,
-            asleep: mode === "sleep", reactions: "all", dnd: false, lowMotion: Clawd.lowMotion, mode }), kind, now);
+        if (!Clawd.world || free.indexOf(mode) < 0) return false;
+        const now = Date.now(), d = verdict(kind, now);
         if (d.act !== "react" && d.act !== "glance") return false;
         let anim = d.anim, flip = false;
         if (anim === "look" && mode === "perch") { anim = "perch_look"; flip = gx < x + width / 2; }
@@ -464,8 +706,64 @@ Item {
         mind = Mind.commit(mind, kind, now);
         return true;
     }
+    // A shell event (5c) through Mind: returns the verdict's act ('none' | 'bubble' | 'mood' | 'react' | 'glance'). Bubbles and moods need no free pose;
+    // a motion he cannot do right now degrades to a bubble. info.chain = a second one-shot after the first; info.look = [gx, gy].
+    function shell(kind, info) {
+        const now = Date.now(), d = verdict(kind, now, info || {});
+        if (d.act === "none") return "none";
+        const look = info && info.look ? info.look : [x + width / 2, y - 200];
+        let act = d.act;
+        if (act === "mood") setMood(info && info.mood || (kind === "rain" ? "rain" : d.anim));
+        else if (act === "react" || act === "glance") {
+            if (free.indexOf(mode) < 0 || owned() || holding() || mode === "dance" || act === "glance" && ["idle", "sit", "perch"].indexOf(mode) < 0) act = "bubble";
+            else {
+                let anim = d.anim;
+                if (anim === "look") anim = mode === "perch" ? "perch_look" : lookAt(look[0], look[1]);
+                react(anim, anim === "perch_look" && look[0] < x + width / 2);
+                chain = info && info.chain || "";
+            }
+        }
+        mind = Mind.commit(mind, kind, now);
+        return act;
+    }
+    function setMood(m) { if (m !== mood) mood = m; touch(); }
+    function clearMood(m) { if (mood === m) mood = ""; }
+    // Music: dance in a resting pose, swing under the bar; bpm (0 = unknown) retunes the pace. False when he cannot right now.
+    function dance(bpm) {
+        beat = bpm > 0 ? Math.max(0.6, Math.min(1.6, bpm / 120)) : 1;
+        if (mode === "dance" || mode === "hang" && animation === clipName("swing")) return true;
+        if (owned() || Clawd.lowMotion || Clawd.activity || menuOpen || journalOpen || grab) return false;
+        if (mode === "hang") { if (!has("swing") || !support || support.kind !== "bar") return false; enter("hang", "swing", mirrored); grooved = true; return true; }
+        if (["idle", "sit", "perch"].indexOf(mode) < 0 || !grounded() || !has("dance")) return false;
+        touch();
+        target = null;
+        intent = null;
+        resume = null;
+        enter("dance", Clawd.variant("dance"));
+        return true;
+    }
+    // Mind approves a new dance; a dance already going only retunes (bpm 0 = unknown: normal pace).
+    function groove(bpm) {
+        if (mode === "dance" || mode === "hang" && animation === clipName("swing") && has("swing")) { beat = bpm > 0 ? Math.max(0.6, Math.min(1.6, bpm / 120)) : 1; return true; }
+        const now = Date.now();
+        if (verdict("music", now).act !== "react") return false;
+        if (agenda && agenda.kind === "dance" && now < agenda.until) return false;  // on his way to the music widget
+        const w = widgetOn("music"), l = w && !Clawd.lowMotion && ["idle", "sit", "perch"].indexOf(mode) >= 0 ? world.ledge(w.id) : null;
+        if (l && !(support && support.id === l.id) && visit(l)) { agenda = { kind: "dance", id: l.id, bpm, until: now + 20000 }; return false; }
+        if (!dance(bpm)) return false;
+        mind = Mind.commit(mind, "music", now);
+        return true;
+    }
+    function stopDance() {
+        const was = grooved;
+        beat = 1;
+        grooved = false;
+        if (mode === "dance") idle();
+        else if (was && mode === "hang" && animation === clipName("swing") && has("swing")) hangAgain();
+    }
     function react(anim, flip) {
         touch();
+        chain = "";
         if (mode !== "react") resume = ["idle", "sit", "perch"].indexOf(mode) >= 0 ? { mode, animation, mirrored } : null;
         target = null;
         intent = null;
@@ -522,6 +820,7 @@ Item {
     function runQuota() {
         if (!quotaQueue.length || blast || mode === "revive" || mode === "recharge" || mode === "weekly" || mode === "surge") return;
         if (dead) { revive(); return; }
+        if (holding()) { letGo(false); return; }
         if (!here || !grounded() || grab && grab.moved || ["fall", "hop", "drag"].indexOf(mode) >= 0) return;
         const name = quotaQueue[0];
         quotaQueue = quotaQueue.slice(1);
@@ -530,6 +829,7 @@ Item {
     Timer { interval: 1000; repeat: true; running: pet.quotaQueue.length > 0; onTriggered: pet.runQuota() }
 
     function perform(name) {
+        if (holding()) { letGo(false); return; }  // let go first; the request is dropped
         if (name === "limit") return explode(Math.random() < 0.5 ? "singularity" : "nuke");  // the quota ran out: either end
         if (name === "explode") return explode("singularity");
         if (name === "nuke") return explode("nuke");
@@ -539,7 +839,7 @@ Item {
         if (name === "surge") return surge();
         if (name === "limit7") return Clawd.roll() < 0.5 ? explode("singularity") : surge();  // the weekly quota ran out
         if (mode === "recharge" || mode === "weekly" || mode === "surge") return;
-        if (dead || !Clawd.manifest || !Clawd.manifest.animations[name] || grab && grab.moved) return;
+        if (owned() || !Clawd.manifest || !Clawd.manifest.animations[name] || grab && grab.moved) return;  // never mid-air (a let-go from the wall is falling)
         touch();
         target = null;
         intent = null;
@@ -683,6 +983,7 @@ Item {
         if (!grab.moved && Math.abs(gx - grab.x) + Math.abs(gy - grab.y) < 4) return;
         if (!grab.moved) {
             grab.moved = true;
+            agenda = null;
             menuOpen = false;
             if (dead) {
                 if (mode !== "dead") { grab = null; return; }
@@ -714,7 +1015,7 @@ Item {
         if (!g.moved) {
             journalOpen = !journalOpen;
             if (mode === "sleep") wake();
-            else if (["work", "fall", "hop"].indexOf(mode) < 0) enter("land", Math.random() < 0.5 ? "land" : "blink");
+            else if (["work", "fall", "hop", "climb", "hang", "shimmy", "drop"].indexOf(mode) < 0) enter("land", Math.random() < 0.5 ? "land" : "blink");
             return;
         }
         refresh();
@@ -731,7 +1032,8 @@ Item {
     }
     // A session got busy, needs the user or went quiet: stop wandering (and wake) or go back to normal life.
     function busy() {
-        if ((Clawd.activity || mode === "work") && ["idle", "sit", "sleep", "walk", "turn", "work", "perch", "teeter", "peek"].indexOf(mode) >= 0) idle();
+        if ((Clawd.activity || mode === "work") && holding()) { letGo(false); return; }  // drop -> land -> work
+        if ((Clawd.activity || mode === "work") && ["idle", "sit", "sleep", "walk", "turn", "work", "perch", "teeter", "peek", "dance"].indexOf(mode) >= 0) idle();
     }
     // Every 8-12 s at work: the other variant of the loop, or a sweat break when the lead session is strained.
     function shuffle() {
@@ -771,6 +1073,7 @@ Item {
         function onUpdated() { Qt.callLater(pet.revalidate); }
         function onWindowOpened(id, rect) { if (rect.display === Clawd.screenName) pet.feel("window_open", rect.x + rect.w / 2, rect.y + rect.h / 2); }
         function onWindowClosed(id, rect) { pet.closed(id, rect); }
+        function onLayerOpened(ns, monitor) { pet.shellLayer(ns, monitor); }
         function onFocusMoved(id) { const w = pet.world.win(id); if (w && w.display === Clawd.screenName) pet.feel("focus", w.x + w.w / 2, w.y + w.h / 2); }
         function onWorkspaceSwitched(monitor) { if (monitor === Clawd.screenName && !pet.support) pet.feel("workspace", 0, 0); }  // on a window he just falls
     }
@@ -793,6 +1096,6 @@ Item {
     Timer { id: rising; interval: 1500; onTriggered: pet.revive() }
     Timer { id: brain; onTriggered: pet.mode === "idle" || pet.mode === "perch" ? pet.think() : pet.next() }
     Timer { id: drowsy; interval: pet.sleepAfter; onTriggered: { pet.tired = true; if (["sit", "perch"].indexOf(pet.mode) >= 0 || pet.mode === "idle" && pet.animation === "idle") pet.sleep(); } }
-    Timer { interval: 16; repeat: true; running: ["walk", "fall", "hop", "corpse"].indexOf(pet.mode) >= 0; onTriggered: pet.step() }
-    Timer { interval: 2000; repeat: true; running: Clawd.follow && !Clawd.lowMotion && !!pet.world; onTriggered: pet.follow() }
+    Timer { interval: 16; repeat: true; running: ["walk", "fall", "hop", "corpse", "climb", "shimmy"].indexOf(pet.mode) >= 0; onTriggered: pet.step() }
+    Timer { interval: 2000; repeat: true; running: Clawd.world && Clawd.follow && !Clawd.lowMotion && !!pet.world; onTriggered: pet.follow() }
 }
