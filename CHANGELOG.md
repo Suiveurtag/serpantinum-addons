@@ -4,6 +4,30 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.0.1] - 2026-11-01
+
+### Added
+- AI Tokens: opt-in sources for opencode (read from its session database) and
+  llama.cpp (`/metrics`, start `llama-server` with `--metrics`), plus
+  today / week / month windows for Codex and Claude.
+- AI Tokens: new logos for Claude Code, Codex, opencode and llama.cpp, and a token icon.
+- Settings → Bar → Modules → Actions: "Show update icon" toggle.
+- Addon badge on the wallpaper accents row, as in Claude mode.
+
+### Changed
+- Settings sidebar: addons now sit in their own separate group.
+- Clawd journal: a click on a session row follows it, a double click raises its terminal.
+- Capri and Clawd card wording updated ("Capricorn", "cute pal").
+- Idle option "Codex mode" renamed to "Claude mode" (also in files patched by earlier releases).
+- All project URLs now point to the renamed repository.
+- README: Discord link, "Seasonal effects" naming, Appearance section removed.
+
+### Fixed
+- Shell freeze when switching to the Vibrant palette (circular visibility binding in the palette editor).
+- Token digits: alpha is clamped, which stops the `setAlphaF` warnings flooding the log.
+- Bar and widget module labels staying as raw translation keys when registered before translations loaded.
+- Installer: the latest-release lookup now follows redirects (the repository was renamed).
+
 ## [2.0.0] - 2026-11-01
 
 First public release.
