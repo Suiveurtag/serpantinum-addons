@@ -2,13 +2,13 @@
 
 Addons pack for the [Serpantinum](https://github.com/Suiveurtag) desktop shell: Clawd, Capri, Halloween, AI Tokens, Wallpaper Engine backgrounds, cursors, keybinds, monitors and more.
 
-Discord: <https://discord.gg/qwVDZAtJqE>
+**Discord:** <https://discord.gg/qwVDZAtJqE>
 
 ```sh
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons-v2/main/install/install.sh)"
 ```
 
-> **Note:** this is a personal project that I use daily. It is shared as is: it may be unstable, and updates and support are best effort. Part of the code was written with vibe coding. Installation backs up every file it touches and can be undone, but review the changes and try them in your own setup before relying on them.
+> **Note:** this is a personal project that I use daily. It is shared as is: it may be unstable, and updates and support are best effort. Large chunks of the code was written with vibe coding. Installation backs up every file it touches and can be undone, but review the changes and try them in your own setup before relying on them.
 
 ## Contents
 
