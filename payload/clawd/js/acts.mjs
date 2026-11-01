@@ -17,7 +17,7 @@ export function plan(name, rnd) {
     case 'bike': return [{ clip: 'bike_ride', go: { min: 250, max: 700, v: [100, 150, 220] } }];
     case 'carry': return [{ clip: 'carry_walk', go: { min: 200, max: 500, v: [30, 60, 100] } }];
     case 'broom': return [{ clip: 'broom_fly', go: { min: 400, max: 900, v: [150, 220, 300] } }];
-    case 'row': return [hold('boat_idle', 2000, 3500), once('boat_row_in'), hold('boat_row', 7000, 14000), once('boat_row_out'), hold('boat_idle', 1500, 2500)];
+    case 'row': return [hold('boat_idle', 2000, 3500), once('boat_row_in'), { clip: 'boat_row', go: { min: 35, max: 60, v: [0.75, 1, 1.25] } }, once('boat_row_out'), hold('boat_idle', 1500, 2500)];
     case 'fish': return [hold('boat_idle', 1500, 2500), once('boat_fish_in'), hold('boat_fish_wait', 4000, 7000), once('boat_fish_catch'), hold('boat_fish_wait', 3000, 5000),
                          once('boat_fish_out'), once('boat_bino'), once('boat_row_brief'), hold('boat_idle', 1200, 2000)];
     case 'campfire': return [hold('camp_stand', 1000, 1500), once('camp_fire_build'), hold('camp_fire_burn', 7000, 12000), once('camp_fire_die'), hold('camp_stand', 1000, 1500)];

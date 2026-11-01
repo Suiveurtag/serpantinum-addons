@@ -45,7 +45,7 @@ BLAST = PALETTE | {(0xE8, 0x94, 0x6C, 255), (0xF4, 0xB6, 0x8E, 255), (0xFC, 0xDD
 # the limit's nuclear variant, his corpse and his revival: red alarm, sweat, greys, dust, gold
 LIMIT = BLAST | {(0xE5, 0x48, 0x4D, 255), (0x8F, 0xD3, 0xFF, 255), (0x8C, 0x87, 0x82, 255), (0x5C, 0x58, 0x54, 255), (0xB8, 0xB2, 0xAA, 255),
                  (0xC9, 0xC4, 0xBE, 255), (0xFF, 0xD5, 0x6B, 255), (0x8F, 0x4A, 0x38, 255), (0x7A, 0x4A, 0x30, 255)}
-SHADERS = ['bulge', 'clone', 'desk', 'dream', 'evil', 'fx', 'lens', 'nuke', 'revive', 'surge', 'symphony']
+SHADERS = ['bulge', 'clone', 'desk', 'dream', 'evil', 'fx', 'lens', 'nuke', 'revive', 'surge', 'symphony', 'tint']
 # lot 7: the blanket clips (and the nightmare's jolt): blanket blue, quilting, pink trim, sweat
 SLEEPY = PALETTE | {(0x6F, 0x8F, 0xD8, 255), (0x4A, 0x63, 0xB0, 255), (0xF4, 0xB6, 0xC8, 255), (0x8F, 0xD3, 0xFF, 255)}
 SLEEPY_CLIPS = ('sleep_blanket_in', 'sleep_blanket', 'sleep_blanket_roll', 'sleep_blanket_out', 'sleep_jolt')
@@ -132,7 +132,7 @@ class ClawdInstallTests(unittest.TestCase):
         files = sorted(p for p in PAYLOAD.rglob('*') if p.is_file())
         names = {str(p.relative_to(PAYLOAD)) for p in files}
         expected = ({line.split()[-1].removeprefix('clawd/') for line in clawd.TYPES} | {'sprites/clawd.json'} | {f'sprites/{a}.png' for a in ANIMATIONS + ['hand', 'antimatter', 'smoke', 'mushroom', 'orchestra', 'clone', 'gemini']}
-                    | {'js/world.mjs', 'js/mind.mjs', 'js/beat.mjs', 'js/acts.mjs', 'js/dreams.mjs', 'shaders/manifest.json'} | {f'shaders/{n}.frag{q}' for n in SHADERS for q in ('', '.qsb')})
+                    | {'js/world.mjs', 'js/mind.mjs', 'js/beat.mjs', 'js/acts.mjs', 'js/dreams.mjs', 'js/effort.mjs', 'shaders/manifest.json'} | {f'shaders/{n}.frag{q}' for n in SHADERS for q in ('', '.qsb')})
         self.assertEqual(names, expected)  # nothing stray gets installed
         self.assertEqual(len(copied), len(files))
         hashed = {}
@@ -662,6 +662,9 @@ class ClawdJsTests(unittest.TestCase):
 
     def test_dreams_registry_and_sleep_events(self):
         self.node('dreams.mjs', 'CLAWD_DREAMS_PASS')
+
+    def test_effort_colours_table(self):
+        self.node('effort.mjs', 'CLAWD_EFFORT_PASS')
 
     def test_chat_brain_sidecar(self):
         if not (ROOT/'tests/clawd/chat.cjs').exists():

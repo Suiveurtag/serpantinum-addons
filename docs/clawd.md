@@ -169,6 +169,26 @@ shown unchanged; disconnecting restores it exactly. Without one, Clawd's prints 
 status line row appears. Status lines only update the stats of a session (an unknown session is
 created idle); they never change what he is doing.
 
+### Effort colours
+
+While the lead session works, his body takes the colour of its reasoning effort (`js/effort.mjs`, recoloured live by
+`shaders/tint.frag`: only the pixels of his exact body colour change, so eyes and props stay and every animation carries it).
+The spinner glyph and verb take the same colour. Toggle: `[x] colours` in the card (`addonsV2ClawdEffort`); performance mode
+keeps the flat colour and drops the motion.
+
+| Claude | Look | | Codex | Look |
+|---|---|---|---|---|
+| low | yellow `#FFC107` | | light (`low`) | `#92FFE7` |
+| medium | green `#4EBA65` | | medium | white |
+| high | pale blue `#B1B9F9` | | high | OpenAI blue `#0093FF` |
+| xhigh | violet `#AF87FF`, white glint sweeping | | extra high | red `#FF6363` |
+| max | the six Claude Code light colours flowing | | max | gold, glint and sparkles |
+| ultracode | sky blue `#9BF6FF`, crackling white, sparks | | ultra | space: violet-blue with twinkling stars |
+| 2+ sub-agents working | "fake ultracode": the same in `#EB83FF` | | | |
+
+Claude's effort comes from the status line (`effort.level`); Codex's from the `turn_context` lines of its rollout, read by
+`clawd-hook.js` (the effort word only).
+
 ### Thoughts
 
 While the lead session works, one line floats above his head, Claude Code spinner style:

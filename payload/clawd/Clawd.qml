@@ -7,6 +7,7 @@ import "../"
 import "js/mind.mjs" as Mind
 import "js/acts.mjs" as Acts
 import "js/dreams.mjs" as Dreams
+import "js/effort.mjs" as Effort
 
 // Exists separately in the shell and the Settings process; share state only through Config.
 QtObject {
@@ -25,6 +26,8 @@ QtObject {
     // Talk to him in a terminal panel (node sidecar, ChatGPT through Codex).
     readonly property bool chat: Config.getSetting("addonsV2ClawdChat", true) !== false
     readonly property bool follow: Config.getSetting("addonsV2ClawdFollow", true) !== false
+    // His body and the spinner line take the lead session's effort colour while it works (js/effort.mjs, shaders/tint.frag).
+    readonly property bool effortColors: Config.getSetting("addonsV2ClawdEffort", true) !== false
     // How much he reacts to the shell (music, notifications, volume...): all | quiet (urgent, bubbles, moods) | off (urgent only).
     readonly property string reactions: ["all", "quiet", "off"].indexOf(Config.getSetting("addonsV2ClawdReactions", "all")) >= 0 ? Config.getSetting("addonsV2ClawdReactions", "all") : "all"
     readonly property bool dnd: Config.getSetting("notifications.dnd", false) === true
@@ -63,6 +66,10 @@ QtObject {
     readonly property string workAnim: toolAnim(lead ? lead.tool : "")
     readonly property bool strained: !!lead && (lead.ctx >= 80 || lead.five_hour >= 90)
     readonly property real effortSpeed: lead ? effortRate(lead.effort) : 1
+    // {mode, color} while the lead session works (more than one sub-agent running makes Claude "fake ultracode"), else null.
+    readonly property var effortStyle: effortColors && activity === "work" && lead ? Effort.style(lead.agent, lead.effort, subList(lead).length) : null
+    function effortColor(step) { return Effort.textColor(effortStyle, step); }
+    function effortSparks() { return Effort.sparks(effortStyle); }
     readonly property bool thinking: thoughts !== "off" && activity === "work" && !!lead
     readonly property int busyCount: Object.values(sessions).filter(s => s.phase !== "idle").length
 
@@ -157,11 +164,12 @@ QtObject {
         const pids = Array.isArray(e.pids) ? e.pids.filter(p => Number.isInteger(p) && p > 1).slice(0, 16) : [];
         const now = Date.now();
         const model = str(e.model, 40);
+        const effort = str(e.effort, 16);   // Codex hooks read it from the rollout; Claude's comes with the Status line
         const sid = typeof e.agent_id === "string" ? e.agent_id.replace(/[^\w-]/g, "").slice(0, 80) : "";  // set when the hook fired inside a sub-agent
         // stats, verb and target carry over; extra overrides
         const set = (phase, tool, fresh, extra) => {
             next[key] = Object.assign({ target: "" }, was, { agent: e.agent, dir, phase, last: now, tool: tool !== undefined ? tool : was ? was.tool : "",
-                pids: pids.length ? pids : was ? was.pids : [], since: !fresh && was ? was.since : now }, model ? { model } : {}, extra || {});
+                pids: pids.length ? pids : was ? was.pids : [], since: !fresh && was ? was.since : now }, model ? { model } : {}, effort ? { effort } : {}, extra || {});
         };
         let react = "", fresh = false;
         switch (e.event) {

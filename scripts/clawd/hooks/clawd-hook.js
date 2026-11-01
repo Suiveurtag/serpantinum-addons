@@ -97,6 +97,31 @@ function subagent(evt, id) {
   return {};
 }
 
+// Codex's reasoning effort, from the "turn_context" lines of its rollout (the hook payload does not carry it): the last
+// one in the tail, else the first in the head. Only the effort word leaves this function.
+const EFFORT_TAIL = 512 * 1024;
+const EFFORT_HEAD = 128 * 1024;
+function codexEffort(evt) {
+  const file = typeof evt.transcript_path === 'string' ? evt.transcript_path : '';
+  if (!file.endsWith('.jsonl')) return undefined;
+  let fd;
+  const read = (start, length) => { const buffer = Buffer.alloc(length); fs.readSync(fd, buffer, 0, length, start); return buffer.toString('utf8').split('\n'); };
+  const effort = (line) => {
+    if (!line.includes('"turn_context"')) return undefined;
+    try { const message = JSON.parse(line); return message.type === 'turn_context' ? clean(obj(message.payload).effort, 16) : undefined; } catch { return undefined; }  // a cut line fails to parse
+  };
+  try {
+    fd = fs.openSync(file, 'r');
+    const size = fs.fstatSync(fd).size, tail = Math.min(size, EFFORT_TAIL);
+    const lines = read(size - tail, tail);
+    for (let i = lines.length - 1; i >= 0; i--) { const found = effort(lines[i]); if (found) return found; }
+    if (size > tail) for (const line of read(0, Math.min(size, EFFORT_HEAD))) { const found = effort(line); if (found) return found; }
+  } catch { /* no transcript yet, or not readable: no effort */ } finally {
+    if (fd !== undefined) try { fs.closeSync(fd); } catch { /* closed already */ }
+  }
+  return undefined;
+}
+
 // Only what Clawd shows: never prompts, replies, full commands or paths (just the short target above).
 function slim(evt) {
   let event = evt.hook_event_name;
@@ -109,6 +134,7 @@ function slim(evt) {
     agent: AGENT, event, session_id: text(evt.session_id, 80), tool_name: text(evt.tool_name, 40),
     notification_type: text(type, 40), dir: text(typeof evt.cwd === 'string' ? path.basename(evt.cwd) : '', 40),
     target: event === 'PreToolUse' ? target(evt.tool_name, evt.tool_input) : undefined, model: clean(evt.model, 40),
+    effort: AGENT === 'codex' ? codexEffort(evt) : undefined,
     ...(agentId ? { agent_id: agentId, agent_type: clean(evt.agent_type, 40), ...subagent(evt, agentId) } : {}),
   };
 }

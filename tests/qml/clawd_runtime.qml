@@ -316,8 +316,10 @@ ShellRoot {
                 Clawd.dice = 0.1;
                 p.shuffle(); expect(p.animation === "sweat" && p.speed === 1, "strained, roll 0.1: sweat at normal speed");
                 p.shuffle(); expect(p.animation === "read_2", "never two sweats in a row");
+                expect(Clawd.effortStyle && Clawd.effortStyle.mode === 2, "max effort: rainbow body");
                 hook("claude", "Status", "v", { effort: "low" });
                 expect(p.speed === 0.75, "low effort slower");
+                expect(Clawd.effortStyle && Clawd.effortStyle.color === "#FFC107" && Clawd.effortColor(3) === "#FFC107", "low effort: yellow body and spinner");
                 hook("claude", "Status", "v", { effort: "constructor" });
                 expect(p.speed === 1 && Clawd.effortRate("toString") === 1, "unknown effort: 1");
                 // thoughts: pure pieces

@@ -264,6 +264,18 @@ Rectangle {
             T { visible: !card.compact; color: card.dim; text: "  ⎿ perches on windows, follows your cursor" }
         }
         Line {
+            // his colour (and the spinner's) follows the effort of the session at work
+            label: "effort"
+            Key {
+                objectName: "clawdEffort"
+                label: (Clawd.effortColors ? "[x]" : "[ ]") + " colours"
+                accessibleName: "Effort colours"
+                checkable: true; checked: Clawd.effortColors
+                onActivated: Config.setSetting("addonsV2ClawdEffort", !Clawd.effortColors)
+            }
+            T { visible: !card.compact; color: card.dim; text: "  ⎿ tints him by the effort of the working session" }
+        }
+        Line {
             // how much he reacts to the shell: all, quiet (urgent, bubbles, moods), off (urgent only)
             label: "reacts"
             Repeater {

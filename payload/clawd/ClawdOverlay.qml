@@ -83,6 +83,17 @@ PanelWindow {
             reverse: overlay.pet.reverse
             running: false
             frame: overlay.pet.frame
+            // the effort colour: only his body pixels are recoloured (shaders/tint.frag), so every animation carries it
+            readonly property var tint: Clawd.effortStyle
+            layer.enabled: !!tint
+            layer.smooth: false
+            layer.effect: ShaderEffect {
+                property color uColor: body.tint ? body.tint.color : "#D97757"
+                property real uMode: body.tint && !Clawd.lowMotion ? body.tint.mode : 0
+                property real uTime: overlay.tintTime
+                property size uGrid: body.size ? Qt.size(body.size.w, body.size.h) : Qt.size(1, 1)
+                fragmentShader: "shaders/tint.frag.qsb"
+            }
         }
         MouseArea {
             id: hit
@@ -99,6 +110,30 @@ PanelWindow {
             onReleased: mouse => { if (mouse.button === Qt.LeftButton) { const p = at(mouse); overlay.pet.release(p.x, p.y); } }
             onDoubleClicked: mouse => { if (mouse.button === Qt.LeftButton) overlay.pet.doubleClick(); }
             onCanceled: overlay.pet.release()
+        }
+    }
+
+    // The effort clock (seconds) and the sparks around him for the electric, gold and space looks.
+    property real tintTime: 0
+    Timer { interval: 40; repeat: true; running: !!Clawd.effortStyle && !Clawd.lowMotion && viewport.visible; triggeredOnStart: true; onTriggered: overlay.tintTime = (Date.now() / 1000) % 4096 }
+    Item {
+        id: sparks
+        visible: viewport.visible && !Clawd.lowMotion && !!Clawd.effortStyle && Clawd.effortSparks()
+        x: frameBox.x; y: frameBox.y; width: frameBox.width; height: frameBox.height
+        Repeater {
+            model: sparks.visible ? 10 : 0
+            delegate: Rectangle {
+                required property int index
+                readonly property real seed: Math.abs(Math.sin(index * 12.9898) * 43758.5453) % 1
+                readonly property real k: (overlay.tintTime * (0.5 + 0.4 * seed) + index / 10) % 1
+                readonly property bool space: Clawd.effortStyle && Clawd.effortStyle.mode === 5
+                width: Math.max(2, Clawd.scale) * (index % 3 === 0 ? 1.5 : 1); height: width
+                x: Math.round(sparks.width * (-0.1 + 1.2 * seed))
+                y: Math.round(sparks.height * (1.0 - k * 1.15))
+                color: Clawd.effortColor(index + Math.floor(overlay.tintTime * 6))
+                opacity: Math.sin(k * Math.PI) * (index % 2 ? 0.9 : 0.6)
+                rotation: space ? 0 : 45
+            }
         }
     }
 

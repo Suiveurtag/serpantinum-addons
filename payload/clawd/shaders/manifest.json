@@ -42,5 +42,9 @@
   "symphony": {
     "source_sha256": "39522d7b98f570cbed067357eb6144d2428b956fa9b8e30b3d7df4b8f65225b6",
     "package_sha256": "da88889f72bf98e2c04381d407035f8ba91473dd7792835b26120e824ddb1c4c"
+  },
+  "tint": {
+    "source_sha256": "134fd1c143026fe05fd4df4fe0a05a35e3aa676859c783eb08bf34a0ca2d1c91",
+    "package_sha256": "8679c944a907c6254fdc63afacc64c149984622c1ca9aec211db1c168b11afb2"
   }
 }

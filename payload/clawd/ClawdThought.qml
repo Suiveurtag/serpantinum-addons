@@ -18,6 +18,7 @@ Item {
     readonly property var line: say ? { text: say, warn: false, suffix: "" } : Clawd.thought(Clawd.thoughts, Clawd.lead, now, extra)
     readonly property string lineKey: line ? (line.suffix ? "v" : "x") + (line.warn ? "!" : " ") + line.text : ""
     readonly property string actionKey: Clawd.lead ? Clawd.lead.key + "\n" + Clawd.lead.tool + "\n" + Clawd.lead.target : ""
+    readonly property string tint: say ? "" : Clawd.effortColor(Clawd.lowMotion ? 0 : tick)   // the effort colour of the lead session, "" when none
     readonly property string glyph: say ? "z" : Clawd.lowMotion ? "✻" : glyphs[tick % 10 < 6 ? tick % 10 : 10 - tick % 10]
     // own x/y: centered over the sprite, kept on screen
     x: Math.round(Math.max(0, Math.min((parent ? parent.width : 0) - width, anchor.x + (anchor.width - width) / 2)))
@@ -66,8 +67,8 @@ Item {
         Row {
             id: row
             anchors.centerIn: parent
-            T { text: thought.glyph + " "; color: "#D97757" }
-            T { objectName: "thoughtText"; text: thought.shown ? thought.shown.text : ""; color: thought.shown && thought.shown.warn ? ThemeBackend.peach : ThemeBackend.subtext0 }
+            T { text: thought.glyph + " "; color: thought.tint || "#D97757" }
+            T { objectName: "thoughtText"; text: thought.shown ? thought.shown.text : ""; color: thought.shown && thought.shown.warn ? ThemeBackend.peach : thought.tint || ThemeBackend.subtext0 }
             // the live clock, only behind the verb
             T { text: thought.shown && thought.shown.suffix && thought.line ? thought.line.suffix : ""; color: Qt.alpha(ThemeBackend.subtext0, 0.55) }
         }
