@@ -71,6 +71,10 @@ def main():
     current = (ROOT / "VERSION").read_text().strip()
     if not SEMVER.match(v):
         fail(f"'{a.version}' is not a valid X.Y.Z version")
+    elif ar.compare(v, current) == 0 and not subprocess.run(
+            ["git", "rev-parse", "-q", "--verify", f"refs/tags/v{v}"], cwd=ROOT,
+            capture_output=True).returncode == 0:
+        ok(f"version {v} (first release of the current VERSION, tag v{v} does not exist yet)")
     elif ar.compare(v, current) <= 0:
         fail(f"{v} is not greater than current VERSION {current}", "pick a higher version")
     else:
