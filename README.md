@@ -6,7 +6,7 @@ Addons pack for the [Serpantinum](https://github.com/Suiveurtag) desktop shell: 
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons-v2/main/install/install.sh)"
 ```
 
-> **Note:** this is a personal project that I use daily. It is shared as is: it may be unstable, and updates and support are best effort. Part of the code was written with AI assistance ("vibe coding"). Installation backs up every file it touches and can be undone, but review the changes and try them in your own setup before relying on them.
+> **Note:** this is a personal project that I use daily. It is shared as is: it may be unstable, and updates and support are best effort. Part of the code was written with vibe coding. Installation backs up every file it touches and can be undone, but review the changes and try them in your own setup before relying on them.
 
 ## Contents
 
@@ -42,7 +42,7 @@ Policy: **always the latest Serpantinum release.** Each addons release records t
 
 | Component | Requirement |
 | --- | --- |
-| Serpantinum | **2.3.2** (tested; latest release at the time of writing) |
+| Serpantinum | Always use the newest version |
 | Hyprland | 0.55 or newer, with Lua configuration |
 | Quickshell | 0.3.0 or newer |
 
