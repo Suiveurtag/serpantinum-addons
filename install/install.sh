@@ -173,7 +173,7 @@ latest_release_tag() {
     # prints the tag; empty output and status 0 when no release exists; status 1 on API errors
     local body http
     body="$(mktemp)"
-    http="$(curl -sS -o "$body" -w '%{http_code}' -H 'Accept: application/vnd.github+json' \
+    http="$(curl -sSL -o "$body" -w '%{http_code}' -H 'Accept: application/vnd.github+json' \
         -H 'User-Agent: serpantinum-addons-v2-installer' "$API_URL" 2>/dev/null || true)"
     case "$http" in
         200) python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("tag_name") or "")' "$body" ;;
