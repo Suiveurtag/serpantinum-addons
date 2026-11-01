@@ -1,38 +1,58 @@
 # Serpantinum — personal addons v2
 
-> **Warning:** personal project, may be unstable. Updates and maintenance are not guaranteed. Part of the code was written by "vibe coding": review the changes and test them in your own installation before relying on them.
+Addons pack for the [Serpantinum](https://github.com/Suiveurtag) desktop shell: Clawd, Capri, Halloween, AI Tokens, Wallpaper Engine backgrounds, cursors, keybinds, monitors and more.
 
-Always compatible with the newest versions (since i'm also using it daily)
+```sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons-v2/main/install/install.sh)"
+```
+
+> **Note:** this is a personal project that I use daily. It is shared as is: it may be unstable, and updates and support are best effort. Part of the code was written with AI assistance ("vibe coding"). Installation backs up every file it touches and can be undone, but review the changes and try them in your own setup before relying on them.
 
 ## Contents
 
-1. [Clawd, Claude Code mascot](#1-clawd-claude-code-mascot)
-2. [Capri, desktop companion](#2-capri-desktop-companion)
-3. [Halloween, seasonal effects](#3-halloween-seasonal-effects)
-4. [AI Tokens, token counter](#4-ai-tokens-token-counter)
-5. [Wallpaper Engine backgrounds (scenes)](#5-wallpaper-engine-backgrounds-scenes)
-6. [Mouse, cursors and trackpad](#6-mouse-cursors-and-trackpad)
-7. [Keybinds and keyboard layout](#7-keybinds-and-keyboard-layout)
-8. [Monitors](#8-monitors)
-9. [Desktop tools](#9-desktop-tools)
-10. [Theme and colours](#10-theme-and-colours)
-11. [Appearance: Liquid Glass and classic blur](#11-appearance-liquid-glass-and-classic-blur)
-12. [Network and idle](#12-network-and-idle)
-13. [Startup](#13-startup)
-14. [General settings (Addons → General)](#14-general-settings-addons--general)
-15. [Prerequisites](#prerequisites)
-16. [Installation and removal](#installation-and-removal)
-17. [Keyboard shortcuts added](#keyboard-shortcuts-added)
-18. [IPC commands](#ipc-commands)
-19. [Tests and validation](#tests-and-validation)
-20. [Development tools](#development-tools)
-21. [Detailed documentation](#detailed-documentation)
+1. [Compatibility](#compatibility)
+2. [Prerequisites](#prerequisites)
+3. [Installation and removal](#installation-and-removal)
+4. [Troubleshooting](#troubleshooting)
+5. [Releases and changelog](#releases-and-changelog)
+6. [Feature list](#feature-list)
+   1. [Clawd, Claude Code mascot](#1-clawd-claude-code-mascot)
+   2. [Capri, desktop companion](#2-capri-desktop-companion)
+   3. [Halloween, seasonal effects](#3-halloween-seasonal-effects)
+   4. [AI Tokens, token counter](#4-ai-tokens-token-counter)
+   5. [Wallpaper Engine backgrounds (scenes)](#5-wallpaper-engine-backgrounds-scenes)
+   6. [Mouse, cursors and trackpad](#6-mouse-cursors-and-trackpad)
+   7. [Keybinds and keyboard layout](#7-keybinds-and-keyboard-layout)
+   8. [Monitors](#8-monitors)
+   9. [Desktop tools](#9-desktop-tools)
+   10. [Theme and colours](#10-theme-and-colours)
+   11. [Appearance: Liquid Glass and classic blur](#11-appearance-liquid-glass-and-classic-blur)
+   12. [Network and idle](#12-network-and-idle)
+   13. [Startup](#13-startup)
+   14. [General settings (Addons → General)](#14-general-settings-addons--general)
+7. [Keyboard shortcuts added](#keyboard-shortcuts-added)
+8. [IPC commands](#ipc-commands)
+9. [Tests and validation](#tests-and-validation)
+10. [Development tools](#development-tools)
+11. [Detailed documentation](#detailed-documentation)
+
+## Compatibility
+
+Policy: **always the latest Serpantinum release.** Each addons release records the Serpantinum version it was tested on (as `min` and `tested` in [`compat.json`](compat.json)). A newer Serpantinum only gives a warning; an older one is refused unless you pass `--force`.
+
+| Component | Requirement |
+| --- | --- |
+| Serpantinum | **2.3.2** (tested; latest release at the time of writing) |
+| Hyprland | 0.55 or newer, with Lua configuration |
+| Quickshell | 0.3.0 or newer |
+
+After a Serpantinum update the addons must be reinstalled; the shell shows "Reinstall addons" in Settings when needed.
 
 ## Prerequisites
 
 | Item | Use |
 | --- | --- |
-| Serpantinum 2.3.0 installed | Shell modified by the installer |
+| Serpantinum installed (see [Compatibility](#compatibility)) | Shell modified by the installer |
 | Hyprland with Lua configuration | Shortcuts, cursors, trackpad, zoom, outline (the click guard needs Hyprland 0.55+) |
 | NetworkManager, systemd-resolved, `jq`, `matugen` | Mullvad DNS and colour generation |
 | Python 3 with Pillow | Installer, colours, cursors |
@@ -46,16 +66,47 @@ Always compatible with the newest versions (since i'm also using it daily)
 
 ## Installation and removal
 
+### Install
+
 ```sh
-git pull && python3 install.py && serpantinum reload
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons-v2/main/install/install.sh)"
 ```
+
+This opens the terminal manager (`addons.py`). Extra arguments go after `_`, e.g. `... _ update`.
 
 - Shell changes are computed first, then applied. An unknown anchor stops the installation **without changing anything**.
 - Each modified file is backed up (dated) in `~/.local/share/serpantinum-addons-v2/backups/`.
 - A second installation changes no file (idempotent).
-- Reinstall after each Serpantinum update.
 
-Partial removal; the other addons stay in place:
+### Update
+
+- In the shell: the peach **Addons update** button at the bottom of the Settings sidebar (checked about hourly), or the addons card in Settings → About (hold to update).
+- In a terminal: `bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons-v2/main/install/install.sh)" _ update`
+
+### Reinstall
+
+Needed after each Serpantinum update (Settings shows "Reinstall addons"), or to repair an installation:
+
+```sh
+python3 addons.py reinstall          # from a clone
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons-v2/main/install/install.sh)" _ reinstall
+```
+
+To install a specific release (rollback), add `--ref vX.Y.Z`.
+
+### Uninstall
+
+Settings → About → red **hold to uninstall** button (opens the terminal manager on Uninstall), or:
+
+```sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons-v2/main/install/install.sh)" _ uninstall
+```
+
+Uninstall restores the shell and removes the services, hooks and addon files. Your settings values and data (for example the AI Tokens database, backups) are **kept**; add `--purge` to remove them too.
+
+### Partial removal
+
+The other addons stay in place:
 
 ```sh
 python3 install.py --without-halloween   # seasonal effects
@@ -66,6 +117,27 @@ serpantinum reload
 ```
 
 Setting values stay in the configuration, dormant, and come back when you reinstall.
+
+### Developer mode
+
+```sh
+git clone https://github.com/Suiveurtag/serpantinum-addons-v2
+cd serpantinum-addons-v2
+python3 install.py && serpantinum reload
+```
+
+`python3 install.py --check` reports the state without changing anything (`--json` for machines; exit 0 ok, 2 and 3 for problems).
+
+## Troubleshooting
+
+- Run `python3 addons.py doctor --report`: it checks the installation and prints a report you can paste into an issue.
+- Logs: `~/.local/state/serpantinum-addons-v2/logs/`.
+- Quickshell shows a ghost or old shell after installing: run `serpantinum reload`.
+- Open an issue on [GitHub](https://github.com/Suiveurtag/serpantinum-addons-v2/issues) with the doctor report, your Serpantinum version and what you expected.
+
+## Releases and changelog
+
+See [`CHANGELOG.md`](CHANGELOG.md) and the [GitHub Releases](https://github.com/Suiveurtag/serpantinum-addons-v2/releases). Maintainers: [`docs/releasing.md`](docs/releasing.md).
 
 ---
 
@@ -555,10 +627,11 @@ quickshell -p "$SHELL_QML" ipc call addonMouseSpotlight toggle
 ```sh
 python3 -m unittest discover -s tests -v                 # once Serpantinum is installed
 python3 -m unittest discover -s tests -p test_tokens.py -v
+python3 -m unittest tests.test_release tests.test_release_ui tests.test_manager tests.test_uninstall -v
 python3 scripts/clawd/sprites.py --check                  # Clawd sprites up to date
 ```
 
-- The tests cover native theme integration, tab order and idempotence, preservation of Lua actions, external-edit conflicts, Capri (settings, chat, hooks, guide, AI configuration), Clawd (states, chat, dreams, effort colours), seasonal effects (Qt lifecycle), cursors, zoom, magnifier, trackpad, outline, installation and removal.
+- The tests cover native theme integration, tab order and idempotence, preservation of Lua actions, external-edit conflicts, Capri (settings, chat, hooks, guide, AI configuration), Clawd (states, chat, dreams, effort colours), seasonal effects (Qt lifecycle), cursors, zoom, magnifier, trackpad, outline, installation and removal, release/update logic (`test_release`), the in-shell update UI (`test_release_ui`), the terminal manager (`test_manager`) and uninstall (`test_uninstall`).
 - Validation in a real session (captures, interactions, logs) is described in the detailed documents.
 
 ## Development tools
@@ -581,6 +654,7 @@ python3 scripts/clawd/sprites.py --check                  # Clawd sprites up to 
 | `scripts/desktop_zoom.py`, `scripts/mouse_spotlight.py`, `scripts/window_outline.py` | Zoom, spotlight, outline |
 | `scripts/crop_frozen_screenshot.py`, `scripts/tokens/collector.py` | Frozen capture, token collector |
 | `scripts/dns.sh` | Mullvad DNS switch |
+| `scripts/release.py` | Cuts a release (`--dry-run` to rehearse; see `docs/releasing.md`) |
 | `native/wallpaper-bridge/` | C++ GPU bridge for Wallpaper Engine (`ctest` tests) |
 
 ## Detailed documentation
@@ -589,4 +663,5 @@ python3 scripts/clawd/sprites.py --check                  # Clawd sprites up to 
 - [`docs/capri.md`](docs/capri.md) — Capri: controls, hooks, providers, validation
 - [`docs/halloween.md`](docs/halloween.md) — Halloween effects: design and validation
 - [`docs/tokens.md`](docs/tokens.md) — AI Tokens: sources, calculation, recovery
+- [`docs/releasing.md`](docs/releasing.md) — Releasing: versions, changelog, compatibility, rollback
 - [`WALLPAPER_ENGINE.md`](WALLPAPER_ENGINE.md) — Wallpaper Engine scenes: installation, control, GPU channel

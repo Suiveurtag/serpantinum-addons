@@ -28,6 +28,11 @@ QtObject {
     readonly property bool follow: Config.getSetting("addonsV2ClawdFollow", true) !== false
     // His body and the spinner line take the lead session's effort colour while it works (js/effort.mjs, shaders/tint.frag).
     readonly property bool effortColors: Config.getSetting("addonsV2ClawdEffort", true) !== false
+    function effortColorEnabled(agent, effort) {
+        const key = String(effort || "").toLowerCase();
+        const setting = "addonsV2ClawdEffort_" + agent + "_" + key;
+        return effortColors && Config.getSetting(setting, true) !== false;
+    }
     // How much he reacts to the shell (music, notifications, volume...): all | quiet (urgent, bubbles, moods) | off (urgent only).
     readonly property string reactions: ["all", "quiet", "off"].indexOf(Config.getSetting("addonsV2ClawdReactions", "all")) >= 0 ? Config.getSetting("addonsV2ClawdReactions", "all") : "all"
     readonly property bool dnd: Config.getSetting("notifications.dnd", false) === true
@@ -95,7 +100,7 @@ QtObject {
     readonly property bool strained: !!lead && (lead.ctx >= 80 || lead.five_hour >= 90)
     readonly property real effortSpeed: lead ? effortRate(lead.effort) : 1
     // {mode, color} while the lead session works (more than one sub-agent running makes Claude "fake ultracode"), else null.
-    readonly property var effortStyle: effortColors && activity === "work" && lead ? Effort.style(lead.agent, lead.effort, subList(lead).length) : null
+    readonly property var effortStyle: lead && effortColorEnabled(lead.agent, lead.effort) && activity === "work" ? Effort.style(lead.agent, lead.effort, subList(lead).length) : null
     function effortColor(step) { return Effort.textColor(effortStyle, step); }
     function effortSparks() { return Effort.sparks(effortStyle); }
     readonly property bool thinking: thoughts !== "off" && activity === "work" && !!lead

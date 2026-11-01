@@ -100,9 +100,9 @@ class ClawdPatchTests(unittest.TestCase):
             clawd.patch_keybind('hl.bind("SUPER + SHIFT + L", hl.dsp.exec_cmd("custom"))\n', shell_qml)
 
     def test_settings_option_is_owned_by_clawd_only(self):
-        tab = (ROOT/'payload/AddonsTab.qml').read_text()
+        tab = (ROOT/'payload/AddonsBannersTab.qml').read_text()
         self.assertIn('ClawdSettings { rootObj: root.rootObj; viewport: addonsViewport; Layout.bottomMargin: rootObj.s(6) }', tab)
-        self.assertIn('addons_clawd_shortcut_passive', tab)
+        self.assertIn('ipc call clawd toggle', (ROOT/'payload/clawd/ClawdSettings.qml').read_text())
         stripped = clawd.remove(tab)
         self.assertNotIn('Clawd', stripped)
         self.assertNotIn('clawd', stripped)

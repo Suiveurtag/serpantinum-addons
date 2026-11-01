@@ -113,7 +113,7 @@ Item {
         }
         Item {
             visible: !journal.dreams && (journal.rows.length > 1 || !!Clawd.followedSessionKey)
-            width: metrics.averageCharacterWidth * (journal.cols + 2)
+            width: metrics.averageCharacterWidth * (journal.cols + 4)
             height: visible ? metrics.height : 0
             Accessible.role: Accessible.RadioButton
             Accessible.name: "Follow automatically"
@@ -134,12 +134,13 @@ Item {
                 onClicked: Clawd.selectSession("")
             }
         }
+        // One click target per row: the circle (column 2) selects it, the rest raises its terminal.
         Repeater {
             model: journal.dreams ? [] : journal.rows
             Item {
                 id: sessionRow
                 required property var modelData
-                width: metrics.averageCharacterWidth * (journal.cols + 2)
+                width: metrics.averageCharacterWidth * (journal.cols + 4)
                 height: metrics.height
                 Accessible.role: Accessible.RadioButton
                 Accessible.name: journal.sessionDescription(sessionRow.modelData) + (Clawd.followedSessionKey === sessionRow.modelData.key ? ", followed" : "")
@@ -150,9 +151,9 @@ Item {
                 Text {
                     id: rowText
                     anchors.fill: parent
-                    text: "│ " + journal.line(sessionRow.modelData) + " │"
+                    text: "│ " + journal.cell(journal.line(sessionRow.modelData), journal.cols) + " │"
                     color: sessionRow.modelData.phase === "alert" ? ThemeBackend.peach
-                        : Clawd.followedSessionKey === sessionRow.modelData.key || hover.containsMouse || selectMark.containsMouse ? journal.accent : ThemeBackend.subtext0
+                        : Clawd.followedSessionKey === sessionRow.modelData.key || hover.containsMouse ? journal.accent : ThemeBackend.subtext0
                     font: metrics.font
                 }
                 MouseArea {
@@ -160,17 +161,10 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: { Clawd.focus(sessionRow.modelData.parentKey); journal.pet.journalOpen = false; }
-                }
-                MouseArea {
-                    id: selectMark
-                    x: metrics.averageCharacterWidth * 2
-                    width: metrics.averageCharacterWidth
-                    height: parent.height
-                    z: 1
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: Clawd.selectSession(sessionRow.modelData.key)
+                    onClicked: mouse => {
+                        if (mouse.x < metrics.averageCharacterWidth * 3) Clawd.selectSession(sessionRow.modelData.key);
+                        else { Clawd.focus(sessionRow.modelData.parentKey); journal.pet.journalOpen = false; }
+                    }
                 }
             }
         }

@@ -2,6 +2,7 @@
 import hashlib
 import importlib.util
 import json
+import os
 import re
 import shlex
 from pathlib import Path
@@ -89,6 +90,8 @@ def transformations(qs):
 
 
 def uninstall_hooks():
+    if os.environ.get('SERPANTINUM_ADDONS_NO_SERVICES'):
+        return   # tests: never touch the real agent settings
     # Before any shell file changes: a hooks file we cannot rewrite stops the whole run.
     spec = importlib.util.spec_from_file_location('clawd_hooks', Path(__file__).resolve().parent/'scripts/clawd/hooks.py')
     hooks = importlib.util.module_from_spec(spec)

@@ -42,10 +42,14 @@ class ChangeTests(unittest.TestCase):
 
     def test_addons_options_and_weather_patch_preserve_each_other(self):
         general = (ROOT/'payload/AddonsTab.qml').read_text()
+        banners = (ROOT/'payload/AddonsBannersTab.qml').read_text()
         mouse = (ROOT/'payload/AddonsMouseTab.qml').read_text()
-        for option in ('HalloweenCard', 'CapriSettings', 'addons_mullvad_dns', 'addonsV2ObfuscateWeatherCity'):
+        for option in ('addons_mullvad_dns', 'addonsV2ObfuscateWeatherCity'):
             with self.subTest(option=option):
                 self.assertIn(option, general)
+        for option in ('HalloweenCard', 'CapriSettings', 'ClawdSettings'):
+            with self.subTest(option=option):
+                self.assertIn(option, banners)
         for option in ('addons_mouse_spotlight', 'addons_mouse_acceleration', 'addons_trackpad_speed',
                        'addons_trackpad_typing', 'addons_trackpad_clicks_typing'):
             with self.subTest(option=option):
@@ -53,7 +57,7 @@ class ChangeTests(unittest.TestCase):
         self.assertIn('addons_legacy_clock', general)
         self.assertIn('SettingsGroup {', mouse)
         self.assertIn('spacing: rootObj.s(8)', mouse)
-        self.assertIn('Layout.bottomMargin: rootObj.s(6)', general)
+        self.assertIn('Layout.bottomMargin: rootObj.s(6)', banners)
         self.assertIn('opacity: root.noTrackpadDetected ? 0.38 : 1.0', mouse)
         self.assertEqual(mouse.count('settingId: "addons_trackpad_'), 3)
 

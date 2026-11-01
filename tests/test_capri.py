@@ -73,12 +73,12 @@ class CapriPatchTests(unittest.TestCase):
                 installer.shader_package_name(folder, 'sprite')
 
     def test_settings_option_is_owned_by_capri_only(self):
-        tab = (ROOT/'payload/AddonsTab.qml').read_text()
+        tab = (ROOT/'payload/AddonsBannersTab.qml').read_text()
         self.assertIn('CapriSettings', tab)
         self.assertIn('CapriCard', (ROOT/'payload/capri/CapriSettings.qml').read_text())
         self.assertIn('CapriCard 1.0 capri/CapriCard.qml', capri.TYPES)
         self.assertIn('CapriSettings', seasonal.remove(tab))
-        self.assertIn('addons_capri_shortcut_passive', tab)
+        self.assertIn('addons_capri_shortcut', (ROOT/'payload/capri/CapriSettings.qml').read_text())
         stripped = capri.remove(tab)
         self.assertNotIn('Capri', stripped)
         self.assertIn('HalloweenCard', stripped)

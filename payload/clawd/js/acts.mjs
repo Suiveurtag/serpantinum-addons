@@ -10,8 +10,8 @@ const times = (n, f) => { const out = []; for (let i = 0; i < n; i++) out.push(.
 export function plan(name, rnd) {
   const hold = (clip, a, b) => ({ clip, ms: between(rnd, a, b) }), once = clip => ({ clip });
   switch (name) {
-    case 'book':   // reads, blinks now and then (3.6 s then ~5.3 s in the video)
-      return [...times(between(rnd, 1, 3), () => [hold('book_idle', 3000, 5500), once('book_blink')]), hold('book_idle', 2500, 4000)];
+    case 'book':   // settles into a long reading loop, blinking now and then
+      return [...times(between(rnd, 8, 12), () => [hold('book_idle', 4000, 7000), once('book_blink')]), hold('book_idle', 4000, 7000)];
     case 'joy':    // sits happy, stretches every few seconds
       return [...times(between(rnd, 10, 16), () => [hold('content_idle', 2500, 5000), once('content_bounce')]), hold('content_idle', 1200, 2000)];
     case 'bike': return [{ clip: 'bike_ride', go: { min: 250, max: 700, v: [100, 150, 220] } }];

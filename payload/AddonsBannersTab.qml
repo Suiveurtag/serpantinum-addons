@@ -23,15 +23,15 @@ Item {
         anchors.fill: parent; anchors.margins: rootObj.s(24); contentWidth: width; contentHeight: settings.implicitHeight; clip: true
         ColumnLayout {
             id: settings; width: parent.width; spacing: rootObj.s(8)
-            // BEGIN serpantinum-night-v2 option
-            HalloweenCard { rootObj: root.rootObj; Layout.bottomMargin: rootObj.s(6) }
-            // END serpantinum-night-v2 option
-            // BEGIN serpantinum-capri-v2 option
-            CapriSettings { rootObj: root.rootObj; viewport: addonsViewport; Layout.bottomMargin: rootObj.s(6) }
-            // END serpantinum-capri-v2 option
             // BEGIN serpantinum-clawd-v2 option
             ClawdSettings { rootObj: root.rootObj; viewport: addonsViewport; Layout.bottomMargin: rootObj.s(6) }
             // END serpantinum-clawd-v2 option
+            // BEGIN serpantinum-capri-v2 option
+            CapriSettings { rootObj: root.rootObj; viewport: addonsViewport; Layout.bottomMargin: rootObj.s(6) }
+            // END serpantinum-capri-v2 option
+            // BEGIN serpantinum-night-v2 option
+            HalloweenCard { rootObj: root.rootObj; Layout.bottomMargin: rootObj.s(6) }
+            // END serpantinum-night-v2 option
         }
     }
 }
