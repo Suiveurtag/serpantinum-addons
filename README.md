@@ -1,10 +1,8 @@
 # Serpantinum — personal addons v2
 
-Addons for the native Serpantinum interface (Settings / Guide), independent of the old v1 installer.
-
 > **Warning:** personal project, may be unstable. Updates and maintenance are not guaranteed. Part of the code was written by "vibe coding": review the changes and test them in your own installation before relying on them.
 
-Verified compatible with Serpantinum **2.3.0**.
+Always compatible with the newest versions (since i'm also using it daily)
 
 ## Contents
 
