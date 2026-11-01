@@ -47,8 +47,7 @@ Always compatible with the newest versions (since i'm also using it daily)
 ## Installation and removal
 
 ```sh
-python3 install.py
-serpantinum reload
+git pull && python3 install.py && serpantinum reload
 ```
 
 - Shell changes are computed first, then applied. An unknown anchor stops the installation **without changing anything**.
