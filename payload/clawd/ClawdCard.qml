@@ -276,6 +276,112 @@ Rectangle {
             T { visible: !card.compact; color: card.dim; text: "  ⎿ tints him by the effort of the working session" }
         }
         Line {
+            // which effort levels tint him, per agent; each name is drawn letter by letter, cycling its palette like a terminal
+            label: "codex"
+            Repeater {
+                model: [
+                    { key: "low", name: "Light", palette: ["#FFFFFF"] },
+                    { key: "medium", name: "Medium", palette: ["#ACFFD8"] },
+                    { key: "high", name: "High", palette: ["#0093FF"] },
+                    { key: "xhigh", name: "Extra High", palette: ["#FF6363", "#FFFFFF"], sweep: true },
+                    { key: "max", name: "Max", palette: ["#FFD34D", "#FFF2B8"] },
+                    { key: "ultra", name: "Ultra", palette: ["#9B7BFF", "#6FB6FF"] }
+                ]
+                Row {
+                    required property var modelData
+                    required property int index
+                    T { visible: index > 0; text: " · "; color: card.faint }
+                    Item {
+                        id: opt
+                        objectName: "clawdEffort_codex_" + modelData.key
+                        readonly property var fx: modelData
+                        readonly property bool on: Config.getSetting("addonsV2ClawdEffort_codex_" + modelData.key, true) !== false
+                        readonly property bool animated: on && fx.palette.length > 1
+                        property int tick: 0
+                        Timer { running: opt.animated && Clawd.effortColors; interval: 140; repeat: true; onTriggered: opt.tick++ }
+                        implicitWidth: word.width
+                        implicitHeight: word.height
+                        opacity: Clawd.effortColors ? 1 : 0.4
+                        function paint() {
+                            let h = "";
+                            const name = opt.fx.name;
+                            for (let i = 0; i < name.length; i++) {
+                                let c = card.faint;
+                                if (opt.on && !opt.animated) c = opt.fx.palette[0];
+                                else if (opt.on && opt.fx.sweep) c = (opt.tick % (name.length + 2)) === i ? opt.fx.palette[1] : opt.fx.palette[0];
+                                else if (opt.on) c = opt.fx.palette[(opt.tick + i) % opt.fx.palette.length];
+                                h += '<font color="' + c + '">' + (name[i] === " " ? "&nbsp;" : name[i]) + "</font>";
+                            }
+                            return h;
+                        }
+                        T {
+                            id: word
+                            textFormat: Text.RichText
+                            font.bold: true
+                            text: opt.paint()
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: Config.setSetting("addonsV2ClawdEffort_codex_" + modelData.key, !opt.on)
+                        }
+                    }
+                }
+            }
+        }
+        Line {
+            label: "claude"
+            Repeater {
+                model: [
+                    { key: "low", name: "Low", palette: ["#FFC107"] },
+                    { key: "medium", name: "Medium", palette: ["#4EBA65"] },
+                    { key: "high", name: "High", palette: ["#B1B9F9"] },
+                    { key: "xhigh", name: "Xhigh", palette: ["#AF87FF", "#FFFFFF"], sweep: true },
+                    { key: "max", name: "Max", palette: ["#FF9E7A", "#FFD966", "#8FE3A0", "#9BD3FF", "#C9B5FF", "#FF9CB0"] },
+                    { key: "ultracode", name: "Ultracode subagent", palette: ["#EB83FF", "#FFFFFF"] },
+                    { key: "ultracode_workflow", name: "Ultracode Workflow", palette: ["#9BF6FF", "#FFFFFF"] }
+                ]
+                Row {
+                    required property var modelData
+                    required property int index
+                    T { visible: index > 0; text: " · "; color: card.faint }
+                    Item {
+                        id: opt
+                        objectName: "clawdEffort_claude_" + modelData.key
+                        readonly property var fx: modelData
+                        readonly property bool on: Config.getSetting("addonsV2ClawdEffort_claude_" + modelData.key, true) !== false
+                        readonly property bool animated: on && fx.palette.length > 1
+                        property int tick: 0
+                        Timer { running: opt.animated && Clawd.effortColors; interval: 140; repeat: true; onTriggered: opt.tick++ }
+                        implicitWidth: word.width
+                        implicitHeight: word.height
+                        opacity: Clawd.effortColors ? 1 : 0.4
+                        function paint() {
+                            let h = "";
+                            const name = opt.fx.name;
+                            for (let i = 0; i < name.length; i++) {
+                                let c = card.faint;
+                                if (opt.on && !opt.animated) c = opt.fx.palette[0];
+                                else if (opt.on && opt.fx.sweep) c = (opt.tick % (name.length + 2)) === i ? opt.fx.palette[1] : opt.fx.palette[0];
+                                else if (opt.on) c = opt.fx.palette[(opt.tick + i) % opt.fx.palette.length];
+                                h += '<font color="' + c + '">' + (name[i] === " " ? "&nbsp;" : name[i]) + "</font>";
+                            }
+                            return h;
+                        }
+                        T {
+                            id: word
+                            textFormat: Text.RichText
+                            font.bold: true
+                            text: opt.paint()
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: Config.setSetting("addonsV2ClawdEffort_claude_" + modelData.key, !opt.on)
+                        }
+                    }
+                }
+            }
+        }
+        Line {
             // how much he reacts to the shell: all, quiet (urgent, bubbles, moods), off (urgent only)
             label: "reacts"
             Repeater {
