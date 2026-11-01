@@ -551,7 +551,7 @@ Tab **Addons → Mouse** (sub-tab "Mouse").
 - Checks that resolution works; otherwise restores the previous configuration and reports the error.
 - Script: `scripts/dns.sh status|toggle|set home|mullvad` (lock to prevent concurrent runs).
 
-**"Codex mode" idle setting** (Settings → Idle)
+**"Claude mode" idle setting** (Settings → Idle)
 - Extra option: when "Do Not Disturb" (Keep Awake) is active, also blocks system suspend and lid close.
 - Off by default; only visible and usable on laptops (UPower detection).
 - Keeps the session and network alive during long tasks, downloads and AI streams.

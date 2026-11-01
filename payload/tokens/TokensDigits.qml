@@ -39,7 +39,8 @@ Item {
                 property real roll: 0
                 property int last: -1
                 readonly property int whole: Math.floor(roll)
-                readonly property real frac: roll - whole
+                // Bounded: out-of-range values reach Qt.alpha and flood the log with setAlphaF warnings.
+                readonly property real frac: Math.max(0, Math.min(1, roll - whole))
                 width: isDigit ? root.cell : sep.implicitWidth
                 height: root.lineHeight
                 clip: isDigit

@@ -36,7 +36,9 @@ SettingsBlob {
     property var thumbPixels: null
     property var optimistic: ({})
 
-    visible: implicitHeight > 0.5
+    // Bound to reveal, not implicitHeight: visibility feeds back into the layout that sets implicitHeight,
+    // and the two bindings toggled each other in a loop that froze the shell.
+    visible: reveal > 0.001
     opacity: shown ? 1 : 0
     // Progress values scale measured heights; chained height Behaviors trail each other and read as lag.
     property real reveal: shown ? 1 : 0
@@ -133,6 +135,68 @@ SettingsBlob {
             title: "Wallpaper accents"
             description: "Drag a point onto the wallpaper to choose each accent. Double-click a point to restore it."
             searchKeywords: "vibrant vivid accent palette colors wallpaper pick move matugen"
+            titleBadge: Component {
+                Rectangle {
+                    id: addonBadge
+                    implicitWidth: addonBadgeText.implicitWidth + rootObj.s(12)
+                    implicitHeight: rootObj.s(18)
+                    radius: ThemeBackend.borderRadius
+                    color: Qt.alpha(ThemeBackend.mauve, 0.15)
+                    border.color: Qt.alpha(ThemeBackend.mauve, 0.4)
+                    border.width: 1
+                    clip: true
+                    layer.enabled: true
+                    layer.effect: MultiEffect { maskEnabled: true; maskSource: addonBadgeMask }
+
+                    Rectangle {
+                        id: addonBadgeMask
+                        anchors.fill: parent
+                        radius: addonBadge.radius
+                        color: "black"
+                        visible: false
+                        layer.enabled: true
+                    }
+
+                    Text {
+                        id: addonBadgeText
+                        anchors.centerIn: parent
+                        text: "Addon"
+                        font.family: ThemeBackend.fontFamily
+                        font.pixelSize: rootObj.s(10)
+                        font.bold: true
+                        color: ThemeBackend.mauve
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        acceptedButtons: Qt.NoButton
+                        onEntered: badgeShimmerAnimation.restart()
+                    }
+
+                    Rectangle {
+                        id: badgeShimmer
+                        x: -width
+                        y: -height / 4
+                        width: parent.width * 0.45
+                        height: parent.height * 1.5
+                        rotation: 18
+                        gradient: Gradient {
+                            orientation: Gradient.Horizontal
+                            GradientStop { position: 0.0; color: "transparent" }
+                            GradientStop { position: 0.5; color: Qt.alpha(ThemeBackend.text, 0.45) }
+                            GradientStop { position: 1.0; color: "transparent" }
+                        }
+                        NumberAnimation on x {
+                            id: badgeShimmerAnimation
+                            from: -badgeShimmer.width
+                            to: badgeShimmer.parent.width + badgeShimmer.width
+                            duration: 450
+                            running: false
+                        }
+                    }
+                }
+            }
 
             Text {
                 Layout.alignment: Qt.AlignVCenter

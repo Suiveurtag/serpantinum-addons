@@ -325,20 +325,23 @@ def patch_idle_tab(text):
         if option_end < 0: raise InstallError('Do Not Disturb companion option boundaries changed')
         option = text[option_start:option_end]
         text = text[:option_start].rstrip() + '\n' + text[option_end:].lstrip('\n')
-        option = option.replace('searchKeywords: "keep awake suspend lid closed download network"', 'searchKeywords: "codex mode keep awake suspend lid closed download network ai workflow"', 1)
-        option = option.replace('title: "Keep system awake"', 'title: "Codex mode"', 1)
+        option = option.replace('searchKeywords: "keep awake suspend lid closed download network"', 'searchKeywords: "claude mode codex keep awake suspend lid closed download network ai workflow"', 1)
+        option = option.replace('title: "Keep system awake"', 'title: "Claude mode"', 1)
+        # Files patched by an earlier release still carry the old name.
+        option = option.replace('title: "Codex mode"', 'title: "Claude mode"', 1)
+        option = option.replace('searchKeywords: "codex mode keep awake', 'searchKeywords: "claude mode codex keep awake', 1)
         option = option.replace('                icon: "󰒲"', '                icon: "󰖙"', 1)
         option = option.replace('radius: rootObj.s(4)', 'radius: ThemeBackend.borderRadius', 1)
     else:
         option = '''                SettingsRow {
                 rootObj: idleTabRoot.rootObj
                 settingId: "idle_manual_system_awake"
-                searchKeywords: "codex mode keep awake suspend lid closed download network ai workflow"
+                searchKeywords: "claude mode codex keep awake suspend lid closed download network ai workflow"
                 visible: idleTabRoot.idleEnabled
                 enabled: idleTabRoot.codexModeAvailable
                 opacity: idleTabRoot.codexModeAvailable ? 1.0 : 0.38
                 icon: "󰖙"
-                title: "Codex mode"
+                title: "Claude mode"
                 description: "Also block system suspend and lid-triggered sleep while Do Not Disturb is enabled."
                 titleBadge: Component {
                     Rectangle {
@@ -1047,7 +1050,7 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
     patches = {QS/'Main.qml': lambda text: remove_inline_settings(patch_main(text), '//'), QS/'WindowRegistry.js': lambda text: remove_inline_settings(text, '//'),
                QS/'Shell.qml': patch_shell, QS/'screenshot/ScreenshotOverlay.qml': patch_screenshot_overlay, QS/'quickactions/Floating.qml': patch_floating,
                QS/'guide/GuidePopup.qml': patch_guide, QS/'guide/GuideSidebar.qml': patch_guide_sidebar, QS/'guide/IdleTab.qml': patch_idle_tab,
-               (theme_state if theme_state.exists() else theme_view): patch_theme, QS/'network/NetworkPopup.qml': patch_network,
+               (theme_state if theme_state.exists() else theme_view): patch_theme,QS/'network/NetworkPopup.qml': patch_network,
                QS/'singletons/theme/Matugen.qml': patch_matugen, QS/'widgets/faces/weather/WeatherFaceFull.qml': patch_weather_face}
     for path, transform in patches.items():
         pending[path] = patch_file(path, transform)
