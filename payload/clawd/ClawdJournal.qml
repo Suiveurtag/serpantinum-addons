@@ -2,8 +2,8 @@ import QtQuick
 import Quickshell
 import "../"
 
-// Left click on Clawd: his agent sessions as a terminal box, newest first (context % when the status line relays it).
-// A row raises that session's terminal. Second tab (pet.journalTab "dreams"): his dream collection (Clawd.dreamBook,
+// Left click on Clawd: his agent sessions as a terminal box, newest first. The circle follows; the rest of a row raises its terminal.
+// Second tab (pet.journalTab "dreams"): his dream collection (Clawd.dreamBook,
 // the ones he never had are ???) and the last dreams he had, with their time.
 Item {
     id: journal
@@ -11,7 +11,7 @@ Item {
     property Item anchor: null
     property real now: Date.now()
     readonly property int cols: 42
-    readonly property var rows: Object.entries(Clawd.sessions).map(([key, s]) => Object.assign({ key }, s)).sort((a, b) => b.last - a.last)
+    readonly property var rows: Clawd.sessionChoices
     readonly property color accent: ThemeBackend.primary
     readonly property bool dreams: pet.journalTab === "dreams"
     readonly property var book: Clawd.dreamBook || []
@@ -35,11 +35,16 @@ Item {
         const s = Math.max(0, Math.round((now - since) / 1000));
         return s < 60 ? s + "s" : s < 3600 ? Math.floor(s / 60) + "m" : Math.floor(s / 3600) + "h";
     }
+    function identity(s) {
+        const id = s.isSubagent ? s.subId : s.key.slice(s.key.indexOf(":") + 1);
+        return (s.agent === "claude" ? "Cl" : "Co") + (s.isSubagent ? "↳" : "-")
+            + String(id || "").replace(/[\x00-\x1f\x7f-\x9f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "").slice(-5);
+    }
+    function sessionDescription(s) { return (s.agent === "claude" ? "Claude Code" : "Codex") + (s.isSubagent ? " subagent " + s.subType : " session") + " " + identity(s); }
     function line(s) {
-        const time = ago(s.since);
-        return ({ alert: "⚠", work: "✻", idle: "✓" })[s.phase] + " " + cell(s.agent, 6) + " " + cell(s.dir, 12) + " "
-            + cell(s.tool, 10) + " " + " ".repeat(Math.max(0, 4 - time.length)) + time
-            + (Number.isFinite(s.ctx) ? " ".repeat(Math.max(0, 5 - String(Math.round(s.ctx)).length - 1)) + Math.round(s.ctx) + "%" : "     ");
+        return (Clawd.followedSessionKey === s.key ? "●" : "○") + " " + ({ alert: "⚠", work: "✻", idle: "✓" })[s.phase] + " "
+            + cell(identity(s), 8) + " " + cell(s.dir, 7) + " " + cell(s.isSubagent ? s.subType : s.tool, 7)
+            + " " + cell(ago(s.since), 3) + " " + cell(Number.isFinite(s.ctx) ? Math.round(s.ctx) + "%" : "", 5);
     }
 
     Timer { interval: 1000; repeat: true; running: journal.visible; triggeredOnStart: true; onTriggered: journal.now = Date.now() }
@@ -106,19 +111,66 @@ Item {
             color: ThemeBackend.subtext0
             font: metrics.font
         }
+        Item {
+            visible: !journal.dreams && (journal.rows.length > 1 || !!Clawd.followedSessionKey)
+            width: metrics.averageCharacterWidth * (journal.cols + 2)
+            height: visible ? metrics.height : 0
+            Accessible.role: Accessible.RadioButton
+            Accessible.name: "Follow automatically"
+            Accessible.checkable: true
+            Accessible.checked: !Clawd.followedSessionKey
+            activeFocusOnTab: true
+            Keys.onReturnPressed: Clawd.selectSession("")
+            Text {
+                anchors.fill: parent
+                text: "│ " + journal.cell((Clawd.followedSessionKey ? "○" : "●") + " follow: auto", journal.cols) + " │"
+                color: Clawd.followedSessionKey ? ThemeBackend.subtext0 : journal.accent
+                font: metrics.font
+            }
+            MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: Clawd.selectSession("")
+            }
+        }
         Repeater {
             model: journal.dreams ? [] : journal.rows
-            Text {
+            Item {
+                id: sessionRow
                 required property var modelData
-                text: "│ " + journal.line(modelData) + " │"
-                color: modelData.phase === "alert" ? ThemeBackend.peach : hover.containsMouse ? journal.accent : ThemeBackend.subtext0
-                font: metrics.font
+                width: metrics.averageCharacterWidth * (journal.cols + 2)
+                height: metrics.height
+                Accessible.role: Accessible.RadioButton
+                Accessible.name: journal.sessionDescription(sessionRow.modelData) + (Clawd.followedSessionKey === sessionRow.modelData.key ? ", followed" : "")
+                Accessible.checkable: true
+                Accessible.checked: Clawd.followedSessionKey === sessionRow.modelData.key
+                activeFocusOnTab: true
+                Keys.onReturnPressed: Clawd.selectSession(sessionRow.modelData.key)
+                Text {
+                    id: rowText
+                    anchors.fill: parent
+                    text: "│ " + journal.line(sessionRow.modelData) + " │"
+                    color: sessionRow.modelData.phase === "alert" ? ThemeBackend.peach
+                        : Clawd.followedSessionKey === sessionRow.modelData.key || hover.containsMouse || selectMark.containsMouse ? journal.accent : ThemeBackend.subtext0
+                    font: metrics.font
+                }
                 MouseArea {
                     id: hover
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: { Clawd.focus(parent.modelData.key); journal.pet.journalOpen = false; }
+                    onClicked: { Clawd.focus(sessionRow.modelData.parentKey); journal.pet.journalOpen = false; }
+                }
+                MouseArea {
+                    id: selectMark
+                    x: metrics.averageCharacterWidth * 2
+                    width: metrics.averageCharacterWidth
+                    height: parent.height
+                    z: 1
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: Clawd.selectSession(sessionRow.modelData.key)
                 }
             }
         }

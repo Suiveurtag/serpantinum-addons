@@ -146,15 +146,19 @@ the tool family changes, and switching variant every 8–12 s:
 Hooks fired inside a sub-agent do not override the lead thread's tool while it is busy; once the lead thread
 has been quiet for 5 s (typically waiting on the sub-agent), Clawd plays the sub-agent's tool instead. A
 sub-agent still running after `Stop` (background) keeps him working until its `SubagentStop`.
-The `SubagentStart` / `SubagentStop` events are part of the Claude hooks: reconnect `claude` in the card once to add them.
+The session journal lists each tracked Claude Code and Codex sub-agent separately. Click its circle to follow it:
+its effort colour, tool loop and thought line then use that agent's state. `follow: auto` restores automatic selection.
+Click the rest of a row to raise the parent terminal. The `SubagentStart` / `SubagentStop` hooks now cover both agents;
+Claude already has these events; reconnect Codex in the card once to add them and trust its updated hooks.
 
 When the lead session is strained (context ≥ 80 % or 5-hour limit ≥ 90 %), each variant switch
 has a 1 in 3 chance to be a `sweat` break instead. The lead's reasoning effort sets his typing
 speed: low ×0.75, medium ×1, high ×1.25, xhigh and max ×1.5.
 
-Several sessions merge: alert beats work beats normal life. A session with no event for
-2 minutes is forgotten, except one waiting for a permission. With two or more busy
-sessions a `[n]` counter shows beside his head.
+In automatic mode, the active Claude session takes priority; otherwise the most recently active session or sub-agent
+supplies his tool, colour and thought line. An alert beats work beats normal life. A session with no event for 2 minutes
+is forgotten, except one waiting for a permission. With two or more busy sessions and sub-agents, a `[n]` counter shows
+beside his head.
 
 ### Stats (Claude status line)
 
@@ -178,13 +182,13 @@ keeps the flat colour and drops the motion.
 
 | Claude | Look | | Codex | Look |
 |---|---|---|---|---|
-| low | yellow `#FFC107` | | light (`low`) | `#92FFE7` |
-| medium | green `#4EBA65` | | medium | white |
+| low | yellow `#FFC107` | | light (`low`) | white |
+| medium | green `#4EBA65` | | medium | mint `#ACFFD8` |
 | high | pale blue `#B1B9F9` | | high | OpenAI blue `#0093FF` |
 | xhigh | violet `#AF87FF`, white glint sweeping | | extra high | red `#FF6363` |
-| max | the six Claude Code light colours flowing | | max | gold, glint and sparkles |
-| ultracode | sky blue `#9BF6FF`, crackling white, sparks | | ultra | space: violet-blue with twinkling stars |
-| 2+ sub-agents working | "fake ultracode": the same in `#EB83FF` | | | |
+| max | the six Claude Code light colours flowing | | max | gold, sweeping glint, four-point glints popping around him, rising gold dust |
+| ultracode | sky blue `#9BF6FF`, crackling white, a bolt sweeping through him, flashes, lightning with forks and sparks around him | | ultra | space: a violet-blue nebula with parallax stars and a shooting star on him, stars and shooting stars around |
+| 2+ sub-agents working | "fake ultracode": the same lightning in `#EB83FF` | | | |
 
 Claude's effort comes from the status line (`effort.level`); Codex's from the `turn_context` lines of its rollout, read by
 `clawd-hook.js` (the effort word only).
@@ -211,9 +215,9 @@ It never takes clicks, and hides while a bubble, the menu or the journal is open
 
 Clicking a bubble raises that session's terminal (`hyprctl dispatch focuswindow pid:…`,
 the first of the hook's ancestors owning a window) and closes it. Left click on Clawd opens
-the sessions journal, newest first: `⚠/✻/✓ agent dir tool elapsed ctx%` (context only with stats connected); click a row to raise
-that terminal. Terminals behind tmux/screen cannot be found (the multiplexer server is not an
-ancestor): nothing happens.
+the sessions journal, newest first: `●/○ ⚠/✻/✓ id dir role/tool elapsed ctx%` (context only with stats connected;
+`Cl` = Claude Code, `Co` = Codex, `↳` = sub-agent). Click the circle to follow or the rest of a row to raise that terminal.
+Terminals behind tmux/screen cannot be found (the multiplexer server is not an ancestor): nothing happens.
 
 ## The shell (lot 5c)
 

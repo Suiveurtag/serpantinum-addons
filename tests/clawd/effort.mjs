@@ -14,14 +14,14 @@ assert.deepEqual(style('claude', 'low', 5), { mode: 3, color: '#EB83FF' });
 assert.deepEqual(style('claude', 'ultracode', 3), { mode: 3, color: '#9BF6FF' });
 assert.deepEqual(style('claude', 'medium', 1), { mode: 0, color: '#4EBA65' });
 // Codex
-assert.equal(style('codex', 'low', 0).color, '#92FFE7');
-assert.equal(style('codex', 'light', 0).color, '#92FFE7');
-assert.equal(style('codex', 'medium', 0).color, '#FFFFFF');
+assert.equal(style('codex', 'low', 0).color, '#FFFFFF');
+assert.equal(style('codex', 'light', 0).color, '#FFFFFF');
+assert.equal(style('codex', 'medium', 0).color, '#ACFFD8');
 assert.equal(style('codex', 'high', 0).color, '#0093FF');
 assert.equal(style('codex', 'xhigh', 0).color, '#FF6363');
 assert.equal(style('codex', 'max', 0).mode, 4);
 assert.equal(style('codex', 'ultra', 0).mode, 5);
-assert.equal(style('codex', 'medium', 4).color, '#FFFFFF');   // sub-agents only matter for Claude
+assert.equal(style('codex', 'medium', 4).color, '#ACFFD8');   // sub-agents only matter for Claude
 // unknown: nothing
 assert.equal(style('claude', '', 0), null);
 assert.equal(style('claude', undefined, 0), null);

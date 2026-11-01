@@ -1,4 +1,8 @@
 {
+  "aura": {
+    "source_sha256": "4d45bed00e2b73c2a22826be602b2952702df43fa36818f0cf64774ec364826c",
+    "package_sha256": "8b9caae7d0935ad1a4a81073f1aca6adabad15a6d2e9b7991d62fc1a4ba12349"
+  },
   "bulge": {
     "source_sha256": "33f3303dd8ac76fea237ef6d9630f39869b538c0918428ec2c9df49c5937aefc",
     "package_sha256": "231a0ecfa49292a9b53fd60dc214fd212936808384c5661d9a54054cdb7e5ecc"
@@ -44,7 +48,7 @@
     "package_sha256": "da88889f72bf98e2c04381d407035f8ba91473dd7792835b26120e824ddb1c4c"
   },
   "tint": {
-    "source_sha256": "134fd1c143026fe05fd4df4fe0a05a35e3aa676859c783eb08bf34a0ca2d1c91",
-    "package_sha256": "8679c944a907c6254fdc63afacc64c149984622c1ca9aec211db1c168b11afb2"
+    "source_sha256": "a846a68cbd2b120abb43693c4c96dcf456ff99c8f30a6d45a2e0c7bdd6435434",
+    "package_sha256": "5f0789f1c583e5ffc736e19f18c18d9566f623693641a262726d3889c68e75e6"
   }
 }

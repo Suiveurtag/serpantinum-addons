@@ -37,9 +37,31 @@ QtObject {
     readonly property string scripts: (Quickshell.env("XDG_DATA_HOME") || Quickshell.env("HOME") + "/.local/share") + "/serpantinum-addons-v2/scripts/clawd"
     // Claude Code / Codex sessions from the hook socket (shell process only):
     // "agent:session_id" -> {agent, dir, phase, last, tool, target, pids, since, verb, verbAt, model, effort, ctx, cost, five_hour, seven_day};
-    // tool/target = last tool used this turn and its short target, pids = the hook's ancestors, stats from the status line relay.
+    // Root tool/target = the last tool used and its short target; pids = the hook's ancestors; stats come from Claude's status line or Codex rollout.
+    // subs maps each live sub-agent id to its own phase, tool, model, effort, pids and last reply tokens.
     // phase: work | alert | idle. Kept while Clawd is OFF so he shows the right state when he comes back.
     property var sessions: ({})
+    property string followedSessionKey: ""
+    readonly property var sessionChoices: {
+        const choices = [];
+        for (const [key, s] of Object.entries(sessions)) {
+            choices.push(Object.assign({ key, parentKey: key, isSubagent: false }, s));
+            for (const [id, sub] of Object.entries(s.subs || {})) if (!sub.ended) choices.push(Object.assign({}, s, sub, {
+                key: "sub:" + key + ":" + id, parentKey: key, isSubagent: true, subId: id, subType: sub.type || "subagent",
+                agent: s.agent, dir: s.dir, phase: sub.phase || (sub.ended ? "idle" : "work"),
+                leadEligible: !!s.subOnly || !s.mainAt || Date.now() - s.mainAt >= 5000,
+                tool: sub.tool || "", target: sub.target || "", pids: sub.pids && sub.pids.length ? sub.pids : s.pids,
+                since: sub.since || sub.last, verb: sub.verb || s.verb || verbs[0], verbAt: sub.verbAt || sub.last,
+                model: sub.model || sub.sub_model || s.model || "", effort: sub.effort || s.effort || "",
+                ctx: Number.isFinite(sub.tokens) && Number.isFinite(s.ctx_size) && s.ctx_size > 0 ? sub.tokens / s.ctx_size * 100 : undefined,
+                cost: undefined, five_hour: undefined, seven_day: undefined, subs: {}
+            }));
+        }
+        return choices.sort((a, b) => b.last - a.last);
+    }
+    function selectSession(key) { followedSessionKey = key && sessionChoices.some(s => s.key === key) ? key : ""; }
+    function normalizeFollow() { if (followedSessionKey && !sessionChoices.some(s => s.key === followedSessionKey)) followedSessionKey = ""; }
+    onSessionChoicesChanged: normalizeFollow()
     // Quota windows are tracked per provider and window, independently of sessions.
     property var quotas: Config.getSetting("addonsV2ClawdQuotas", {})
     property var dreams: Config.getSetting("addonsV2ClawdDreams", { seen: {}, log: [] })  // what he dreamed: {seen: {id: {n, first, last}}, log: [{id, kind, at}]}
@@ -54,13 +76,19 @@ QtObject {
     property real verbsAt: 0
     property var dice: null        // test hook: a fixed roll in [0, 1) instead of Math.random()
     readonly property string activity: {
-        const phases = Object.values(sessions).map(s => s.phase);
+        const selected = followedSessionKey ? sessionChoice(followedSessionKey) : null;
+        const phases = (followedSessionKey ? selected ? [selected] : [] : sessionChoices).map(s => s.phase);
         return phases.indexOf("alert") >= 0 ? "alert" : phases.indexOf("work") >= 0 ? "work" : "";
     }
-    // The lead: the working session that moved last; he plays its tool and thinks its thoughts.
+    // The selected session, or the most recently active Claude-first session; it supplies his colour, loop and thought line.
     readonly property var lead: {
+        if (followedSessionKey) return sessionChoice(followedSessionKey);
         let best = null;
-        for (const [key, s] of Object.entries(sessions)) if (s.phase === "work" && (!best || s.last >= best.last)) best = Object.assign({ key }, s);
+        for (const s of sessionChoices) {
+            if (s.phase !== "work" || s.isSubagent && !s.leadEligible) continue;
+            if (!best || s.last >= best.last)
+                best = s;
+        }
         return best;
     }
     readonly property string workAnim: toolAnim(lead ? lead.tool : "")
@@ -71,7 +99,9 @@ QtObject {
     function effortColor(step) { return Effort.textColor(effortStyle, step); }
     function effortSparks() { return Effort.sparks(effortStyle); }
     readonly property bool thinking: thoughts !== "off" && activity === "work" && !!lead
-    readonly property int busyCount: Object.values(sessions).filter(s => s.phase !== "idle").length
+    readonly property int busyCount: sessionChoices.filter(s => s.phase !== "idle").length
+
+    function sessionChoice(key) { return sessionChoices.find(s => s.key === key) || null; }
 
     // Claude Code and Codex tool names -> his working loop; anything else (MCP...) types.
     function toolAnim(tool) {
@@ -122,7 +152,8 @@ QtObject {
         const out = [], pct = v => Math.round(v) + "%", sub = activeSub(s), count = subList(s).length;
         if (s.model) out.push({ text: s.model + (s.effort ? " · " + s.effort : ""), warn: false });
         if (Number.isFinite(s.ctx)) out.push({ text: "ctx " + pct(s.ctx), warn: s.ctx >= 80 });
-        if (count > 0) {
+        if (s.isSubagent && Number.isFinite(s.tokens)) out.push({ text: Math.round(s.tokens / 1000) + "k tokens", warn: false });
+        if (!s.isSubagent && count > 0) {
             const subCtx = sub && Number.isFinite(sub.tokens) && s.ctx_size > 0 ? sub.tokens / s.ctx_size * 100 : undefined;
             out.push({ text: count + " sub-agent" + (count > 1 ? "s" : "") + (sub && sub.model ? " · " + modelName(sub.model) : "") + (Number.isFinite(subCtx) ? " · ctx " + pct(subCtx) : ""),
                        warn: Number.isFinite(subCtx) && subCtx >= 80 });
@@ -206,10 +237,13 @@ QtObject {
             } else return;
             break;
         case "Stop":
+            if (sid) { if (was) set(was.phase); break; }
             react = was && was.phase !== "idle" && now - was.since >= 180000 ? "celebrate" : variant("happy");  // long turns get confetti
             set("idle"); say(key, "done", "✓ done · " + where);
             break;
-        case "StopFailure": set("idle"); react = "sad"; say(key, "error", "✗ error · " + where); break;
+        case "StopFailure":
+            if (sid) { if (was) set(was.phase); react = "sad"; say(key, "error", "✗ error · " + where); break; }
+            set("idle"); react = "sad"; say(key, "error", "✗ error · " + where); break;
         case "Status": {
             // the status line relay: stats only, never a phase change (an unknown session starts idle)
             const s = Object.assign({ agent: e.agent, phase: "idle", last: now, tool: "", target: "", pids, since: now }, was, { dir });
@@ -233,19 +267,35 @@ QtObject {
             else if (was) set(was.phase);
             break;
         }
-        case "Interrupt": set("idle"); dismiss(key); break;
+        case "Interrupt": if (sid) { if (was) set(was.phase); } else { set("idle"); dismiss(key); } break;
         case "SessionEnd": delete next[key]; dismiss(key); break;
         default: return;
         }
-        // sub-agents of the session (hooks fired inside one carry its id): the model and tokens of its last reply, a tombstone at its stop
+        // Keep each child agent's own loop and state so it can be followed independently of its parent.
         if (sid) {
             const base = next[key] || { agent: e.agent, dir, phase: "idle", last: now, tool: "", target: "", pids, since: now };
             const subs = Object.assign({}, base.subs), old = subs[sid];
-            if (e.event === "SubagentStop") subs[sid] = Object.assign({}, old, { last: now, ended: now });
-            else if (!(old && old.ended && e.event !== "SubagentStart")) {  // a late hook never brings a stopped one back
-                subs[sid] = Object.assign({}, old, { type: str(e.agent_type, 40), last: now },
-                    str(e.sub_model, 40) ? { model: str(e.sub_model, 40) } : {}, Number.isFinite(e.sub_tokens) ? { tokens: e.sub_tokens } : {});
-                delete subs[sid].ended;
+            if (!(old && old.ended && e.event !== "SubagentStart" && e.event !== "SubagentStop")) {
+                let phase = old ? old.phase : "work", since = old && old.since || now;
+                let tool = old ? old.tool : "", target = old ? old.target : "";
+                let verb = old && old.verb || pick(verbs), verbAt = old && old.verbAt || now;
+                if (["SubagentStart", "UserPromptSubmit"].indexOf(e.event) >= 0) {
+                    phase = "work"; since = now; tool = ""; target = ""; verb = pick(verbs); verbAt = now;
+                } else if (["PreToolUse", "PostToolUse", "PostToolUseFailure"].indexOf(e.event) >= 0) {
+                    if (phase === "idle") since = now;
+                    phase = "work";
+                    if (e.event === "PreToolUse") { tool = str(e.tool_name, 40); target = str(e.target, 24); }
+                } else if (e.event === "Notification") {
+                    if (e.notification_type === "permission_prompt") phase = "alert";
+                } else if (["Stop", "StopFailure", "SubagentStop", "Interrupt"].indexOf(e.event) >= 0) phase = "idle";
+                const child = Object.assign({}, old, { type: str(e.agent_type, 40) || old && old.type || "subagent", last: now, phase, since, tool, target,
+                    verb, verbAt, pids: pids.length ? pids : old && old.pids || base.pids || [],
+                    agent: e.agent, dir },
+                    str(e.sub_model, 40) ? { model: str(e.sub_model, 40) } : model ? { model } : {},
+                    effort ? { effort } : {}, Number.isFinite(e.sub_tokens) ? { tokens: e.sub_tokens } : {});
+                if (e.event === "SubagentStop") child.ended = now;
+                else delete child.ended;
+                subs[sid] = child;
             }
             const live = Object.entries(subs).filter(([, v]) => v.ended ? now - v.ended < 30000 : now - v.last < 600000).sort((a, b) => b[1].last - a[1].last).slice(0, 12);
             next[key] = Object.assign({}, base, { subs: live.reduce((o, [k, v]) => Object.assign(o, { [k]: v }), {}) });  // no Object.fromEntries in QML's engine
@@ -379,9 +429,19 @@ QtObject {
     function reroll() {
         const now = Date.now();
         let next = null;
-        for (const [key, s] of Object.entries(sessions)) if (s.phase === "work" && now - (s.verbAt || 0) >= 30000) {
-            next = next || Object.assign({}, sessions);
-            next[key] = Object.assign({}, s, { verb: pick(verbs), verbAt: now });
+        for (const [key, s] of Object.entries(sessions)) {
+            let updated = null;
+            if (s.phase === "work" && now - (s.verbAt || 0) >= 30000) updated = Object.assign({}, s, { verb: pick(verbs), verbAt: now });
+            const subs = Object.assign({}, (updated || s).subs || {});
+            for (const [id, sub] of Object.entries(subs)) if (sub.phase === "work" && now - (sub.verbAt || 0) >= 30000) {
+                updated = updated || Object.assign({}, s);
+                subs[id] = Object.assign({}, sub, { verb: pick(verbs), verbAt: now });
+            }
+            if (updated) {
+                next = next || Object.assign({}, sessions);
+                if (Object.keys(subs).length) updated.subs = subs;
+                next[key] = updated;
+            }
         }
         if (next) sessions = next;
     }
@@ -417,8 +477,16 @@ QtObject {
     // A pending permission never times out: the agent really is waiting for the user.
     function purge() {
         const now = Date.now(), next = {};
-        for (const [key, s] of Object.entries(sessions)) if (s.phase === "alert" || now - s.last < staleMs) next[key] = s;
-        if (Object.keys(next).length !== Object.keys(sessions).length) sessions = next;
+        let changed = false;
+        for (const [key, s] of Object.entries(sessions)) {
+            if (s.phase !== "alert" && now - s.last >= staleMs) { changed = true; continue; }
+            const subs = Object.entries(s.subs || {}).filter(([, sub]) => sub.ended ? now - sub.ended < 30000 : now - sub.last < 600000);
+            if (subs.length !== Object.keys(s.subs || {}).length) {
+                next[key] = Object.assign({}, s, { subs: subs.reduce((o, [id, sub]) => Object.assign(o, { [id]: sub }), {}) });
+                changed = true;
+            } else next[key] = s;
+        }
+        if (changed) sessions = next;
     }
     readonly property QtObject purgeTimer: Timer {
         interval: Math.min(10000, clawd.staleMs / 4); repeat: true

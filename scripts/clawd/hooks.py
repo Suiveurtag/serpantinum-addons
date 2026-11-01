@@ -25,7 +25,7 @@ AGENTS = {
     },
     'codex': {
         'file': lambda: Path(os.environ.get('CODEX_HOME') or Path.home()/'.codex')/'hooks.json',
-        'events': ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'Stop', 'SessionEnd', 'Interrupt'],
+        'events': ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'SubagentStart', 'SubagentStop', 'Stop', 'SessionEnd', 'Interrupt'],
         'hook': {'timeout': 3},  # Codex runs hooks synchronously; the script gives up after 500 ms
         'args': ' --agent codex',
     },

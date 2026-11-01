@@ -116,25 +116,20 @@ PanelWindow {
     // The effort clock (seconds) and the sparks around him for the electric, gold and space looks.
     property real tintTime: 0
     Timer { interval: 40; repeat: true; running: !!Clawd.effortStyle && !Clawd.lowMotion && viewport.visible; triggeredOnStart: true; onTriggered: overlay.tintTime = (Date.now() / 1000) % 4096 }
-    Item {
-        id: sparks
+    // What floats around him at the top efforts (electric, gold, space): shaders/aura.frag over his sprite grown by a margin.
+    ShaderEffect {
+        id: aura
+        readonly property real ps: body.pixelScale
+        readonly property int pad: 4
         visible: viewport.visible && !Clawd.lowMotion && !!Clawd.effortStyle && Clawd.effortSparks()
-        x: frameBox.x; y: frameBox.y; width: frameBox.width; height: frameBox.height
-        Repeater {
-            model: sparks.visible ? 10 : 0
-            delegate: Rectangle {
-                required property int index
-                readonly property real seed: Math.abs(Math.sin(index * 12.9898) * 43758.5453) % 1
-                readonly property real k: (overlay.tintTime * (0.5 + 0.4 * seed) + index / 10) % 1
-                readonly property bool space: Clawd.effortStyle && Clawd.effortStyle.mode === 5
-                width: Math.max(2, Clawd.scale) * (index % 3 === 0 ? 1.5 : 1); height: width
-                x: Math.round(sparks.width * (-0.1 + 1.2 * seed))
-                y: Math.round(sparks.height * (1.0 - k * 1.15))
-                color: Clawd.effortColor(index + Math.floor(overlay.tintTime * 6))
-                opacity: Math.sin(k * Math.PI) * (index % 2 ? 0.9 : 0.6)
-                rotation: space ? 0 : 45
-            }
-        }
+        x: frameBox.x - pad * ps; y: frameBox.y - pad * ps
+        width: frameBox.width + 2 * pad * ps; height: frameBox.height + 2 * pad * ps
+        property color uColor: Clawd.effortStyle ? Clawd.effortStyle.color : "#ffffff"
+        property real uMode: Clawd.effortStyle ? Clawd.effortStyle.mode : 0
+        property real uTime: overlay.tintTime
+        property size uGrid: Qt.size(width / ps, height / ps)
+        property vector4d uBody: Qt.vector4d(pad, pad, body.size ? body.size.w : 1, body.size ? body.size.h : 1)
+        fragmentShader: "shaders/aura.frag.qsb"
     }
 
     // The petpet hand: a photo strip over Clawd, frame-locked to his petpet strips (same frame count, sprites.py).

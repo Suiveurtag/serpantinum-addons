@@ -16,8 +16,8 @@ const CLAUDE = {
 };
 const FAKE_ULTRACODE = { mode: 3, color: '#EB83FF' };     // Claude with 2 or more sub-agents working at once
 const CODEX = {
-  low: { mode: 0, color: '#92FFE7' },
-  medium: { mode: 0, color: '#FFFFFF' },
+  low: { mode: 0, color: '#FFFFFF' },
+  medium: { mode: 0, color: '#ACFFD8' },
   high: { mode: 0, color: '#0093FF' },
   xhigh: { mode: 0, color: '#FF6363' },
   max: { mode: 4, color: '#FFD34D' },
