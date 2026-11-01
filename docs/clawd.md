@@ -142,6 +142,11 @@ the tool family changes, and switching variant every 8–12 s:
 | `TodoWrite`, `update_plan` | `todo` (checklist) / `todo_2` (ticking boxes) |
 | anything else (MCP…) | `work` (keyboard) / `work_2` (fast two-hand typing) |
 
+Hooks fired inside a sub-agent do not override the lead thread's tool while it is busy; once the lead thread
+has been quiet for 5 s (typically waiting on the sub-agent), Clawd plays the sub-agent's tool instead. A
+sub-agent still running after `Stop` (background) keeps him working until its `SubagentStop`.
+The `SubagentStart` / `SubagentStop` events are part of the Claude hooks: reconnect `claude` in the card once to add them.
+
 When the lead session is strained (context ≥ 80 % or 5-hour limit ≥ 90 %), each variant switch
 has a 1 in 3 chance to be a `sweat` break instead. The lead's reasoning effort sets his typing
 speed: low ×0.75, medium ×1, high ×1.25, xhigh and max ×1.5.
@@ -177,8 +182,9 @@ Claude Code is not installed.
 In `full` mode the line also shows, for 2.5 s, what the lead session just started
 (`Edit main.py`, `Bash npm`, at most one flash every 5 s), and every 14 s, for 4 s, the next of
 `<model> · <effort>`, `ctx 42%`, `$1.24`, `5h 63% · 7d 20%` (with stats connected); strained values
-show in peach and are preferred. While a sub-agent works, its model and its context (its last reply's
-input tokens over the session's window) replace the lead's in that cycle; its effort is the session's.
+show in peach and are preferred. While sub-agents run, one more entry joins the cycle: their count with the model
+of the one that moved last and its context (its last reply's input tokens over the session's window), e.g.
+`2 sub-agents · Haiku 5.5 · ctx 31%`.
 `verbs` shows the verb and time only; `off` hides the line.
 It never takes clicks, and hides while a bubble, the menu or the journal is open.
 
@@ -191,11 +197,11 @@ ancestor): nothing happens.
 ## The shell (lot 5c)
 
 `ClawdEvents.qml` (inside AddonClawd's Loader, so Clawd OFF destroys it) listens to the shell's singletons, each guarded
-with `typeof` and each event arbitrated by `js/mind.mjs`: a new track shows `♪ <title>` (28 chars); while music plays and
-the reactions are `all` he registers as a Cava consumer (released on stop, OFF, performance mode, quiet/off and
-destruction) and dances (`dance`/`dance_2`, swing under the bar) at the pace `js/beat.mjs` finds in the low bars (no beat:
+with `typeof` and each event arbitrated by `js/mind.mjs`: a new track shows `♪ <title>` (28 chars); while Spotify plays (not a video
+player) at its own volume ≥ 90 % (MPRIS `volume`) and the reactions are `all` he registers as a Cava consumer (released on stop, OFF, performance mode, quiet/off and
+destruction) and dances (`dance`, `dance_2`, `vibe` with headphones, favoured on a slow beat, `twirl`, `wiggle`, `breakdance`; swing under the bar) at the pace `js/beat.mjs` finds in the low bars (no beat:
 normal pace); notifications make him look up and read (critical: alert, timer app: alert + `⏰ timer`; do-not-disturb mutes
-all but critical); bubbles name the app only, never the summary or body; loud or rising volume covers his ears, mute
+all but critical); bubbles name the app only, never the summary or body; the system volume is ignored, mute
 shushes, brightness ≤ 15 % makes him drowsy (shorter nap delay), a battery ≤ 15 % not charging exhausted (≤ 5 %: urgent
 reaction), charging cheers; the launcher, clipboard and menus make him look up. Moods (`drowsy`, `exhausted`, `rain`)
 slow his pauses, calm his walks and change how he sits. Bubble ranks: permission > error > done/waiting > notification/music
@@ -232,7 +238,7 @@ so the card works in the Settings app and in the integrated `Super+Shift+P` pane
 
 ## Animations
 
-51 strips. Besides the idle life (`idle`, `blink`, `look_*`, `walk`, `turn`, `sit`, `sleep`,
+51 strips (plus the idle specials below). Besides the idle life (`idle`, `blink`, `look_*`, `walk`, `turn`, `sit`, `sleep`,
 `drag`, `fall`, `land`, `spawn`), petting (`petpet`, `petpetheart`, `startled`) and the working
 loops above:
 
@@ -260,6 +266,27 @@ pixels from the frame's top-left, unmirrored (`perch` and `perch_look`: the seat
 `[10.5, 12]`, so his legs hang below the window edge). Without one it is the bottom centre
 (standing). Missing new animations fall back: `perch`/`perch_look` → `sit`, `hop` → `land`,
 `stumble` → `oops`, `teeter` → `idle`, `peek` → `look_right`.
+
+### Idle specials
+
+32 more strips, reproduced from reference videos, play as rare idle "acts" (`js/acts.mjs`, mode `act`): only on
+the floor, calm state (no mood, no agent working, not low-motion), at most one per 45 s, never the same twice in a row.
+Each is a sequence of strips; a loop strip is held for a random time, a one-shot plays to its end.
+
+| Act | Strips |
+| --- | --- |
+| `book` | `book_idle` (glasses, book), `book_blink` between holds |
+| `joy` | `content_idle`, `content_bounce` every few seconds |
+| `bike`, `carry`, `broom` | `bike_ride`, `carry_walk`, `broom_fly` while he crosses the floor (mirrored going left) |
+| `row` | `boat_idle`, `boat_row_in`, `boat_row`, `boat_row_out` |
+| `fish` | `boat_fish_in`, `boat_fish_wait`, `boat_fish_catch`, `boat_fish_out`, `boat_bino`, `boat_row_brief` |
+| `campfire` | `camp_stand`, `camp_fire_build`, `camp_fire_burn`, `camp_fire_die` |
+| `binoc`, `photo`, `nap` | `camp_binoc_*` (5), `camp_camera_*` (3), `camp_lie_down`, `camp_lie_idle`, `camp_stand_up` |
+
+These strips have their own canvas: the manifest entry carries `w`/`h`, the pet's box follows the current strip, and the
+`grip` is `[anchor x, feet row]` (boat and broom: the bottom of the canvas) so the feet stay put from one strip to the next.
+Their source files keep a header (`fps`, `loop`, `anchor X Y`, `pal C RRGGBB`) and their own palette. `quickshell ipc call clawd play book`
+(any act name above, or any single strip name) starts one at once.
 
 ## Sprites
 
@@ -311,6 +338,8 @@ other addons are untouched.
 A 5-hour limit reaching 100% plays `nuke`; a 7-day limit plays the singularity or the surge, at random (`limit7`). Each provider and window is tracked independently. A first reading at 100% establishes the current state without an explosion; a later observed transition from below 100% triggers it once per window. Stale lower readings cannot rearm the same window. At a known reset deadline, or when a fresh snapshot reports the next window, Clawd plays `recharge` for the 5-hour window; the 7-day reset is silent. Scenes wait their turn and revive him first if needed. Quota state is saved across shell restarts. The first reading after a restart establishes the current state, so an exhaustion missed while the shell was stopped is not replayed.
 
 Claude needs the card's `stats` connection and a running session; Codex is polled every 30 s with `scripts/clawd/codex_limits.py`, which reads only the used % and reset time of the latest rate-limit snapshot in recent local session logs. If the provider has not supplied a recent snapshot, detection is best-effort.
+
+Codex resets that never reach a deadline (announced resets, banked resets spent early) are covered two ways. Every 60 s `curl` reads [codex-resets.com](https://codex-resets.com) (`/api/v1/status`, free, no key): a new regular announcement, or a `scheduled_reset` reaching its `scheduled_for` (ignored if more than an hour old), plays `recharge`. A `banked` announcement (`Banked 1/2`) only adds to the bank and stays silent; the first poll after install only establishes the state. Spending a banked reset is detected locally: a Codex window whose used % falls 10 points or more below its recorded peak plays `recharge`. One reset plays one scene: sources within 30 min of each other are merged.
 
 About 37 s, on Clawd's screen, above everything (layer `qs-addon-clawd-blast`, Overlay); other screens darken,
 flash and come back with it. He freezes, then the screen does (a `ScreencopyView` capture taken while he is

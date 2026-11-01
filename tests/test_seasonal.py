@@ -8,9 +8,21 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import install
 import seasonal
+import seasonal_surfaces
 
 
 class SeasonalIntegrationTests(unittest.TestCase):
+    def test_retired_audio_boost_is_removed_without_touching_upstream(self):
+        marker = 'serpantinum-addons-v2 audio boost'
+        upstream = '"dynamics": "off"\n'
+        patched = (f'// BEGIN {marker} state\nfunction setBoost() {{}}\n'
+                   f'// END {marker} state\n' +
+                   '"dynamics": "off", "boost": 0\n        temp.boost = 0;\n')
+        self.assertEqual(seasonal_surfaces.remove_audio_boost_qml(patched), upstream)
+        self.assertEqual(seasonal_surfaces.remove_audio_boost_qml(upstream), upstream)
+        newer_backend = '#!/usr/bin/env bash\n# Serpantinum Audio\n'
+        self.assertEqual(seasonal_surfaces.remove_audio_boost_backend(newer_backend), newer_backend)
+
     def test_control_hook_preserves_unrelated_escape_calls(self):
         original = 'Item {\n    id: root\n    function leave() { thirdParty.escape(); }\n}\n'
         self.assertEqual(original, seasonal.remove(seasonal.patch_control(original)))

@@ -5,12 +5,15 @@ import Quickshell.Io
 import Quickshell.Hyprland
 import "../"
 import "js/mind.mjs" as Mind
+import "js/acts.mjs" as Acts
 
 // Exists separately in the shell and the Settings process; share state only through Config.
 QtObject {
     id: clawd
     readonly property bool enabled: Config.getSetting("addonsV2Clawd", false) === true
     readonly property int scale: Math.max(2, Math.min(8, Math.round(Number(Config.getSetting("addonsV2ClawdScale", 4))) || 4))
+    // The specials were drawn on a finer grid (his body is 16 cells wide there, 13 in the pet's own strips): a smaller (fractional) pixel evens his size out.
+    function unit(clip) { return clip && clip.file && clip.w && clip.h ? scale * 0.65 : scale; }
     readonly property string speed: ["calm", "normal", "active"].indexOf(Config.getSetting("addonsV2ClawdSpeed", "normal")) >= 0 ? Config.getSetting("addonsV2ClawdSpeed", "normal") : "normal"
     readonly property int sleepMinutes: Math.max(1, Math.min(60, Math.round(Number(Config.getSetting("addonsV2ClawdSleep", 5))) || 5))
     readonly property bool lowMotion: Config.getSetting("general.performance", false) === true
@@ -34,6 +37,9 @@ QtObject {
     // Quota windows are tracked per provider and window, independently of sessions.
     property var quotas: Config.getSetting("addonsV2ClawdQuotas", {})
     property var observed: ({})
+    property var codexResets: Config.getSetting("addonsV2ClawdCodexResets", {})  // {seen: id of the last announcement handled, done: [scheduled ids played]}
+    property var codexSchedule: null  // {id, at}: a reset announced for a later time (codex-resets.com)
+    property real lastResetAt: 0      // seconds of the last reset scene queued, whatever its source
     property var bubble: null      // {key, kind: permission | done | waiting | error, text}
     property int staleMs: 120000
     property var verbs: ["Thinking"]   // Claude Code's spinner verbs (verbs.py), until loaded
@@ -88,23 +94,27 @@ QtObject {
         const m = /^claude-(opus|sonnet|haiku)-(\d+)-(\d+)(?:-\d{8})?$/.exec(String(id || ""));
         return m ? m[1][0].toUpperCase() + m[1].slice(1) + " " + m[2] + "." + m[3] : String(id || "");
     }
+    // The running sub-agents of session s (SubagentStop leaves a short tombstone that only blocks late hooks).
+    function subList(s) { return Object.values((s && s.subs) || {}).filter(v => !v.ended); }
     // The sub-agent of session s that moved last (its stats known, not stale), or null.
     function activeSub(s) {
         let best = null;
-        for (const sub of Object.values((s && s.subs) || {})) if ((sub.model || Number.isFinite(sub.tokens)) && (!best || sub.last >= best.last)) best = sub;
+        for (const sub of subList(s)) if ((sub.model || Number.isFinite(sub.tokens)) && (!best || sub.last >= best.last)) best = sub;
         // a sub-agent in one long reply fires no hooks for a while: kept until its SubagentStop (or 10 min, as pruned in ingest)
         return best && Date.now() - best.last < 600000 ? best : null;
     }
-    // What the info cycle can show for a session, strained values flagged. While a sub-agent works, its model and
-    // context replace the lead's (the lead's effort stays: a sub-agent runs with the session's effort).
+    // What the info cycle can show for a session, strained values flagged. With sub-agents running, one more entry gives
+    // their count with the model and context (last reply's input tokens over the window) of the one that moved last.
     function infos(s) {
         if (!s) return [];
-        const out = [], pct = v => Math.round(v) + "%", sub = activeSub(s);
-        const model = sub && sub.model ? modelName(sub.model) : s.model;
-        if (model) out.push({ text: model + (s.effort ? " · " + s.effort : ""), warn: false });
-        // a sub-agent's context needs the window size: unknown until a status line has come, then its % is left out
-        const ctx = sub && Number.isFinite(sub.tokens) ? (s.ctx_size > 0 ? sub.tokens / s.ctx_size * 100 : undefined) : s.ctx;
-        if (Number.isFinite(ctx)) out.push({ text: "ctx " + pct(ctx), warn: ctx >= 80 });
+        const out = [], pct = v => Math.round(v) + "%", sub = activeSub(s), count = subList(s).length;
+        if (s.model) out.push({ text: s.model + (s.effort ? " · " + s.effort : ""), warn: false });
+        if (Number.isFinite(s.ctx)) out.push({ text: "ctx " + pct(s.ctx), warn: s.ctx >= 80 });
+        if (count > 0) {
+            const subCtx = sub && Number.isFinite(sub.tokens) && s.ctx_size > 0 ? sub.tokens / s.ctx_size * 100 : undefined;
+            out.push({ text: count + " sub-agent" + (count > 1 ? "s" : "") + (sub && sub.model ? " · " + modelName(sub.model) : "") + (Number.isFinite(subCtx) ? " · ctx " + pct(subCtx) : ""),
+                       warn: Number.isFinite(subCtx) && subCtx >= 80 });
+        }
         if (Number.isFinite(s.cost)) out.push({ text: "$" + s.cost.toFixed(2), warn: false });
         if (Number.isFinite(s.five_hour)) out.push({ text: "5h " + pct(s.five_hour) + (Number.isFinite(s.seven_day) ? " · 7d " + pct(s.seven_day) : ""), warn: s.five_hour >= 90 });
         return out;
@@ -142,6 +152,7 @@ QtObject {
         const pids = Array.isArray(e.pids) ? e.pids.filter(p => Number.isInteger(p) && p > 1).slice(0, 16) : [];
         const now = Date.now();
         const model = str(e.model, 40);
+        const sid = typeof e.agent_id === "string" ? e.agent_id.replace(/[^\w-]/g, "").slice(0, 80) : "";  // set when the hook fired inside a sub-agent
         // stats, verb and target carry over; extra overrides
         const set = (phase, tool, fresh, extra) => {
             next[key] = Object.assign({ target: "" }, was, { agent: e.agent, dir, phase, last: now, tool: tool !== undefined ? tool : was ? was.tool : "",
@@ -160,13 +171,20 @@ QtObject {
         case "PreCompact": set(was ? was.phase : "work", undefined, false, { compacting: true }); react = "compact"; break;
         case "PreToolUse":
         case "PostToolUse":
-        case "PostToolUseFailure":
-            // Claude's async hooks may land after Stop: only a new prompt revives an idle session
-            if (was && was.phase === "idle") { set("idle"); break; }
-            set("work", typeof e.tool_name === "string" ? e.tool_name.slice(0, 40) : undefined, false, e.event === "PreToolUse" ? { target: str(e.target, 24) } : null);
+        case "PostToolUseFailure": {
+            // Claude's async hooks may land after Stop: only a new prompt revives an idle session,
+            // or a sub-agent still running in the background (it wakes him until its SubagentStop).
+            const running = sid && was && was.subs && was.subs[sid] && !was.subs[sid].ended;
+            if (was && was.phase === "idle" && !running) { set("idle"); break; }
+            const wake = !!was && was.phase === "idle";
+            // The lead thread plays its own tool; a sub-agent's takes over once the lead thread has been quiet for 5 s.
+            const takes = !sid || wake || Date.now() - (was && was.mainAt || 0) >= 5000;
+            set("work", takes && typeof e.tool_name === "string" ? e.tool_name.slice(0, 40) : undefined, wake,
+                Object.assign(sid ? (wake ? { subOnly: true } : {}) : { mainAt: now, subOnly: false }, takes && e.event === "PreToolUse" ? { target: str(e.target, 24) } : {}));
             dismiss(key, "permission");
             if (e.event === "PostToolUseFailure") react = "oops";
             break;
+        }
         case "Notification":
             if (e.notification_type === "permission_prompt") { set("alert"); say(key, "permission", "⚠ permission · " + where); }
             else if (["idle_prompt", "agent_needs_input"].indexOf(e.notification_type) >= 0) {
@@ -194,23 +212,30 @@ QtObject {
             break;
         }
         case "SubagentStart":
-        case "SubagentStop":
-            // the sub-agent's own entry is written below; an untracked session starts idle, as with a status line
-            if (was) set(was.phase);
+        case "SubagentStop": {
+            // the sub-agent's own entry is written below; an untracked session starts idle, as with a status line.
+            // The last sub-agent of a session that only it kept awake puts him back to sleep.
+            const others = Object.entries((was && was.subs) || {}).filter(([k, v]) => k !== sid && !v.ended);
+            if (was && e.event === "SubagentStop" && was.subOnly && !others.length) set("idle");
+            else if (was) set(was.phase);
             break;
+        }
         case "Interrupt": set("idle"); dismiss(key); break;
         case "SessionEnd": delete next[key]; dismiss(key); break;
         default: return;
         }
-        // sub-agents of the session (hooks fired inside one carry its id): the model and tokens of its last reply, gone at its stop
-        if (typeof e.agent_id === "string" && e.agent_id) {
+        // sub-agents of the session (hooks fired inside one carry its id): the model and tokens of its last reply, a tombstone at its stop
+        if (sid) {
             const base = next[key] || { agent: e.agent, dir, phase: "idle", last: now, tool: "", target: "", pids, since: now };
-            const id = e.agent_id.replace(/[^\w-]/g, "").slice(0, 80), subs = Object.assign({}, base.subs);
-            if (e.event === "SubagentStop") delete subs[id];
-            else subs[id] = Object.assign({}, subs[id], { type: str(e.agent_type, 40), last: now },
-                str(e.sub_model, 40) ? { model: str(e.sub_model, 40) } : {}, Number.isFinite(e.sub_tokens) ? { tokens: e.sub_tokens } : {});
-            const live = Object.entries(subs).filter(([, v]) => now - v.last < 600000).sort((a, b) => b[1].last - a[1].last).slice(0, 4);
-            next[key] = Object.assign({}, base, { subs: Object.fromEntries(live) });
+            const subs = Object.assign({}, base.subs), old = subs[sid];
+            if (e.event === "SubagentStop") subs[sid] = Object.assign({}, old, { last: now, ended: now });
+            else if (!(old && old.ended && e.event !== "SubagentStart")) {  // a late hook never brings a stopped one back
+                subs[sid] = Object.assign({}, old, { type: str(e.agent_type, 40), last: now },
+                    str(e.sub_model, 40) ? { model: str(e.sub_model, 40) } : {}, Number.isFinite(e.sub_tokens) ? { tokens: e.sub_tokens } : {});
+                delete subs[sid].ended;
+            }
+            const live = Object.entries(subs).filter(([, v]) => v.ended ? now - v.ended < 30000 : now - v.last < 600000).sort((a, b) => b[1].last - a[1].last).slice(0, 12);
+            next[key] = Object.assign({}, base, { subs: live.reduce((o, [k, v]) => Object.assign(o, { [k]: v }), {}) });  // no Object.fromEntries in QML's engine
         }
         sessions = next;
         if (react) command("react", react);
@@ -231,16 +256,55 @@ QtObject {
             if (was && was.consumed && resets === was.resets) continue;
             const changed = !!(was && resets && was.resets && resets > was.resets && was.resets <= now);
             if (changed && !was.consumed && w === "five_hour") events.push("recharge");
-            const fired = was && !changed && was.fired;
+            // a Codex banked reset spent early: the used % falls well below what the window had reached
+            const early = agent === "codex" && !!(was && !changed && !was.consumed && was.used - used >= 10);
+            if (early) events.push("recharge");
+            const fired = was && !changed && !early && was.fired;
             const crossed = !!(seen[key] && was && !changed && was.used < 100 && used >= 100 && !fired);
             if (crossed) events.push(w === "five_hour" ? "nuke" : "limit7");  // limit7: the singularity or the surge
-            next[key] = { used: was && !changed ? Math.max(was.used, used) : used, resets, fired: !!fired || crossed,
+            next[key] = { used: was && !changed && !early ? Math.max(was.used, used) : used, resets, fired: !!fired || crossed,
                           watched: resets > now || !!(was && !changed && was.watched), consumed: false };
             seen[key] = true;
         }
         observed = seen;
         saveQuotas(next);
-        for (const event of events) command("quota", event);
+        resetScene(events);
+    }
+    // At most one reset scene per reset: a banked or announced reset can show up in several sources at once.
+    function resetScene(events) {
+        let reset = false;
+        for (const event of events) {
+            if (event === "recharge") { if (!reset) command("quota", event); reset = true; }
+            else command("quota", event);
+        }
+        if (reset) lastResetAt = Date.now() / 1000;
+    }
+    function ingestCodexResets(text) {
+        let data = null;
+        try { data = JSON.parse(text).data; } catch (error) { return; }
+        if (!data) return;
+        const done = (codexResets.done || []).slice(-20), now = Date.now() / 1000, latest = data.latest_reset, sched = data.scheduled_reset;
+        let seen = codexResets.seen, play = false;
+        if (latest && latest.id !== seen) {
+            // the first poll only establishes the state; a banked announcement only adds a reset to the bank
+            if (seen && latest.reset_type !== "banked") play = true;
+            seen = latest.id;
+        }
+        const at = sched && sched.scheduled_for ? Date.parse(sched.scheduled_for) / 1000 : 0;
+        codexSchedule = sched && at && done.indexOf(sched.id) < 0 ? { id: sched.id, at } : null;
+        if (play && now - lastResetAt > 1800) resetScene(["recharge"]);
+        if (seen !== codexResets.seen) {
+            codexResets = { seen, done };
+            Config.setSetting("addonsV2ClawdCodexResets", codexResets);
+        }
+    }
+    function checkCodexSchedule() {
+        const sched = codexSchedule, now = Date.now() / 1000;
+        if (!sched || sched.at > now) return;
+        codexSchedule = null;
+        codexResets = { seen: codexResets.seen, done: (codexResets.done || []).concat([sched.id]).slice(-20) };
+        Config.setSetting("addonsV2ClawdCodexResets", codexResets);
+        if (now - sched.at < 3600 && now - lastResetAt > 1800) resetScene(["recharge"]);  // a long-gone announcement is not replayed
     }
     function checkQuotaResets() {
         const next = Object.assign({}, quotas), events = [], now = Date.now() / 1000;
@@ -251,11 +315,20 @@ QtObject {
             if (key.endsWith(":five_hour")) events.push("recharge");
         }
         saveQuotas(next);
-        for (const event of events) command("quota", event);
+        resetScene(events);
     }
     readonly property QtObject quotaTimer: Timer {
         interval: 1000; repeat: true; running: clawd.enabled
-        onTriggered: clawd.checkQuotaResets()
+        onTriggered: { clawd.checkQuotaResets(); clawd.checkCodexSchedule(); }
+    }
+    // Announced and banked Codex resets (codex-resets.com, free, no key): the scheduled time and new announcements.
+    readonly property QtObject codexResetsTimer: Timer {
+        interval: 60000; repeat: true; running: clawd.enabled
+        triggeredOnStart: true; onTriggered: if (!codexResetsProc.running) codexResetsProc.running = true
+    }
+    readonly property QtObject codexResetsProc: Process {
+        command: ["curl", "-fsS", "-m", "10", "https://codex-resets.com/api/v1/status"]
+        stdout: StdioCollector { onStreamFinished: if (text) clawd.ingestCodexResets(text) }
     }
     readonly property QtObject codexTimer: Timer {
         interval: 30000; repeat: true; running: clawd.enabled
@@ -345,7 +418,7 @@ QtObject {
     function play(name) {
         if (!enabled) return "off";
         // the limit scenes (limit = either at random) and the revival are scenes, not strips
-        if (!manifest || ["limit", "nuke", "revive", "recharge", "weekly", "surge", "limit7"].indexOf(name) < 0 && !Object.prototype.hasOwnProperty.call(manifest.animations, name)) return "unknown";
+        if (!manifest || ["limit", "nuke", "revive", "recharge", "weekly", "surge", "limit7"].indexOf(name) < 0 && Acts.NAMES.indexOf(name) < 0 && !Object.prototype.hasOwnProperty.call(manifest.animations, name)) return "unknown";
         command("play", name);
         return "ok";
     }

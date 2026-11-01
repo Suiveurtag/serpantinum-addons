@@ -38,7 +38,7 @@ ShellRoot {
                 expect(Cava.unregs === 0, "not released while he plays");
                 break;
             case 3:
-                if (!wait(p.mode === "dance" && (p.animation === "dance" || p.animation === "dance_2"), "dances", 200)) break;
+                if (!wait(p.mode === "dance" && ["dance", "dance_2", "vibe", "twirl", "wiggle", "breakdance"].indexOf(p.animation) >= 0, "dances", 200)) break;
                 expect(Math.abs(p.beat - 1) < 0.01 || host.events.bpm > 0, "pace 1 until a beat is known");
                 break;
             case 4:
@@ -122,20 +122,31 @@ ShellRoot {
                 p.enter("idle", "idle");
                 p.dead = true;
                 notify("Mail", 2);
-                OsdController.sysVolume = 40;
-                OsdController.sysVolume = 96;
                 LauncherController.isVisible = true;
                 expect(!Clawd.bubble && p.mode === "idle" && p.animation === "idle", "dead: no reaction, no bubble: " + p.animation);
                 p.dead = false;
                 LauncherController.isVisible = false;
                 break;
             case 16:
-                // volume and mute
+                // a loud system volume does nothing; he dances to Spotify near 100 % only, never to a video player
                 fresh();
                 p.enter("idle", "idle");
                 OsdController.sysVolume = 30;
-                OsdController.sysVolume = 96;
-                expect(p.animation === "cover_ears", "loud volume covers his ears: " + p.animation);
+                OsdController.sysVolume = 100;
+                expect(p.mode === "idle" && p.animation === "idle", "loud volume: no reaction: " + p.animation);
+                MprisController.activePlayer.volume = 0.6;
+                MprisController.isPlaying = true;
+                expect(!host.events.grooving && p.mode !== "dance", "Spotify at 60 %: no dance");
+                MprisController.activePlayer.volume = 1;
+                expect(host.events.grooving, "Spotify at 100 %: dances");
+                MprisController.activePlayer.identity = "Mozilla Firefox";
+                MprisController.activePlayer.desktopEntry = "firefox";
+                MprisController.activePlayer.busName = "org.mpris.MediaPlayer2.firefox";
+                expect(!host.events.grooving && p.mode !== "dance", "a video player: no dance");
+                MprisController.activePlayer.identity = "Spotify";
+                MprisController.activePlayer.desktopEntry = "spotify";
+                MprisController.activePlayer.busName = "org.mpris.MediaPlayer2.spotify";
+                MprisController.isPlaying = false;
                 break;
             case 17:
                 fresh();

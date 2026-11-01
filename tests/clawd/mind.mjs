@@ -26,11 +26,11 @@ assert.deepEqual(GLANCE_MODES, ['idle', 'sit', 'perch']);
 for (const mode of GLANCE_MODES) assert.equal(act(calm({ mode }), 'focus', 0), 'glance', mode);
 for (const mode of ['walk', 'work', 'react', 'fall']) assert.equal(act(calm({ mode }), 'focus', 0), 'none', mode);
 
-// Asleep: only urgent, or a really loud volume.
+// Asleep: only urgent (no loud-volume reaction any more).
 assert.equal(act(calm({ asleep: true }), 'window_open', 0), 'none');
 assert.equal(act(calm({ asleep: true }), 'notif_critical', 0), 'react');
-assert.equal(act(calm({ asleep: true }), 'volume_loud', 0, { level: 90 }), 'none');
-assert.equal(act(calm({ asleep: true }), 'volume_loud', 0, { level: 96 }), 'react');
+assert.equal(act(calm({ asleep: true }), 'mute', 0), 'none');
+assert.equal(act(calm(), 'volume_loud', 0, { level: 100 }), 'none');
 
 // Reactions setting.
 assert.equal(act(calm({ reactions: 'off' }), 'window_open', 0), 'none');

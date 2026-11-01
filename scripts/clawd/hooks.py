@@ -19,7 +19,7 @@ STATUS_SCRIPT = SCRIPT.with_name(STATUS_MARK)
 AGENTS = {
     'claude': {
         'file': lambda: Path(os.environ.get('CLAUDE_CONFIG_DIR') or Path.home()/'.claude')/'settings.json',
-        'events': ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Notification', 'PreCompact', 'Stop', 'StopFailure', 'SessionEnd'],
+        'events': ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Notification', 'PreCompact', 'SubagentStart', 'SubagentStop', 'Stop', 'StopFailure', 'SessionEnd'],
         'hook': {'async': True, 'timeout': 3},
         'args': '',
     },

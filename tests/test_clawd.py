@@ -28,7 +28,9 @@ ANIMATIONS = ['idle', 'blink', 'look_left', 'look_right', 'look_up', 'walk', 'tu
               'edit', 'edit_2', 'work_2', 'read_2', 'bash_2', 'search_2', 'web_2', 'task_2', 'todo_2', 'think_2', 'happy_2',
               'celebrate', 'sweat', 'coin', 'sad', 'wave', 'explode',
               'perch', 'perch_look', 'hop', 'stumble', 'teeter', 'peek', 'nuke', 'dead', 'dead_land', 'revive', 'tada', 'recharge', 'conduct', 'surge',
-              'climb', 'climb_top', 'hang', 'shimmy', 'swing', 'drop', 'dance', 'dance_2', 'cover_ears', 'shush', 'drowsy', 'exhausted', 'umbrella', 'shiver', 'chime']
+              'climb', 'climb_top', 'hang', 'shimmy', 'swing', 'drop', 'dance', 'dance_2', 'shush', 'drowsy', 'exhausted', 'umbrella', 'shiver', 'chime', 'vibe', 'twirl', 'wiggle', 'breakdance']
+SPECIALS = ['book_idle', 'book_blink', 'bike_ride', 'broom_fly', 'boat_idle', 'boat_row_in', 'boat_row', 'boat_row_out', 'boat_row_brief', 'boat_fish_in', 'boat_fish_wait', 'boat_fish_catch', 'boat_fish_out', 'boat_bino', 'carry_walk', 'camp_stand', 'camp_fire_build', 'camp_fire_burn', 'camp_fire_die', 'camp_binoc_raise', 'camp_binoc_look_right', 'camp_binoc_flip_left', 'camp_binoc_look_left', 'camp_binoc_lower', 'camp_camera_raise', 'camp_camera_shoot', 'camp_camera_away', 'camp_lie_down', 'camp_lie_idle', 'camp_stand_up', 'content_idle', 'content_bounce']  # the idle specials: own canvas (w, h) and grip
+ANIMATIONS += SPECIALS
 HOOKS = ROOT/'scripts/clawd/hooks.py'
 HOOK = ROOT/'scripts/clawd/hooks/clawd-hook.js'
 STATUS = ROOT/'scripts/clawd/hooks/clawd-status.js'
@@ -126,7 +128,7 @@ class ClawdInstallTests(unittest.TestCase):
         files = sorted(p for p in PAYLOAD.rglob('*') if p.is_file())
         names = {str(p.relative_to(PAYLOAD)) for p in files}
         expected = ({line.split()[-1].removeprefix('clawd/') for line in clawd.TYPES} | {'sprites/clawd.json'} | {f'sprites/{a}.png' for a in ANIMATIONS + ['hand', 'antimatter', 'smoke', 'mushroom', 'orchestra', 'clone']}
-                    | {'js/world.mjs', 'js/mind.mjs', 'js/beat.mjs', 'shaders/manifest.json'} | {f'shaders/{n}.frag{q}' for n in SHADERS for q in ('', '.qsb')})
+                    | {'js/world.mjs', 'js/mind.mjs', 'js/beat.mjs', 'js/acts.mjs', 'shaders/manifest.json'} | {f'shaders/{n}.frag{q}' for n in SHADERS for q in ('', '.qsb')})
         self.assertEqual(names, expected)  # nothing stray gets installed
         self.assertEqual(len(copied), len(files))
         hashed = {}
@@ -196,22 +198,27 @@ class ClawdSpriteTests(unittest.TestCase):
         self.assertEqual(list(manifest['animations']), ANIMATIONS)
         for name, clip in manifest['animations'].items():
             with self.subTest(animation=name):
-                self.assertIn(set(clip), ({'file', 'frames', 'fps', 'loop'}, {'file', 'frames', 'fps', 'loop', 'grip'}))
+                special = name in SPECIALS
+                self.assertIn(set(clip), ({'file', 'frames', 'fps', 'loop', 'w', 'h', 'grip'},) if special else ({'file', 'frames', 'fps', 'loop'}, {'file', 'frames', 'fps', 'loop', 'grip'}))
+                cw, ch = (clip['w'], clip['h']) if special else (w, h)
                 if 'grip' in clip:  # contact point with the support, frame px from the top-left
                     gx, gy = clip['grip']
-                    self.assertTrue(0 <= gx <= w and 0 <= gy <= h, clip['grip'])
+                    self.assertTrue(0 <= gx <= cw and 0 <= gy <= ch, clip['grip'])
                 self.assertEqual(clip['file'], name + '.png')
                 self.assertIsInstance(clip['loop'], bool)
                 self.assertGreater(clip['fps'], 0)
                 with Image.open(SPRITES/clip['file']) as image:
                     self.assertEqual(image.mode, 'RGBA')
-                    self.assertEqual(image.size, (clip['frames'] * w, h))
-                    self.assertLessEqual({c for _, c in image.getcolors(image.width * image.height)}, BLAST if name == 'explode' else LIMIT if name in ('nuke', 'dead', 'dead_land', 'revive', 'tada', 'recharge', 'conduct', 'surge') else PALETTE)
+                    self.assertEqual(image.size, (clip['frames'] * cw, ch))
+                    if not special:
+                        self.assertLessEqual({c for _, c in image.getcolors(image.width * image.height)}, BLAST if name == 'explode' else LIMIT if name in ('nuke', 'dead', 'dead_land', 'revive', 'tada', 'recharge', 'conduct', 'surge') else PALETTE)
         self.assertEqual({n for n, c in manifest['animations'].items() if c['loop']}, {'idle', 'walk', 'sit', 'sleep', 'drag', 'fall', 'work', 'alert', 'petpet', 'petpetheart',
                                                                                                'read', 'bash', 'search', 'web', 'task', 'todo',
                                                                                                'edit', 'edit_2', 'work_2', 'read_2', 'bash_2', 'search_2', 'web_2', 'task_2', 'todo_2', 'sweat',
                                                                                                'perch', 'teeter', 'peek', 'dead',
-                                                                                               'climb', 'hang', 'shimmy', 'swing', 'dance', 'dance_2', 'drowsy', 'exhausted', 'cover_ears', 'umbrella', 'shiver'})
+                                                                                               'climb', 'hang', 'shimmy', 'swing', 'dance', 'dance_2', 'drowsy', 'exhausted', 'umbrella', 'shiver', 'vibe', 'twirl', 'wiggle', 'breakdance',
+                                                                                               'book_idle', 'bike_ride', 'broom_fly', 'boat_idle', 'boat_row', 'boat_fish_wait', 'carry_walk',
+                                                                                               'camp_stand', 'camp_fire_burn', 'camp_binoc_look_right', 'camp_binoc_look_left', 'camp_lie_idle', 'content_idle'})
         self.assertEqual(manifest['animations']['perch'].get('grip'), [10.5, 12])  # seated on the ledge, legs below it
         self.assertEqual(manifest['hand']['frames'], manifest['animations']['petpet']['frames'])  # the hand is frame-locked to him
 
@@ -241,7 +248,7 @@ class ClawdHooksInstallerTests(unittest.TestCase):
                 self.assertEqual(settings['hooks']['Stop'][0], CAPRI['hooks']['Stop'][0])
                 self.assertEqual(settings['model'], 'opus')
                 ours = [h for groups in settings['hooks'].values() for g in groups for h in g['hooks'] if 'clawd-hook.js' in h['command']]
-                self.assertEqual(len(ours), {'claude': 10, 'codex': 8}[agent])
+                self.assertEqual(len(ours), {'claude': 12, 'codex': 8}[agent])
                 self.assertEqual({h['command'].endswith(' --agent codex') for h in ours}, {agent == 'codex'})
                 self.assertEqual({h.get('async', False) for h in ours}, {agent == 'claude'})
                 self.assertEqual(len(list(file.parent.glob(name + '.clawd-backup-*'))), 1)
@@ -623,6 +630,9 @@ class ClawdJsTests(unittest.TestCase):
     def test_beat_detector(self):
         self.node('beat.mjs', 'CLAWD_BEAT_PASS')
 
+    def test_idle_specials_plans(self):
+        self.node('acts.mjs', 'CLAWD_ACTS_PASS')
+
 
 @unittest.skipUnless(shutil.which('qml6'), 'Qt qml runtime unavailable')
 class ClawdBlastRenderTests(unittest.TestCase):
@@ -856,7 +866,9 @@ QtObject {
 ''')
             if scenario == 'clawd_events.qml':
                 # the shell's singletons, as the shell process has them (clawd_runtime.qml has none: the typeof guards)
-                stubs = {'MprisController': 'property bool isPlaying: false; property string trackTitle: ""',
+                stubs = {'MprisController': 'property bool isPlaying: false; property string trackTitle: ""; '
+                                            'property QtObject activePlayer: QtObject { property string identity: "Spotify"; property string desktopEntry: "spotify"; '
+                                            'property string busName: "org.mpris.MediaPlayer2.spotify"; property real volume: 1; property bool volumeSupported: true }',
                          'OsdController': 'property real sysVolume: 50; property bool sysMuted: false; property int sysBrightness: 0; property bool isFullscreen: false',
                          'SysNotif': 'property bool hasBattery: false; property int batteryPercentage: 0; property bool isCharging: false',
                          'NotificationManager': 'signal popupAdded(int uid, var notif)',

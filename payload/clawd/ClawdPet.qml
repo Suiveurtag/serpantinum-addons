@@ -4,6 +4,7 @@ import Quickshell.Hyprland
 import "../"
 import "js/world.mjs" as World
 import "js/mind.mjs" as Mind
+import "js/acts.mjs" as Acts
 
 // Clawd himself, in global logical pixels: x/y is his top-left corner, every ClawdOverlay draws him from here.
 // mode: spawn, idle, walk, turn, sit, sleep, drag, fall, land, play, work (an agent session is busy: Clawd.activity,
@@ -12,7 +13,8 @@ import "js/mind.mjs" as Mind
 // teeter (at the end of a window top), peek (2/3 hidden behind a window: cover), explode (frozen inside a limit scene),
 // corpse (his corpse falling back after it), dead (lying there, grey and smoking: nothing moves him), revive (ClawdRevive),
 // climb (up a window side, then climb_top onto it), hang (under the bar or from a window's top corner; swing now and then),
-// shimmy (hand over hand along the bar), drop (lets go, then falls), dance (music: dance / dance_2 at the beat's pace).
+// shimmy (hand over hand along the bar), drop (lets go, then falls), dance (music: dance / dance_2 at the beat's pace),
+// act (an idle special on the floor: book, bike, boat, camp... a sequence of strips, js/acts.mjs; some have their own canvas size).
 // mood: '' | drowsy | exhausted | rain | snow, a lasting state from the shell (dim light, low battery, weather): slower, calmer, sits tired,
 // under an umbrella or shivering.
 // support = what he stands on: null (the floor of `here`) | {kind: "win", id, dx} (dx = contact x - window x;
@@ -50,6 +52,10 @@ Item {
     property var hop: null         // the ledge a hop lands on
     property var agenda: null      // {kind: chime | dance, id, bpm, until}: what he does once he stands on that widget
     property var resume: null      // the pose a reaction returns to
+    property var act: null         // {name, steps, i, to, v}: the special in progress (mode act)
+    property real actAt: Date.now()  // ms when the last special ended (they are rare)
+    property string lastAct: ""
+    property bool switching: false
     // The singularity (ClawdSingularity): {screen, x, y, animation, frame, mirrored, scale, clock}; clock = ms when its
     // timeline was at 0, set once his screen is captured. blasting: frozen inside it, nothing else moves him.
     property var blast: null       // + kind: singularity | nuke
@@ -87,8 +93,10 @@ Item {
         if (c.x <= x && c.x + c.w >= x + width) return { l: width, r: 0 };
         return c.x <= x ? { l: b - x, r: 0 } : { l: 0, r: x + width - a };
     }
-    width: Clawd.manifest ? Clawd.manifest.frame.w * Clawd.scale : 0
-    height: Clawd.manifest ? Clawd.manifest.frame.h * Clawd.scale : 0
+    // his box = the canvas of the current strip (the pet's own frame, or a special's bigger one)
+    readonly property var box: { const m = Clawd.manifest, c = m && m.animations[animation]; return c && c.w && c.h ? c : m ? m.frame : null; }
+    width: box ? Math.round(box.w * Clawd.unit(box)) : 0
+    height: box ? Math.round(box.h * Clawd.unit(box)) : 0
 
     // Working loops that have a variant, and how fast his hands go (the lead session's effort).
     readonly property var families: ["work", "edit", "read", "bash", "search", "web", "task", "todo"]
@@ -103,7 +111,7 @@ Item {
     function clipName(name) {
         const m = Clawd.manifest, alt = { perch: "sit", perch_look: "sit", hop: "land", stumble: "oops", teeter: "idle", peek: "look_right",
             climb: "walk", climb_top: "land", hang: "idle", shimmy: "walk", swing: "idle", drop: "fall",
-            dance: "happy", dance_2: "dance", cover_ears: "startled", shush: "idle", drowsy: "sit", exhausted: "sit", umbrella: "sit", shiver: "idle", chime: "happy" };
+            dance: "happy", dance_2: "dance", vibe: "dance", twirl: "dance", wiggle: "dance", breakdance: "dance", shush: "idle", drowsy: "sit", exhausted: "sit", umbrella: "sit", shiver: "idle", chime: "happy" };
         return !m || m.animations[name] || !Object.prototype.hasOwnProperty.call(alt, name) ? name : alt[name];
     }
     function ownGrip(anim) {
@@ -114,9 +122,10 @@ Item {
     function grip(anim, flip) {
         const m = Clawd.manifest;
         if (!m) return { x: 0, y: 0 };
-        const W = m.frame.w, H = m.frame.h, g = ownGrip(anim) ? m.animations[anim].grip : [W / 2, H];
+        const c = m.animations[anim], sized = c && c.w && c.h, W = sized ? c.w : m.frame.w, H = sized ? c.h : m.frame.h, g = ownGrip(anim) ? m.animations[anim].grip : [W / 2, H];
         const gx = Math.max(0, Math.min(W, g[0])), gy = Math.max(0, Math.min(H, g[1]));
-        return { x: (flip ? W - gx : gx) * Clawd.scale, y: gy * Clawd.scale };
+        const u = Clawd.unit(sized ? c : null);
+        return { x: Math.round((flip ? W - gx : gx) * u), y: Math.round(gy * u) };
     }
     function contact() { const g = grip(animation, mirrored); return { x: x + g.x, y: y + g.y }; }
     function placeAt(cx, cy) { const g = grip(animation, mirrored); x = cx - g.x; y = cy - g.y; }
@@ -129,10 +138,13 @@ Item {
     function enter(m, anim, flip, back) {
         if (blasting || dead && ["corpse", "dead", "revive", "carried"].indexOf(m) < 0) return;
         const name = clipName(anim), was = grip(animation, mirrored);
+        if (m !== "act") { if (act) actAt = Date.now(); act = null; }
         mode = m;
         mirrored = !!flip;
         reverse = !!back;
+        switching = true;  // a strip of another size changes width/height: the contact shift below keeps him put, not placeOnSupport
         animation = name;
+        switching = false;
         // the contact point stays put: grips differ (perch sits on the seat line, legs below the ledge)
         if (m !== "drag" && m !== "carried") { const g = grip(name, mirrored); x += was.x - g.x; y += was.y - g.y; }
         clock.restart();
@@ -161,7 +173,8 @@ Item {
         else if (mode === "teeter") edge();
         else if (mode === "peek") unpeek();
         else if (mode === "react" && chain) { const a = chain; chain = ""; enter("react", a); }
-        else if (mode === "dance") enter("dance", Clawd.variant("dance"));
+        else if (mode === "dance") enter("dance", danceClip());
+        else if (mode === "act") actNext();
         else if (mode === "climb") { if (animation === "climb_top") idle(); }
         else if (mode === "hang") hangThink();
         else if (mode === "drop") fell();
@@ -198,6 +211,7 @@ Item {
         const r = Math.random(), rest = (r - chance) / (1 - chance);
         if (menuOpen) enter(support ? "perch" : "idle", support ? "perch" : "idle");
         else if (r < chance) { if (!(r < chance / 4 && explore())) walk(); }  // a quarter of his walks explore
+        else if (!support && actReady() && Math.random() < ({ calm: 0.05, normal: 0.08, active: 0.12 })[Clawd.speed]) startAct("");
         else if (support) {
             if (rest < 0.3) enter("perch", "perch_look", Math.random() < 0.5);
             else if (rest < 0.45) { if (!hopDown(0)) enter("perch", "perch"); }
@@ -207,6 +221,47 @@ Item {
         else if (rest < 0.7 && !Clawd.lowMotion) enter("idle", look());
         else if (rest < 0.85) enter("sit", moodSit());
         else enter("idle", "idle");
+    }
+    // The idle specials: rare, on the floor, in a calm state; each is a sequence of strips (js/acts.mjs) of their own size.
+    function actReady() {
+        return !!here && !!world && !Clawd.lowMotion && !mood && !Clawd.activity && !tired && !menuOpen && !journalOpen && !grab && !owned() && grounded()
+            && Date.now() - actAt > 45000;
+    }
+    function startAct(name) {
+        const has2 = n => Acts.plan(n, () => 0.5).every(s => has(s.clip));
+        const pick = name || Acts.pick(lastAct, Math.random, has2);
+        if (!pick || !has2(pick) || !here) return false;
+        touch();
+        target = null;
+        intent = null;
+        lastAct = pick;
+        act = { name: pick, steps: Acts.plan(pick, Math.random), i: -1, dir: Math.random() < 0.5 ? -1 : 1 };
+        actNext();
+        return true;
+    }
+    function actNext() {
+        if (!act || !here) return idle();
+        const i = act.i + 1;
+        if (i >= act.steps.length) { actAt = Date.now(); return idle(); }
+        const s = act.steps[i], a = act;
+        let dir = a.dir;
+        if (s.go) {  // walk toward the side with more room, the strips face right: mirrored going left
+            const left = x - here.x, right = here.x + here.w - (x + width);
+            dir = Math.abs(left - right) < 80 ? a.dir : left > right ? -1 : 1;
+            a.dir = dir;
+        }
+        enter("act", s.clip, dir < 0);
+        if (act !== a) return;
+        a.i = i;
+        a.to = undefined;
+        x = clampX(here, x);
+        if (s.go) {
+            const b = stand(), want = s.go.min + Math.random() * (s.go.max - s.go.min);
+            const to = b ? Math.max(b.x0, Math.min(b.x1, x + dir * want)) : x;
+            if (Math.abs(to - x) < 30) return actNext();
+            a.to = to;
+            a.v = s.go.v[({ calm: 0, normal: 1, active: 2 })[Clawd.speed] ?? 1];
+        } else if (s.ms) { brain.interval = s.ms; brain.start(); }
     }
     // The sitting pose of his mood: tired when drowsy or exhausted, under an umbrella in the rain (now and then).
     function moodSit() {
@@ -262,6 +317,10 @@ Item {
             target = null;
             walked();
             arrive();
+        } else if (mode === "act" && act && act.to !== undefined) {
+            const v = act.v * dt, left = act.to - x;
+            if (Math.abs(left) > v) x += left > 0 ? v : -v;
+            else { x = act.to; act.to = undefined; actNext(); }
         } else if (mode === "fall") {
             vy = Math.min(2400, vy + 2600 * dt);
             const c = contact(), ny = c.y + vy * dt;
@@ -728,6 +787,12 @@ Item {
     }
     function setMood(m) { if (m !== mood) mood = m; touch(); }
     function clearMood(m) { if (mood === m) mood = ""; }
+    // One of his dances at random; a slow beat (< 100 BPM) favours the headphones.
+    function danceClip() {
+        const all = ["dance", "dance_2", "vibe", "twirl", "wiggle", "breakdance"].filter(has);
+        if (beat < 0.83 && has("vibe") && Clawd.roll() < 0.6) return "vibe";
+        return all.length ? Clawd.pick(all) : "dance";
+    }
     // Music: dance in a resting pose, swing under the bar; bpm (0 = unknown) retunes the pace. False when he cannot right now.
     function dance(bpm) {
         beat = bpm > 0 ? Math.max(0.6, Math.min(1.6, bpm / 120)) : 1;
@@ -739,7 +804,7 @@ Item {
         target = null;
         intent = null;
         resume = null;
-        enter("dance", Clawd.variant("dance"));
+        enter("dance", danceClip());
         return true;
     }
     // Mind approves a new dance; a dance already going only retunes (bpm 0 = unknown: normal pace).
@@ -830,6 +895,7 @@ Item {
 
     function perform(name) {
         if (holding()) { letGo(false); return; }  // let go first; the request is dropped
+        if (Acts.NAMES.indexOf(name) >= 0) { if (!owned() && mode !== "act" && !grab && here && grounded() && !support) startAct(name); return; }  // a special by name (IPC play)
         if (name === "limit") return explode(Math.random() < 0.5 ? "singularity" : "nuke");  // the quota ran out: either end
         if (name === "explode") return explode("singularity");
         if (name === "nuke") return explode("nuke");
@@ -1033,7 +1099,7 @@ Item {
     // A session got busy, needs the user or went quiet: stop wandering (and wake) or go back to normal life.
     function busy() {
         if ((Clawd.activity || mode === "work") && holding()) { letGo(false); return; }  // drop -> land -> work
-        if ((Clawd.activity || mode === "work") && ["idle", "sit", "sleep", "walk", "turn", "work", "perch", "teeter", "peek", "dance"].indexOf(mode) >= 0) idle();
+        if ((Clawd.activity || mode === "work") && ["idle", "sit", "sleep", "walk", "turn", "work", "perch", "teeter", "peek", "dance", "act"].indexOf(mode) >= 0) idle();
     }
     // Every 8-12 s at work: the other variant of the loop, or a sweat break when the lead session is strained.
     function shuffle() {
@@ -1045,12 +1111,12 @@ Item {
     }
     function openMenu() {
         if (["revive", "corpse", "carried", "recharge", "weekly", "surge"].indexOf(mode) >= 0) return;
-        if (mode === "walk" || mode === "turn") idle();
+        if (mode === "walk" || mode === "turn" || mode === "act") idle();
         journalOpen = false;
         menuOpen = true;
     }
 
-    onHeightChanged: placeOnSupport()
+    onHeightChanged: if (!switching) placeOnSupport()
     onHereChanged: if (here) placeOnSupport(); else if (displays.length) Qt.callLater(spawn)  // spawn() rewrites screenName, which here depends on
     onSummonChanged: spawn()
     Component.onCompleted: {
@@ -1096,6 +1162,6 @@ Item {
     Timer { id: rising; interval: 1500; onTriggered: pet.revive() }
     Timer { id: brain; onTriggered: pet.mode === "idle" || pet.mode === "perch" ? pet.think() : pet.next() }
     Timer { id: drowsy; interval: pet.sleepAfter; onTriggered: { pet.tired = true; if (["sit", "perch"].indexOf(pet.mode) >= 0 || pet.mode === "idle" && pet.animation === "idle") pet.sleep(); } }
-    Timer { interval: 16; repeat: true; running: ["walk", "fall", "hop", "corpse", "climb", "shimmy"].indexOf(pet.mode) >= 0; onTriggered: pet.step() }
+    Timer { interval: 16; repeat: true; running: ["walk", "fall", "hop", "corpse", "climb", "shimmy", "act"].indexOf(pet.mode) >= 0; onTriggered: pet.step() }
     Timer { interval: 2000; repeat: true; running: Clawd.world && Clawd.follow && !Clawd.lowMotion && !!pet.world; onTriggered: pet.follow() }
 }

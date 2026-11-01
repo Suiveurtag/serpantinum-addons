@@ -18,7 +18,6 @@ export const EVENTS = {
   notif: { tier: 'ambient', cooldown: 4000, anim: 'look_up', notif: true },
   notif_critical: { tier: 'urgent', cooldown: 0, anim: 'alert', notif: true, critical: true },
   timer_ring: { tier: 'urgent', cooldown: 0, anim: 'alert' },
-  volume_loud: { tier: 'ambient', cooldown: 20000, anim: 'cover_ears' },
   mute: { tier: 'ambient', cooldown: 10000, anim: 'shush' },
   brightness_low: { tier: 'ambient', cooldown: 60000, anim: 'drowsy', mood: true },
   battery_low: { tier: 'ambient', cooldown: 300000, anim: 'exhausted', mood: true },
@@ -50,8 +49,8 @@ export function decide(state, kind, now, info = {}) {
   const none = { act: 'none', anim: '', tier: e ? e.tier : '' };
   if (!e || s.drag || s.menu || s.petpet || s.dead || s.scene) return none;  // dead / a scene (limit, revive, blast...) owns him
   const urgent = TIERS[e.tier] >= TIERS.urgent;
-  // asleep: only urgent wakes him, or a really loud volume
-  if (s.asleep && !urgent && !(kind === 'volume_loud' && info.level >= 95)) return none;
+  // asleep: only urgent wakes him
+  if (s.asleep && !urgent) return none;
   const reactions = s.reactions || 'all';
   if (reactions === 'off' && !urgent) return none;
   if (reactions === 'quiet' && !urgent && !e.bubble && !e.mood) return none;

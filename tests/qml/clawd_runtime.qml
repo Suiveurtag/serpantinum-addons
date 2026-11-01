@@ -32,7 +32,7 @@ ShellRoot {
                 break;
             case 1:
                 if (!wait(Clawd.instances === Quickshell.screens.length && Clawd.manifest && host.pet, "one overlay per screen")) break;
-                expect(!!Clawd.manifest.animations.explode && Object.keys(Clawd.manifest.animations).length === 74 && Clawd.manifest.frame.w === 21, "manifest loaded");
+                expect(!!Clawd.manifest.animations.explode && Object.keys(Clawd.manifest.animations).length === 109 && Clawd.manifest.frame.w === 21, "manifest loaded");
                 expect(p.mode === "spawn" && Clawd.screenName === Quickshell.screens[0].name, "spawns on a screen");
                 expect(Math.abs(p.y - floorY()) < 1 && p.height === Clawd.manifest.frame.h * 4, "spawn on the floor at x4");
                 break;
@@ -333,6 +333,29 @@ ShellRoot {
                 expect(JSON.stringify(infos.map(i => i.text)) === JSON.stringify(["Opus 5.5 · constructor", "ctx 42%", "$1.24", "5h 63% · 7d 20%"]) && !infos.some(i => i.warn), "info list: " + JSON.stringify(infos));
                 expect(Clawd.nextInfo(lead, 0).text === "ctx 85%" && Clawd.nextInfo(lead, 1).warn, "warnings preferred");
                 expect(Clawd.nextInfo({ since: 0 }, 0) === null, "no stats: no info");
+                // sub-agents: counted, a background one wakes an idle session, the lead thread keeps its tool while busy
+                hook("claude", "SubagentStart", "sa", { agent_id: "a1", agent_type: "Explore" });
+                hook("claude", "SubagentStart", "sa", { agent_id: "a2" });
+                expect(Clawd.sessions["claude:sa"].phase === "idle" && Clawd.subList(Clawd.sessions["claude:sa"]).length === 2, "two sub-agents counted, session idle");
+                hook("claude", "PreToolUse", "sa", { tool_name: "Grep", target: "x", agent_id: "a1", sub_model: "claude-haiku-5-5", sub_tokens: 20000 });
+                expect(Clawd.sessions["claude:sa"].phase === "work" && Clawd.sessions["claude:sa"].subOnly && Clawd.sessions["claude:sa"].tool === "Grep", "a background sub-agent wakes the session");
+                hook("claude", "PreToolUse", "sa", { tool_name: "Bash", target: "npm" });
+                hook("claude", "PreToolUse", "sa", { tool_name: "Read", target: "z", agent_id: "a2" });
+                expect(Clawd.sessions["claude:sa"].tool === "Bash" && !Clawd.sessions["claude:sa"].subOnly, "lead thread busy: its tool stays");
+                Clawd.sessions = Object.assign({}, Clawd.sessions, { "claude:sa": Object.assign({}, Clawd.sessions["claude:sa"], { mainAt: Date.now() - 6000 }) });
+                hook("claude", "PreToolUse", "sa", { tool_name: "Read", target: "z", agent_id: "a2" });
+                expect(Clawd.sessions["claude:sa"].tool === "Read" && Clawd.sessions["claude:sa"].target === "z" && Clawd.toolAnim("Read") === "read", "lead thread quiet: the sub-agent's tool takes over");
+                expect(Clawd.infos(Clawd.sessions["claude:sa"]).map(i => i.text).indexOf("2 sub-agents · Haiku 5.5") >= 0, "info: count and sub-agent model: " + JSON.stringify(Clawd.infos(Clawd.sessions["claude:sa"])));
+                hook("claude", "SubagentStop", "sa", { agent_id: "a1" });
+                hook("claude", "PostToolUse", "sa", { tool_name: "Grep", agent_id: "a1" });  // a late hook
+                expect(Clawd.subList(Clawd.sessions["claude:sa"]).length === 1, "a stopped sub-agent stays stopped");
+                hook("claude", "SessionEnd", "sa");
+                hook("claude", "SubagentStart", "sb", { agent_id: "b1" });
+                hook("claude", "PostToolUse", "sb", { tool_name: "Read", agent_id: "b1" });
+                expect(Clawd.sessions["claude:sb"].phase === "work", "sb woken by its sub-agent");
+                hook("claude", "SubagentStop", "sb", { agent_id: "b1" });
+                expect(Clawd.sessions["claude:sb"].phase === "idle", "its last sub-agent stops: back to sleep");
+                hook("claude", "SessionEnd", "sb");
                 break;
             }
             case 29:
@@ -465,6 +488,25 @@ ShellRoot {
                 hook("codex", "Status", "w", { seven_day: 100, seven_day_resets: Date.now() / 1000 - 1 });
                 hook("codex", "Status", "w", { seven_day: 4, seven_day_resets: Date.now() / 1000 + 604800 });
                 expect(p.mode !== "weekly" && p.quotaQueue.length === 0, "the weekly reset is silent");
+                // A banked Codex reset spent early (used % falls) and the announced resets play one recharge each.
+                const banked = Date.now() / 1000 + 604800;
+                hook("codex", "Status", "b", { seven_day: 60, seven_day_resets: banked });
+                hook("codex", "Status", "b", { seven_day: 5, seven_day_resets: banked });
+                expect(p.mode === "recharge" || p.quotaQueue.length === 1, "banked reset spent: recharge");
+                if (p.mode === "recharge") p.recharged();
+                p.quotaQueue = []; Clawd.lastResetAt = 0;
+                Clawd.codexResets = { seen: "a", done: [] };
+                Clawd.ingestCodexResets(JSON.stringify({ data: { latest_reset: { id: "b", reset_type: "banked" }, scheduled_reset: null } }));
+                expect(p.mode !== "recharge" && p.quotaQueue.length === 0, "a banked announcement is silent");
+                Clawd.ingestCodexResets(JSON.stringify({ data: { latest_reset: { id: "c", reset_type: "regular" }, scheduled_reset: null } }));
+                expect(p.mode === "recharge" || p.quotaQueue.length === 1, "an announced reset plays");
+                if (p.mode === "recharge") p.recharged();
+                p.quotaQueue = []; Clawd.lastResetAt = 0;
+                Clawd.ingestCodexResets(JSON.stringify({ data: { latest_reset: { id: "c", reset_type: "regular" }, scheduled_reset: { id: "s", scheduled_for: new Date(Date.now() - 1000).toISOString() } } }));
+                Clawd.checkCodexSchedule();
+                expect(p.mode === "recharge" || p.quotaQueue.length === 1, "a scheduled reset plays at its time");
+                if (p.mode === "recharge") p.recharged();
+                p.quotaQueue = [];
                 p.perform("weekly");
                 expect(p.mode === "weekly" && p.weeklyAt > 0, "manual symphony starts");
                 p.weeklyAt = Date.now() - 10000;   // skip to the orchestra playing
@@ -504,6 +546,23 @@ ShellRoot {
                 Clawd.observed = ({});
                 hook("claude", "Status", "after-restart", { five_hour: 100, five_hour_resets: nextDeadline });
                 expect(!p.blasting && p.quotaQueue.length === 0, "first observation after restart cannot replay an unseen crossing");
+                // the idle specials: own canvas size, grip on the floor, sequence ends back at idle, walkers move, menu cancels
+                p.idle();
+                expect(Clawd.play("book") === "ok" && p.mode === "act" && p.animation === "book_idle" && p.width === Math.round(24 * Clawd.unit(Clawd.manifest.animations.book_idle)) && p.height === Math.round(16 * Clawd.unit(Clawd.manifest.animations.book_idle)), "special by name: its own canvas");
+                expect(Math.abs(p.contact().y - p.here.floor) < 1, "special grip stands on the floor");
+                p.actNext();
+                expect(p.animation === "book_blink" && Math.abs(p.contact().y - p.here.floor) < 1, "next step of the sequence");
+                for (let i = 0; i < 60 && p.mode === "act"; i++) p.actNext();
+                expect(p.mode === "idle" && p.width === 21 * Clawd.scale && Math.abs(p.y - floorY()) < 1, "sequence ends back at idle, normal size");
+                expect(Clawd.play("bike") === "ok" && p.mode === "act" && p.animation === "bike_ride" && p.act.to !== undefined && p.mirrored === (p.act.to < p.x), "biker walks toward its target, mirrored going left");
+                const bikeX = p.x;
+                p.step();
+                p.last -= 40;
+                p.step();
+                expect(Math.abs(p.x - bikeX) > 0, "biker moves");
+                p.openMenu();
+                expect(p.mode === "idle" && p.act === null, "menu ends a special");
+                p.menuOpen = false;
                 Config.setSetting("addonsV2Clawd", false);
                 break;
             case 41:

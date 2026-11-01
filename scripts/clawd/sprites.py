@@ -18,6 +18,9 @@ hand.png (the petpet hand, drawn over Clawd in sync with his frames) is cut out 
 An animation may set a grip = its contact point with the support, in frame pixels from the frame's top-left, unmirrored
 (mirrored: W - gx). The pet places him at x = contactX - gx*scale, y = contactY - gy*scale; without one the manifest has no
 'grip' and the default is [W/2, H] (bottom centre: standing on the floor).
+Specials (SPECIALS: a prop or a bigger canvas each: book, bike, broom, boat, carry, camp, content; reproduced from reference videos) keep their own
+header in frames/<anim>.txt (# comments, fps, loop, anchor X Y = the cell of his bottom centre in the first frame, pal C RRGGBB, then a blank line)
+and their own canvas: the manifest entry has w/h, and its grip = [anchor x, his feet row] (boat/broom: the bottom of the canvas).
 Usage: sprites.py [--check]  (--check exits 1 when payload/clawd/sprites differs from the frames)"""
 import io
 import json
@@ -60,9 +63,13 @@ ANIMS = {
     'climb': (6, True, (19, 7)), 'climb_top': (10, False, (10.5, 14)), 'hang': (2, True, (10.5, 0)),
     'shimmy': (6, True, (10.5, 0)), 'swing': (4, True, (10.5, 0)), 'drop': (10, False, (10.5, 0)),
     # lot 5c: dance, moods
-    'dance': (8, True), 'dance_2': (6, True), 'cover_ears': (4, True), 'shush': (6, False), 'drowsy': (2, True), 'exhausted': (2, True),
+    'dance': (8, True), 'dance_2': (6, True), 'shush': (6, False), 'drowsy': (2, True), 'exhausted': (2, True),
     # lot 5d: weather, chime
     'umbrella': (4, True), 'shiver': (12, True), 'chime': (6, False),
+    # more dances: headphones on, a spin, a hip wiggle (ClawdPet.danceClip picks one)
+    'vibe': (4, True), 'twirl': (8, True), 'wiggle': (8, True),
+    # breakdance: toprock, drop, handstand, head spin with legs flying, recover (ClawdPet.danceClip picks it too)
+    'breakdance': (8, True),
 }
 BLAST = {**PALETTE, **{k: tuple(bytes.fromhex(v)) + (255,) for k, v in {
     'a': 'e8946c', 'b': 'f4b68e', 'c': 'fcddc2', 'w': 'ffffff', 'v': '6e3bff'}.items()}}
@@ -74,6 +81,11 @@ SMOKE = {'.': (0, 0, 0, 0), 'n': (0x5c, 0x58, 0x54, 200), 'm': (0x8c, 0x87, 0x82
 MUSHROOM = {'.': (0, 0, 0, 0), **{k: tuple(bytes.fromhex(v)) + (255,) for k, v in {
     'W': 'ffffff', 'Y': 'fff2b8', 'E': 'ffcf4d', 'O': 'ff9028', 'R': 'e0501c', 'D': '9e2c18', 'B': '5a2a1e',
     'K': '3a2b27', 'G': '6e5f57', 'L': 'a8988c', 'C': 'e6ecf2'}.items()}}
+SPECIALS = ('book_idle', 'book_blink', 'bike_ride', 'broom_fly', 'boat_idle', 'boat_row_in', 'boat_row', 'boat_row_out', 'boat_row_brief',
+            'boat_fish_in', 'boat_fish_wait', 'boat_fish_catch', 'boat_fish_out', 'boat_bino', 'carry_walk', 'camp_stand', 'camp_fire_build',
+            'camp_fire_burn', 'camp_fire_die', 'camp_binoc_raise', 'camp_binoc_look_right', 'camp_binoc_flip_left', 'camp_binoc_look_left',
+            'camp_binoc_lower', 'camp_camera_raise', 'camp_camera_shoot', 'camp_camera_away', 'camp_lie_down', 'camp_lie_idle', 'camp_stand_up',
+            'content_idle', 'content_bounce')
 NEW = {'nuke', 'dead', 'dead_land', 'revive', 'tada', 'recharge', 'conduct', 'surge'}
 HAND = Path(__file__).resolve().parent/'hand-pet.gif'
 HAND_SCALE = 3  # source frames are 474x498, Clawd shows the hand at most ~16 px x8
@@ -89,6 +101,34 @@ def frames(name, w=W, h=H, palette=PALETTE):
         if bad:
             sys.exit(f'{path}: frame {i} uses unknown pixels {sorted(bad)}')
     return blocks
+
+
+def special(name):
+    """One special: (fps, loop, anchor, palette, blocks, w, h) from its header + frames."""
+    path = FRAMES/f'{name}.txt'
+    head, _, body = path.read_text().partition('\n\n')
+    meta, pal = {}, {'.': (0, 0, 0, 0)}
+    for line in head.splitlines():
+        key, *rest = line.split() or ['#']
+        if key == '#' or key.startswith('#'):
+            continue
+        if key == 'pal':
+            pal[rest[0]] = tuple(bytes.fromhex(rest[1])) + (255,)
+        elif key in ('fps', 'loop', 'anchor'):
+            meta[key] = rest
+        else:
+            sys.exit(f'{path}: unknown header line {line!r}')
+    blocks = [b.split('\n') for b in body.strip('\n').split('\n\n')]
+    h, w = len(blocks[0]), len(blocks[0][0])
+    for i, rows in enumerate(blocks):
+        if len(rows) != h or any(len(r) != w for r in rows):
+            sys.exit(f'{path}: frame {i} is not {w}x{h}')
+        bad = set(''.join(rows)) - set(pal)
+        if bad:
+            sys.exit(f'{path}: frame {i} uses unknown pixels {sorted(bad)}')
+    ax, ay = int(meta['anchor'][0]), int(meta['anchor'][1])
+    grip = [ax, h if name.startswith(('boat_', 'broom_')) else min(h, ay + 1)]
+    return int(meta['fps'][0]), meta['loop'][0] == 'true', grip, pal, blocks, w, h
 
 
 def png(blocks, w=W, h=H, palette=PALETTE):
@@ -154,6 +194,10 @@ def build():
         manifest['animations'][name] = {'file': f'{name}.png', 'frames': len(blocks), 'fps': fps, 'loop': loop}
         if grip:
             manifest['animations'][name]['grip'] = list(grip[0])
+    for name in SPECIALS:
+        fps, loop, grip, pal, blocks, w, h = special(name)
+        files[f'{name}.png'] = png(blocks, w, h, pal)
+        manifest['animations'][name] = {'file': f'{name}.png', 'frames': len(blocks), 'fps': fps, 'loop': loop, 'w': w, 'h': h, 'grip': grip}
     core = frames('antimatter', 49, 49, ANTIMATTER)
     files['antimatter.png'] = png(core, 49, 49, ANTIMATTER)
     manifest['antimatter'] = {'file': 'antimatter.png', 'frames': len(core), 'w': 49, 'h': 49}

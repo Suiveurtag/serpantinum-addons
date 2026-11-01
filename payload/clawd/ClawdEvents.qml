@@ -4,7 +4,7 @@ import "../"
 import "js/beat.mjs" as Beat
 import "js/world.mjs" as World
 
-// What the shell tells Clawd (5c): music (a track bubble, dancing to Cava's beat), notifications, volume / mute / brightness, the battery,
+// What the shell tells Clawd (5c): music (a track bubble, dancing to Cava's beat: Spotify only, its own volume near 100 %), notifications, mute / brightness, the battery,
 // the launcher, clipboard and menus; 5d: the weather (rain, snow), the hourly chime at a clock widget, a running timer. Shell process only; the Loader scope of AddonClawd owns it, so Clawd OFF destroys it and releases Cava.
 // Every singleton is guarded (fixtures and the Settings process lack them); each event goes pet.shell(kind) -> Mind -> a reaction, a mood or a bubble.
 // Bubbles show the app name or the track title, never a notification's summary or body.
@@ -25,22 +25,25 @@ Scope {
     readonly property bool timerOn: !!timers && timers.isActive === true
     readonly property bool playing: !!mpris && mpris.isPlaying === true
     readonly property string title: mpris ? String(mpris.trackTitle || "") : ""
+    // he dances to Spotify only (not a video), and only when it plays loud: its own volume near 100 % (background music at 60 % is not his)
+    readonly property var player: mpris && mpris.activePlayer ? mpris.activePlayer : null
+    readonly property bool spotify: !!player && /spotify/i.test([player.identity, player.desktopEntry, player.busName].map(v => String(v || "")).join(" "))
+    readonly property real appVolume: { if (!player || player.volumeSupported === false) return 1; const v = Number(player.volume); return isFinite(v) ? v : 1; }
+    readonly property bool loud: appVolume >= 0.9
     readonly property bool launcherOpen: !!launcher && launcher.isVisible === true
     readonly property bool clipboardOpen: !!clipboard && clipboard.isVisible === true
     readonly property bool menuOpen: !!menu && menu.isVisible === true
     readonly property bool muted: !!osd && osd.sysMuted === true
-    readonly property real volume: osd ? Number(osd.sysVolume) || 0 : 0
     readonly property real brightness: osd ? Number(osd.sysBrightness) || 0 : 0
     readonly property bool charging: !!sys && sys.isCharging === true
     readonly property real battery: sys && sys.hasBattery === true ? Number(sys.batteryPercentage) || 0 : -1
-    // dancing needs motion allowed, his full reactions, a living pet that is not at work
-    readonly property bool grooving: playing && !!pet && !pet.dead && !Clawd.lowMotion && Clawd.reactions === "all" && !Clawd.activity
+    // dancing needs Spotify loud, motion allowed, his full reactions, a living pet that is not at work
+    readonly property bool grooving: playing && spotify && loud && !!pet && !pet.dead && !Clawd.lowMotion && Clawd.reactions === "all" && !Clawd.activity
     readonly property bool wantCava: grooving && !!cava
     property bool registered: false
     property var tempo: Beat.create()
     property int bpm: 0
     property string lastTitle: ""
-    property var volumes: []
 
     function clean(text, n) { return Clawd.clip(String(text || "").replace(/[\x00-\x1f\x7f-\x9f‎‏‪-‮⁦-⁩]/g, "").trim(), n); }
     // The event through Mind; a bubble when it was not refused.
@@ -66,13 +69,6 @@ Scope {
         function onPopupAdded(uid, n) { events.notified(n); }
     }
 
-    function volumeMoved() {
-        const v = volume, now = Date.now();
-        volumes = volumes.filter(h => now - h.t < 2000).concat([{ t: now, v }]);
-        const prev = volumes.length > 1 ? volumes[volumes.length - 2].v : v, low = Math.min.apply(null, volumes.map(h => h.v));
-        if (v >= 90 && v > prev || v - low >= 15) tell("volume_loud", { level: v }, "");
-    }
-    onVolumeChanged: volumeMoved()
     onMutedChanged: if (muted) tell("mute", {}, "")
     onLauncherOpenChanged: if (launcherOpen) tell("layer", {}, "")
     onClipboardOpenChanged: if (clipboardOpen) tell("shell_menu", {}, "")

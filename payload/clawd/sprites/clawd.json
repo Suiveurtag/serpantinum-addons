@@ -438,12 +438,6 @@
       "fps": 6,
       "loop": true
     },
-    "cover_ears": {
-      "file": "cover_ears.png",
-      "frames": 4,
-      "fps": 4,
-      "loop": true
-    },
     "shush": {
       "file": "shush.png",
       "frames": 6,
@@ -479,6 +473,414 @@
       "frames": 8,
       "fps": 6,
       "loop": false
+    },
+    "vibe": {
+      "file": "vibe.png",
+      "frames": 8,
+      "fps": 4,
+      "loop": true
+    },
+    "twirl": {
+      "file": "twirl.png",
+      "frames": 8,
+      "fps": 8,
+      "loop": true
+    },
+    "wiggle": {
+      "file": "wiggle.png",
+      "frames": 8,
+      "fps": 8,
+      "loop": true
+    },
+    "breakdance": {
+      "file": "breakdance.png",
+      "frames": 8,
+      "fps": 8,
+      "loop": true
+    },
+    "book_idle": {
+      "file": "book_idle.png",
+      "frames": 1,
+      "fps": 12,
+      "loop": true,
+      "w": 24,
+      "h": 16,
+      "grip": [
+        12,
+        16
+      ]
+    },
+    "book_blink": {
+      "file": "book_blink.png",
+      "frames": 4,
+      "fps": 12,
+      "loop": false,
+      "w": 24,
+      "h": 16,
+      "grip": [
+        12,
+        16
+      ]
+    },
+    "bike_ride": {
+      "file": "bike_ride.png",
+      "frames": 8,
+      "fps": 13,
+      "loop": true,
+      "w": 27,
+      "h": 18,
+      "grip": [
+        12,
+        18
+      ]
+    },
+    "broom_fly": {
+      "file": "broom_fly.png",
+      "frames": 16,
+      "fps": 12,
+      "loop": true,
+      "w": 49,
+      "h": 34,
+      "grip": [
+        28,
+        34
+      ]
+    },
+    "boat_idle": {
+      "file": "boat_idle.png",
+      "frames": 1,
+      "fps": 6,
+      "loop": true,
+      "w": 35,
+      "h": 20,
+      "grip": [
+        17,
+        20
+      ]
+    },
+    "boat_row_in": {
+      "file": "boat_row_in.png",
+      "frames": 4,
+      "fps": 6,
+      "loop": false,
+      "w": 35,
+      "h": 20,
+      "grip": [
+        17,
+        20
+      ]
+    },
+    "boat_row": {
+      "file": "boat_row.png",
+      "frames": 4,
+      "fps": 6,
+      "loop": true,
+      "w": 35,
+      "h": 20,
+      "grip": [
+        17,
+        20
+      ]
+    },
+    "boat_row_out": {
+      "file": "boat_row_out.png",
+      "frames": 8,
+      "fps": 6,
+      "loop": false,
+      "w": 35,
+      "h": 20,
+      "grip": [
+        17,
+        20
+      ]
+    },
+    "boat_row_brief": {
+      "file": "boat_row_brief.png",
+      "frames": 18,
+      "fps": 6,
+      "loop": false,
+      "w": 35,
+      "h": 21,
+      "grip": [
+        17,
+        21
+      ]
+    },
+    "boat_fish_in": {
+      "file": "boat_fish_in.png",
+      "frames": 12,
+      "fps": 6,
+      "loop": false,
+      "w": 36,
+      "h": 36,
+      "grip": [
+        18,
+        36
+      ]
+    },
+    "boat_fish_wait": {
+      "file": "boat_fish_wait.png",
+      "frames": 1,
+      "fps": 6,
+      "loop": true,
+      "w": 37,
+      "h": 34,
+      "grip": [
+        19,
+        34
+      ]
+    },
+    "boat_fish_catch": {
+      "file": "boat_fish_catch.png",
+      "frames": 35,
+      "fps": 6,
+      "loop": false,
+      "w": 38,
+      "h": 39,
+      "grip": [
+        20,
+        39
+      ]
+    },
+    "boat_fish_out": {
+      "file": "boat_fish_out.png",
+      "frames": 3,
+      "fps": 6,
+      "loop": false,
+      "w": 35,
+      "h": 33,
+      "grip": [
+        17,
+        33
+      ]
+    },
+    "boat_bino": {
+      "file": "boat_bino.png",
+      "frames": 37,
+      "fps": 6,
+      "loop": false,
+      "w": 45,
+      "h": 33,
+      "grip": [
+        26,
+        33
+      ]
+    },
+    "carry_walk": {
+      "file": "carry_walk.png",
+      "frames": 4,
+      "fps": 6,
+      "loop": true,
+      "w": 25,
+      "h": 20,
+      "grip": [
+        14,
+        20
+      ]
+    },
+    "camp_stand": {
+      "file": "camp_stand.png",
+      "frames": 1,
+      "fps": 12,
+      "loop": true,
+      "w": 24,
+      "h": 16,
+      "grip": [
+        12,
+        16
+      ]
+    },
+    "camp_fire_build": {
+      "file": "camp_fire_build.png",
+      "frames": 52,
+      "fps": 12,
+      "loop": false,
+      "w": 35,
+      "h": 18,
+      "grip": [
+        12,
+        17
+      ]
+    },
+    "camp_fire_burn": {
+      "file": "camp_fire_burn.png",
+      "frames": 28,
+      "fps": 30,
+      "loop": true,
+      "w": 35,
+      "h": 17,
+      "grip": [
+        12,
+        17
+      ]
+    },
+    "camp_fire_die": {
+      "file": "camp_fire_die.png",
+      "frames": 32,
+      "fps": 12,
+      "loop": false,
+      "w": 35,
+      "h": 18,
+      "grip": [
+        12,
+        18
+      ]
+    },
+    "camp_binoc_raise": {
+      "file": "camp_binoc_raise.png",
+      "frames": 20,
+      "fps": 12,
+      "loop": false,
+      "w": 34,
+      "h": 25,
+      "grip": [
+        12,
+        25
+      ]
+    },
+    "camp_binoc_look_right": {
+      "file": "camp_binoc_look_right.png",
+      "frames": 39,
+      "fps": 12,
+      "loop": true,
+      "w": 26,
+      "h": 18,
+      "grip": [
+        8,
+        18
+      ]
+    },
+    "camp_binoc_flip_left": {
+      "file": "camp_binoc_flip_left.png",
+      "frames": 3,
+      "fps": 12,
+      "loop": false,
+      "w": 36,
+      "h": 18,
+      "grip": [
+        18,
+        18
+      ]
+    },
+    "camp_binoc_look_left": {
+      "file": "camp_binoc_look_left.png",
+      "frames": 44,
+      "fps": 12,
+      "loop": true,
+      "w": 27,
+      "h": 18,
+      "grip": [
+        18,
+        18
+      ]
+    },
+    "camp_binoc_lower": {
+      "file": "camp_binoc_lower.png",
+      "frames": 21,
+      "fps": 12,
+      "loop": false,
+      "w": 39,
+      "h": 22,
+      "grip": [
+        17,
+        22
+      ]
+    },
+    "camp_camera_raise": {
+      "file": "camp_camera_raise.png",
+      "frames": 19,
+      "fps": 12,
+      "loop": false,
+      "w": 30,
+      "h": 19,
+      "grip": [
+        12,
+        18
+      ]
+    },
+    "camp_camera_shoot": {
+      "file": "camp_camera_shoot.png",
+      "frames": 54,
+      "fps": 12,
+      "loop": false,
+      "w": 26,
+      "h": 16,
+      "grip": [
+        12,
+        16
+      ]
+    },
+    "camp_camera_away": {
+      "file": "camp_camera_away.png",
+      "frames": 16,
+      "fps": 12,
+      "loop": false,
+      "w": 28,
+      "h": 18,
+      "grip": [
+        12,
+        17
+      ]
+    },
+    "camp_lie_down": {
+      "file": "camp_lie_down.png",
+      "frames": 23,
+      "fps": 12,
+      "loop": false,
+      "w": 24,
+      "h": 19,
+      "grip": [
+        12,
+        19
+      ]
+    },
+    "camp_lie_idle": {
+      "file": "camp_lie_idle.png",
+      "frames": 1,
+      "fps": 12,
+      "loop": true,
+      "w": 24,
+      "h": 12,
+      "grip": [
+        12,
+        12
+      ]
+    },
+    "camp_stand_up": {
+      "file": "camp_stand_up.png",
+      "frames": 19,
+      "fps": 12,
+      "loop": false,
+      "w": 24,
+      "h": 18,
+      "grip": [
+        12,
+        18
+      ]
+    },
+    "content_idle": {
+      "file": "content_idle.png",
+      "frames": 1,
+      "fps": 30,
+      "loop": true,
+      "w": 24,
+      "h": 14,
+      "grip": [
+        12,
+        14
+      ]
+    },
+    "content_bounce": {
+      "file": "content_bounce.png",
+      "frames": 28,
+      "fps": 30,
+      "loop": false,
+      "w": 24,
+      "h": 15,
+      "grip": [
+        12,
+        15
+      ]
     }
   },
   "antimatter": {

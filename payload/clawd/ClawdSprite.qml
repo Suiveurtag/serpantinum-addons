@@ -8,17 +8,17 @@ Item {
     property bool mirrored: false
     property bool reverse: false
     property real speed: 1         // playback rate: the clip's fps times this
-    property int pixelScale: Clawd.scale
+    property real pixelScale: Clawd.unit(clip)
     property bool running: true
     property int frame: 0
-    readonly property var size: Clawd.manifest ? Clawd.manifest.frame : null
+    readonly property var size: clip && clip.w && clip.h ? { w: clip.w, h: clip.h } : Clawd.manifest ? Clawd.manifest.frame : null  // specials have their own canvas
     readonly property var clip: Clawd.manifest && Clawd.manifest.animations[animation] || null
     readonly property int frames: clip ? Math.max(1, clip.frames) : 1
     property bool done: false
     signal finished()
 
-    implicitWidth: size ? size.w * pixelScale : 0
-    implicitHeight: size ? size.h * pixelScale : 0
+    implicitWidth: size ? Math.round(size.w * pixelScale) : 0
+    implicitHeight: size ? Math.round(size.h * pixelScale) : 0
 
     function restart() {
         if (!running) return;

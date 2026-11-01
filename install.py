@@ -884,6 +884,11 @@ def install(without_halloween=False, without_capri=False, without_clawd=False):
     for path, transform in seasonal.transformations(QS).items():
         text = pending[path] if path in pending else path.read_text()
         pending[path] = seasonal.remove(text) if without_halloween else transform(text)
+    for name, transform in [('equalizer.sh', seasonal_surfaces.remove_audio_boost_backend),
+                            ('MusicEqualizerState.qml', seasonal_surfaces.remove_audio_boost_qml),
+                            ('MusicAudioView.qml', seasonal_surfaces.remove_audio_boost_qml)]:
+        path = QS/'media'/name
+        pending[path] = transform(path.read_text())
     for path, transform in capri.transformations(QS).items():
         text = pending[path] if path in pending else path.read_text()
         pending[path] = capri.remove(text) if without_capri else transform(text)
