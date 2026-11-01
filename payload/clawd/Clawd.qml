@@ -6,6 +6,7 @@ import Quickshell.Hyprland
 import "../"
 import "js/mind.mjs" as Mind
 import "js/acts.mjs" as Acts
+import "js/dreams.mjs" as Dreams
 
 // Exists separately in the shell and the Settings process; share state only through Config.
 QtObject {
@@ -21,6 +22,8 @@ QtObject {
     readonly property string thoughts: ["full", "verbs", "off"].indexOf(Config.getSetting("addonsV2ClawdThoughts", "full")) >= 0 ? Config.getSetting("addonsV2ClawdThoughts", "full") : "full"
     // The windows around him (perching, peeking, exploring, window reactions); following the cursor to another screen.
     readonly property bool world: Config.getSetting("addonsV2ClawdWorld", true) !== false
+    // Talk to him in a terminal panel (node sidecar, ChatGPT through Codex).
+    readonly property bool chat: Config.getSetting("addonsV2ClawdChat", true) !== false
     readonly property bool follow: Config.getSetting("addonsV2ClawdFollow", true) !== false
     // How much he reacts to the shell (music, notifications, volume...): all | quiet (urgent, bubbles, moods) | off (urgent only).
     readonly property string reactions: ["all", "quiet", "off"].indexOf(Config.getSetting("addonsV2ClawdReactions", "all")) >= 0 ? Config.getSetting("addonsV2ClawdReactions", "all") : "all"
@@ -36,6 +39,8 @@ QtObject {
     property var sessions: ({})
     // Quota windows are tracked per provider and window, independently of sessions.
     property var quotas: Config.getSetting("addonsV2ClawdQuotas", {})
+    property var dreams: Config.getSetting("addonsV2ClawdDreams", { seen: {}, log: [] })  // what he dreamed: {seen: {id: {n, first, last}}, log: [{id, kind, at}]}
+    readonly property var dreamBook: Dreams.book(dreams)
     property var observed: ({})
     property var codexResets: Config.getSetting("addonsV2ClawdCodexResets", {})  // {seen: id of the last announcement handled, done: [scheduled ids played]}
     property var codexSchedule: null  // {id, at}: a reset announced for a later time (codex-resets.com)
@@ -241,6 +246,10 @@ QtObject {
         if (react) command("react", react);
         if (fresh) sessionStarted();
     }
+    function recordDream(id, kind) {
+        dreams = Dreams.record(dreams, id, kind, Date.now());
+        Config.setSetting("addonsV2ClawdDreams", dreams);
+    }
     function saveQuotas(next) {
         if (JSON.stringify(next) === JSON.stringify(quotas)) return;
         quotas = next;
@@ -418,7 +427,7 @@ QtObject {
     function play(name) {
         if (!enabled) return "off";
         // the limit scenes (limit = either at random) and the revival are scenes, not strips
-        if (!manifest || ["limit", "nuke", "revive", "recharge", "weekly", "surge", "limit7"].indexOf(name) < 0 && Acts.NAMES.indexOf(name) < 0 && !Object.prototype.hasOwnProperty.call(manifest.animations, name)) return "unknown";
+        if (!manifest || ["limit", "nuke", "revive", "recharge", "weekly", "surge", "limit7"].indexOf(name) < 0 && Acts.NAMES.indexOf(name) < 0 && Dreams.NAMES.indexOf(name) < 0 && !Object.prototype.hasOwnProperty.call(manifest.animations, name)) return "unknown";
         command("play", name);
         return "ok";
     }

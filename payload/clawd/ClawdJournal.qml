@@ -3,7 +3,8 @@ import Quickshell
 import "../"
 
 // Left click on Clawd: his agent sessions as a terminal box, newest first (context % when the status line relays it).
-// A row raises that session's terminal.
+// A row raises that session's terminal. Second tab (pet.journalTab "dreams"): his dream collection (Clawd.dreamBook,
+// the ones he never had are ???) and the last dreams he had, with their time.
 Item {
     id: journal
     required property var pet
@@ -12,6 +13,18 @@ Item {
     readonly property int cols: 42
     readonly property var rows: Object.entries(Clawd.sessions).map(([key, s]) => Object.assign({ key }, s)).sort((a, b) => b.last - a.last)
     readonly property color accent: ThemeBackend.primary
+    readonly property bool dreams: pet.journalTab === "dreams"
+    readonly property var book: Clawd.dreamBook || []
+    readonly property int seen: book.filter(d => d.seen).length
+    readonly property var recent: (Clawd.dreams && Clawd.dreams.log || []).slice(0, 8)
+    readonly property string tab2: "☾ dreams " + seen + "/" + book.length
+    function entry(id) { return book.find(d => d.id === id) || { glyph: "?", title: id, kind: "dream" }; }
+    function bookLine(d) { return cell(d.seen ? d.glyph + " " + d.title : "? ???", 24) + cell(d.kind, 11) + cell(d.seen ? "x" + d.n : "—", 7); }
+    function when(at) {
+        const d = new Date(at), today = new Date(now);
+        return Qt.formatDateTime(d, d.toDateString() === today.toDateString() ? "HH:mm" : "ddd HH:mm");
+    }
+    function recentLine(r) { const d = entry(r.id); return cell(when(r.at), 10) + cell(d.glyph + " " + d.title, 22) + cell(r.kind === "nightmare" ? "nightmare" : "", 10); }
     width: box.implicitWidth
     height: box.implicitHeight
     x: anchor && parent ? Math.max(8, Math.min(parent.width - width - 8, anchor.x + (anchor.width - width) / 2)) : 0
@@ -39,19 +52,62 @@ Item {
     }
     Column {
         id: box
+        Row {
+            Text { text: "╭─ "; color: journal.accent; font: metrics.font }
+            Text {
+                text: "✻ sessions"
+                color: !journal.dreams || tab1.containsMouse ? journal.accent : ThemeBackend.subtext0
+                font: metrics.font
+                MouseArea { id: tab1; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: journal.pet.journalTab = "sessions" }
+            }
+            Text { text: " ─ "; color: journal.accent; font: metrics.font }
+            Text {
+                text: journal.tab2
+                color: journal.dreams || tab2.containsMouse ? journal.accent : ThemeBackend.subtext0
+                font: metrics.font
+                MouseArea { id: tab2; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: journal.pet.journalTab = "dreams" }
+            }
+            Text { text: " " + "─".repeat(Math.max(1, journal.cols - 14 - journal.tab2.length)) + "╮"; color: journal.accent; font: metrics.font }
+        }
+        // dreams: the collection, then the last ones he had
+        Repeater {
+            model: journal.dreams ? journal.book : []
+            Text {
+                required property var modelData
+                text: "│ " + journal.bookLine(modelData) + " │"
+                color: !modelData.seen ? Qt.alpha(ThemeBackend.subtext0, 0.6) : modelData.kind === "nightmare" ? ThemeBackend.red : ThemeBackend.mauve
+                font: metrics.font
+            }
+        }
         Text {
-            text: "╭─ ✻ sessions " + "─".repeat(journal.cols - 11) + "╮"
+            visible: journal.dreams
+            text: "├" + "─".repeat(journal.cols + 2) + "┤"
             color: journal.accent
             font: metrics.font
         }
         Text {
-            visible: journal.rows.length === 0
+            visible: journal.dreams && journal.recent.length === 0
+            text: "│ " + journal.cell("no dreams yet: let him sleep", journal.cols) + " │"
+            color: ThemeBackend.subtext0
+            font: metrics.font
+        }
+        Repeater {
+            model: journal.dreams ? journal.recent : []
+            Text {
+                required property var modelData
+                text: "│ " + journal.recentLine(modelData) + " │"
+                color: ThemeBackend.subtext0
+                font: metrics.font
+            }
+        }
+        Text {
+            visible: !journal.dreams && journal.rows.length === 0
             text: "│ " + journal.cell("no sessions", journal.cols) + " │"
             color: ThemeBackend.subtext0
             font: metrics.font
         }
         Repeater {
-            model: journal.rows
+            model: journal.dreams ? [] : journal.rows
             Text {
                 required property var modelData
                 text: "│ " + journal.line(modelData) + " │"

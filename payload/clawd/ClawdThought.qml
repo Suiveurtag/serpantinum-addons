@@ -3,6 +3,7 @@ import "../"
 
 // One line above his head while the lead session works, like Claude Code's spinner: "✻ Pondering… 12s".
 // Mode full also flashes the current action ("Edit main.py") and cycles the session's stats. Takes no input (not in the mask).
+// say: a line he mumbles in his sleep (pet.mumble), shown instead, with a "z".
 Item {
     id: thought
     required property Item anchor
@@ -13,10 +14,11 @@ Item {
     property real flashAt: 0
     property int infoIndex: 0
     property var shown: null       // the line on screen; swapped behind a short fade
-    readonly property var line: Clawd.thought(Clawd.thoughts, Clawd.lead, now, extra)
+    property string say: ""
+    readonly property var line: say ? { text: say, warn: false, suffix: "" } : Clawd.thought(Clawd.thoughts, Clawd.lead, now, extra)
     readonly property string lineKey: line ? (line.suffix ? "v" : "x") + (line.warn ? "!" : " ") + line.text : ""
     readonly property string actionKey: Clawd.lead ? Clawd.lead.key + "\n" + Clawd.lead.tool + "\n" + Clawd.lead.target : ""
-    readonly property string glyph: Clawd.lowMotion ? "✻" : glyphs[tick % 10 < 6 ? tick % 10 : 10 - tick % 10]
+    readonly property string glyph: say ? "z" : Clawd.lowMotion ? "✻" : glyphs[tick % 10 < 6 ? tick % 10 : 10 - tick % 10]
     // own x/y: centered over the sprite, kept on screen
     x: Math.round(Math.max(0, Math.min((parent ? parent.width : 0) - width, anchor.x + (anchor.width - width) / 2)))
     y: Math.round(Math.max(0, anchor.y - height - Scaler.s(2)))
@@ -27,14 +29,14 @@ Item {
 
     // The lead's tool or target changed: "<Tool> <target>" for 2.5 s, at most every 5 s.
     function flash() {
-        if (!visible || Clawd.thoughts !== "full") return;
+        if (!visible || say || Clawd.thoughts !== "full") return;
         const text = Clawd.actionText(Clawd.lead);
         if (!text || Date.now() - flashAt < 5000) return;
         flashAt = Date.now();
         show({ text, warn: false }, 2500);
     }
     function cycle() {
-        if (Clawd.thoughts !== "full" || extra) return;
+        if (Clawd.thoughts !== "full" || extra || say) return;
         const info = Clawd.nextInfo(Clawd.lead, infoIndex);
         if (!info) return;
         infoIndex++;

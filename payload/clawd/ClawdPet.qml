@@ -5,6 +5,7 @@ import "../"
 import "js/world.mjs" as World
 import "js/mind.mjs" as Mind
 import "js/acts.mjs" as Acts
+import "js/dreams.mjs" as Dreams
 
 // Clawd himself, in global logical pixels: x/y is his top-left corner, every ClawdOverlay draws him from here.
 // mode: spawn, idle, walk, turn, sit, sleep, drag, fall, land, play, work (an agent session is busy: Clawd.activity,
@@ -14,6 +15,8 @@ import "js/acts.mjs" as Acts
 // corpse (his corpse falling back after it), dead (lying there, grey and smoking: nothing moves him), revive (ClawdRevive),
 // climb (up a window side, then climb_top onto it), hang (under the bar or from a window's top corner; swing now and then),
 // shimmy (hand over hand along the bar), drop (lets go, then falls), dance (music: dance / dance_2 at the beat's pace),
+// sleep (classic or under a blanket: sleepKind), dream / nightmare (a dream scene plays over his sleep), sleepwalk (a few sleeping steps);
+// `asleep` is true for all four.
 // act (an idle special on the floor: book, bike, boat, camp... a sequence of strips, js/acts.mjs; some have their own canvas size).
 // mood: '' | drowsy | exhausted | rain | snow, a lasting state from the shell (dim light, low battery, weather): slower, calmer, sits tired,
 // under an umbrella or shivering.
@@ -37,6 +40,9 @@ Item {
     property bool reverse: false
     property bool menuOpen: false
     property bool journalOpen: false
+    property bool chatOpen: false  // the chat panel is open (it sets this)
+    property string chatPhase: ""  // "" | wait (thinking) | talk (answering), set by the chat panel
+    property bool dbl: false       // a double-click is under way: its second release is not a single click
     property string mood: ""
     property bool grooved: false   // the swing under the bar is a dance (music), not a natural one
     property real beat: 1          // dance playback rate (bpm / 120)
@@ -56,6 +62,19 @@ Item {
     property real actAt: Date.now()  // ms when the last special ended (they are rare)
     property string lastAct: ""
     property bool switching: false
+    // Sleep life: sleepKind classic | blanket; sleepAt = ms when this sleep began; dream = {entry, seed} (a registry entry of js/dreams.mjs);
+    // dreamPhase "" | bubble (the cloud waits for a click, 30 s) | view (the scene plays; dreamAt = when it began); mumble = a sleep-talk line;
+    // journalTab sessions | dreams; sleepLast = ms of the last roll / dream / talk / walk (cooldowns).
+    readonly property bool asleep: ["sleep", "dream", "nightmare", "sleepwalk"].indexOf(mode) >= 0
+    property string sleepKind: "classic"
+    property real sleepAt: 0
+    property var dream: null
+    property string dreamPhase: ""
+    property real dreamAt: 0
+    property string mumble: ""
+    property string journalTab: "sessions"
+    property var sleepLast: ({ roll: 0, dream: 0, talk: 0, walk: 0 })
+    property string groggy: ""     // the clip that follows his wake-up one-shot
     // The singularity (ClawdSingularity): {screen, x, y, animation, frame, mirrored, scale, clock}; clock = ms when its
     // timeline was at 0, set once his screen is captured. blasting: frozen inside it, nothing else moves him.
     property var blast: null       // + kind: singularity | nuke
@@ -111,7 +130,8 @@ Item {
     function clipName(name) {
         const m = Clawd.manifest, alt = { perch: "sit", perch_look: "sit", hop: "land", stumble: "oops", teeter: "idle", peek: "look_right",
             climb: "walk", climb_top: "land", hang: "idle", shimmy: "walk", swing: "idle", drop: "fall",
-            dance: "happy", dance_2: "dance", vibe: "dance", twirl: "dance", wiggle: "dance", breakdance: "dance", shush: "idle", drowsy: "sit", exhausted: "sit", umbrella: "sit", shiver: "idle", chime: "happy" };
+            dance: "happy", dance_2: "dance", vibe: "dance", twirl: "dance", wiggle: "dance", breakdance: "dance", shush: "idle", drowsy: "sit", exhausted: "sit", umbrella: "sit", shiver: "idle", chime: "happy",
+            sleep_blanket: "sleep", sleep_blanket_in: "sleep", sleep_roll: "sleep", sleep_blanket_roll: "sleep_blanket", sleep_blanket_out: "idle", sleep_jolt: "sleep", wake_groggy: "idle", sleep_walk: "walk" };
         return !m || m.animations[name] || !Object.prototype.hasOwnProperty.call(alt, name) ? name : alt[name];
     }
     function ownGrip(anim) {
@@ -137,6 +157,8 @@ Item {
 
     function enter(m, anim, flip, back) {
         if (blasting || dead && ["corpse", "dead", "revive", "carried"].indexOf(m) < 0) return;
+        if (["sleep", "dream", "nightmare", "sleepwalk"].indexOf(m) < 0) dreamAbort();
+        groggy = "";
         const name = clipName(anim), was = grip(animation, mirrored);
         if (m !== "act") { if (act) actAt = Date.now(); act = null; }
         mode = m;
@@ -158,6 +180,7 @@ Item {
         else if ((m === "play" || m === "react") && clip && clip.loop) brain.interval = 3000;
         else if (m === "hang") brain.interval = 4000 + Math.random() * 11000;
         else if (m === "dance") brain.interval = 8000 + Math.random() * 6000;
+        else if (m === "sleep" || m === "dream" || m === "nightmare") brain.interval = Dreams.tickMs(Clawd.lowMotion, Math.random);
         else return;
         brain.start();
     }
@@ -170,8 +193,11 @@ Item {
         if (dead) { if (mode === "dead" && animation !== "dead") enter("dead", "dead"); return; }
         if (mode === "turn" && target !== null) enter("walk", "walk", mirrored);
         else if (mode === "fall") { if (animation !== "fall") enter("fall", "fall"); }  // a startle mid-air is over
+        else if (asleep) sleepNext();
+        else if (mode === "idle" && groggy) { const g = groggy; groggy = ""; enter("idle", g, mirrored); }
         else if (mode === "teeter") edge();
         else if (mode === "peek") unpeek();
+        else if (mode === "chat") { if (chatOpen) enter("chat", chatClip(), mirrored); else idle(); }
         else if (mode === "react" && chain) { const a = chain; chain = ""; enter("react", a); }
         else if (mode === "dance") enter("dance", danceClip());
         else if (mode === "act") actNext();
@@ -180,7 +206,7 @@ Item {
         else if (mode === "drop") fell();
         else if (mode === "shimmy") return;
         else if (mode === "react" && resume && grounded()) { const r = resume; resume = null; enter(r.mode, r.animation, r.mirrored); }
-        else if (["sleep", "drag", "walk", "hop", "recharge", "weekly", "surge"].indexOf(mode) < 0) idle();
+        else if (["sleep", "drag", "walk", "hop", "chat", "recharge", "weekly", "surge"].indexOf(mode) < 0) idle();
     }
     // Back to his resting pose on whatever holds him: perch on a window, idle on the floor; no valid support: fall.
     function idle() {
@@ -194,6 +220,7 @@ Item {
         coverId = "";
         if (!grounded()) { support = null; vy = 0; enter("fall", "fall"); return; }
         if (!support && here) x = clampX(here, x);
+        if (chatOpen) { enterChat(); return; }  // an agent hook does not pull him out of the chat
         if (Clawd.activity) { touch(); enter("work", Clawd.activity === "alert" ? "alert" : Clawd.variant(Clawd.workAnim)); }
         else if (tired) sleep();
         else if (due()) play();
@@ -209,7 +236,8 @@ Item {
         refresh();
         const chance = (Clawd.lowMotion ? 0.1 : ({ calm: 0.25, normal: 0.4, active: 0.6 })[Clawd.speed]) * (mood ? 0.5 : 1);  // a mood walks calmly
         const r = Math.random(), rest = (r - chance) / (1 - chance);
-        if (menuOpen) enter(support ? "perch" : "idle", support ? "perch" : "idle");
+        if (chatOpen) enterChat();
+        else if (menuOpen) enter(support ? "perch" : "idle", support ? "perch" : "idle");
         else if (r < chance) { if (!(r < chance / 4 && explore())) walk(); }  // a quarter of his walks explore
         else if (!support && actReady() && Math.random() < ({ calm: 0.05, normal: 0.08, active: 0.12 })[Clawd.speed]) startAct("");
         else if (support) {
@@ -224,7 +252,7 @@ Item {
     }
     // The idle specials: rare, on the floor, in a calm state; each is a sequence of strips (js/acts.mjs) of their own size.
     function actReady() {
-        return !!here && !!world && !Clawd.lowMotion && !mood && !Clawd.activity && !tired && !menuOpen && !journalOpen && !grab && !owned() && grounded()
+        return !!here && !!world && !Clawd.lowMotion && !mood && !Clawd.activity && !tired && !menuOpen && !journalOpen && !chatOpen && !grab && !owned() && grounded()
             && Date.now() - actAt > 45000;
     }
     function startAct(name) {
@@ -317,6 +345,10 @@ Item {
             target = null;
             walked();
             arrive();
+        } else if (mode === "sleepwalk" && target !== null) {
+            const v = 24 * dt, left = target - x;
+            if (Math.abs(left) > v) x += left > 0 ? v : -v;
+            else { x = target; target = null; sleep(sleepKind, true); }
         } else if (mode === "act" && act && act.to !== undefined) {
             const v = act.v * dt, left = act.to - x;
             if (Math.abs(left) > v) x += left > 0 ? v : -v;
@@ -369,6 +401,7 @@ Item {
         intent = null;
         if (i && i.kind === "edge" && support) return enter("teeter", "teeter", mirrored);
         if (i && i.kind === "climb") return startClimb(i);
+        if (i && i.kind === "notif") return lookRead();
         if (i && i.kind === "visit") { const l = world ? world.ledge(i.id) : null, tx = l ? reach(l) : null; return tx !== null && !owned() ? void hopTo(tx, l) : idle(); }
         if (i && i.kind === "peek") {
             // the window on his right (came to its left edge): peek out leftwards, mirrored
@@ -515,7 +548,7 @@ Item {
 
     // Windows, peeking and the cursor's screen; false when there is nothing to explore.
     function explore() {
-        if (!world || !Clawd.world || Clawd.lowMotion || !here) return false;
+        if (!world || !Clawd.world || Clawd.lowMotion || chatOpen || !here) return false;
         const c = contact(), ops = [];
         let hopOn = null;
         for (const l of world.ledges) {
@@ -687,7 +720,7 @@ Item {
     }
     // The hour struck (ClawdEvents, on the hour): with a clock widget on his display he goes to it and chimes. False when he does not.
     function hourChime() {
-        if (!world || !Clawd.world || Clawd.lowMotion || Clawd.activity || menuOpen || journalOpen || grab || owned() || holding() || ["idle", "sit", "perch", "walk", "turn"].indexOf(mode) < 0) return false;
+        if (!world || !Clawd.world || Clawd.lowMotion || Clawd.activity || menuOpen || journalOpen || chatOpen || grab || owned() || holding() || ["idle", "sit", "perch", "walk", "turn"].indexOf(mode) < 0) return false;
         const w = widgetOn("clock"), now = Date.now();
         if (!w || verdict("clock_hour", now).act !== "react") return false;
         mind = Mind.commit(mind, "clock_hour", now);
@@ -720,7 +753,7 @@ Item {
         const elsewhere = Clawd.world && Clawd.follow && !Clawd.lowMotion && !!c && !c.inside && !!c.display;
         awayChecks = elsewhere ? (awayScreen === c.display ? awayChecks + 1 : 1) : 0;
         awayScreen = elsewhere ? c.display : "";
-        if (awayChecks < 2 || ["idle", "sit", "perch"].indexOf(mode) < 0 || Clawd.activity || menuOpen || journalOpen || grab) return;
+        if (awayChecks < 2 || ["idle", "sit", "perch"].indexOf(mode) < 0 || Clawd.activity || menuOpen || journalOpen || chatOpen || grab) return;
         awayChecks = 0;
         cross(c.display);
     }
@@ -749,10 +782,10 @@ Item {
 
     // Mind's verdict on an event now, with the real context (the shell's settings included).
     function verdict(kind, now, info) {
-        return Mind.decide(Object.assign({}, mind, { drag: !!grab, dead: dead || blasting, scene: owned(), menu: menuOpen, petpet: animation.startsWith("petpet"), hook: Clawd.activity,
-            asleep: mode === "sleep", reactions: Clawd.reactions, dnd: Clawd.dnd, lowMotion: Clawd.lowMotion, mode }), kind, now, info);
+        return Mind.decide(Object.assign({}, mind, { drag: !!grab, dead: dead || blasting, scene: owned(), menu: menuOpen || chatOpen, petpet: animation.startsWith("petpet"), hook: Clawd.activity,
+            asleep: asleep, reactions: Clawd.reactions, dnd: Clawd.dnd, lowMotion: Clawd.lowMotion, mode }), kind, now, info);
     }
-    readonly property var free: ["idle", "sit", "perch", "walk", "turn", "react", "sleep", "work"]
+    readonly property var free: ["idle", "sit", "perch", "walk", "turn", "react", "sleep", "dream", "nightmare", "sleepwalk", "work"]
     // A world event through Mind; a look toward (gx, gy) or the event's own one-shot.
     function feel(kind, gx, gy) {
         if (!Clawd.world || free.indexOf(mode) < 0) return false;
@@ -797,7 +830,7 @@ Item {
     function dance(bpm) {
         beat = bpm > 0 ? Math.max(0.6, Math.min(1.6, bpm / 120)) : 1;
         if (mode === "dance" || mode === "hang" && animation === clipName("swing")) return true;
-        if (owned() || Clawd.lowMotion || Clawd.activity || menuOpen || journalOpen || grab) return false;
+        if (owned() || Clawd.lowMotion || Clawd.activity || menuOpen || journalOpen || chatOpen || grab) return false;
         if (mode === "hang") { if (!has("swing") || !support || support.kind !== "bar") return false; enter("hang", "swing", mirrored); grooved = true; return true; }
         if (["idle", "sit", "perch"].indexOf(mode) < 0 || !grounded() || !has("dance")) return false;
         touch();
@@ -851,7 +884,7 @@ Item {
         support = null; hop = null; cover = null; coverId = ""; peeking = null; resume = null; lost = false;
         target = null;
         intent = null;
-        Clawd.screenName = d.id;
+        Qt.callLater(() => { Clawd.screenName = d.id; });  // not inside `here`'s own evaluation (binding loop at shell start)
         if (dead) {  // his corpse, where it lies; no greeting
             if (mode !== "revive") enter("dead", "dead");
             x = Math.round(d.x + (d.w - width) / 2);
@@ -867,16 +900,138 @@ Item {
         tired = false;
         drowsy.restart();
     }
-    function sleep() {
+    function sleepLoop() { return sleepKind === "blanket" && has("sleep_blanket") ? "sleep_blanket" : "sleep"; }
+    // kind: "classic" | "blanket" | anything else (a coin flip); keepClock: the same night goes on (after a sleepwalk).
+    function sleep(kind, keepClock) {
         target = null;
         tired = false;
         drowsy.stop();
         if (!grounded()) return idle();
-        enter("sleep", "sleep");
+        const fresh = !keepClock || !asleep;
+        sleepKind = (kind === "classic" || kind === "blanket" ? kind === "blanket" : Clawd.roll() < 0.5) && has("sleep_blanket") ? "blanket" : "classic";
+        if (fresh || !sleepAt) sleepAt = Date.now();
+        if (fresh) { dreamAbort(); mumble = ""; }
+        const intro = sleepKind === "blanket" && fresh && has("sleep_blanket_in");
+        enter("sleep", intro ? "sleep_blanket_in" : sleepLoop(), keepClock && mode === "sleepwalk" ? mirrored : false);
+    }
+    // After an intro or a roll clip: back to the loop (a roll leaves him turned the other way).
+    function sleepNext() {
+        const loop = sleepLoop();
+        if (mode === "nightmare" && animation === "sleep_jolt") { if (dreamPhase !== "view") wakeSweat(); return; }  // he stays up, eyes wide, until the scene ends
+        if (mode === "sleepwalk" || animation === loop) return;
+        enter(mode, loop, ["sleep_roll", "sleep_blanket_roll"].indexOf(animation) >= 0 ? !mirrored : mirrored);
     }
     function wake() {
         touch();
-        if (mode === "sleep") enter("idle", "blink");
+        if (!asleep) return;
+        const long = Date.now() - sleepAt >= 15 * 60000, blanket = sleepKind === "blanket" && has("sleep_blanket_out"), groggyNow = long && has("wake_groggy");
+        dreamAbort();
+        if (blanket) { enter("idle", "sleep_blanket_out", mirrored); if (groggyNow) groggy = "wake_groggy"; }
+        else if (groggyNow) enter("idle", "wake_groggy", mirrored);
+        else enter("idle", "blink");
+    }
+    function wakeSweat() {
+        touch();
+        if (has("sweat")) react("sweat"); else enter("idle", "blink");
+    }
+    function sleepTick() {
+        const rnd = () => Clawd.roll();
+        if (mode === "sleep") {
+            const now = Date.now(), ev = Dreams.nextSleepEvent(rnd, { sleptMs: now - sleepAt, now, kind: sleepKind, bubble: dreamPhase === "bubble", last: sleepLast,
+                lowMotion: Clawd.lowMotion, canWalk: canWalk(), hasRoll: has(sleepKind === "blanket" ? "sleep_blanket_roll" : "sleep_roll") });
+            if (ev === "roll") roll();
+            else if (ev === "dream") startDream("");
+            else if (ev === "talk") mumbleNow();
+            else if (ev === "walk") sleepwalk();
+        }
+        if (asleep && mode !== "sleepwalk") { brain.interval = Dreams.tickMs(Clawd.lowMotion, Math.random); brain.start(); }
+    }
+    function markSleep(key) { sleepLast = Object.assign({}, sleepLast, { [key]: Date.now() }); }
+    // Turn over: the roll clip, then the loop mirrored the other way (no clip: just turned).
+    function roll() {
+        if (mode !== "sleep") return;
+        markSleep("roll");
+        const clip = sleepKind === "blanket" ? "sleep_blanket_roll" : "sleep_roll";
+        if (has(clip)) enter("sleep", clip, mirrored); else enter("sleep", sleepLoop(), !mirrored);
+    }
+    // entry: a registry entry, its id, or empty (picks one at random, unseen ones favoured). The cloud waits 30 s for a click.
+    function startDream(entry) {
+        if (mode !== "sleep") return false;
+        const e = entry && typeof entry === "object" ? entry : Dreams.byId(typeof entry === "string" && entry ? entry : Dreams.pick(null, () => Clawd.roll(), Clawd.dreams ? Clawd.dreams.seen : {}));
+        if (!e) return false;
+        mumble = "";
+        dream = { entry: e, seed: Math.floor(Clawd.roll() * 1000000000) };
+        dreamPhase = "bubble";
+        dreamAt = Date.now();
+        markSleep("dream");
+        bubbleTimer.restart();
+        return true;
+    }
+    // The click on the cloud: the scene plays over his sleep (the overlay times it and calls jolt() / dreamed()).
+    function openDream() {
+        if (mode !== "sleep" || dreamPhase !== "bubble" || !dream) return;
+        bubbleTimer.stop();
+        Clawd.recordDream(dream.entry.id, dream.entry.kind);
+        dreamPhase = "view";
+        dreamAt = Date.now();
+        mode = dream.entry.kind === "nightmare" ? "nightmare" : "dream";
+    }
+    // The nightmare's jumpscare: he starts awake in his sleep.
+    function jolt() {
+        if (mode !== "nightmare" || !has("sleep_jolt")) return;
+        enter("nightmare", "sleep_jolt", mirrored);
+    }
+    // The scene is over: a dream returns to the sleep loop, a nightmare wakes him up sweating.
+    function dreamed() {
+        if (mode !== "dream" && mode !== "nightmare" || dreamPhase !== "view") return;
+        const nightmare = mode === "nightmare";
+        dream = null;
+        dreamPhase = "";
+        if (!nightmare) { mode = "sleep"; return; }
+        wakeSweat();
+    }
+    // Whatever interrupts (drag, work, quota, chat, a wake): no dream goes on.
+    function dreamAbort() {
+        bubbleTimer.stop();
+        mumbleTimer.stop();
+        dream = null;
+        dreamPhase = "";
+        mumble = "";
+        if (mode === "dream" || mode === "nightmare") mode = "sleep";
+    }
+    function mumbleNow() {
+        if (mode !== "sleep" || dreamPhase) return;
+        mumble = sleepKind === "blanket" && Clawd.roll() < 0.5 ? Clawd.pick(Dreams.BLANKET_MUMBLES) : Clawd.pick(Dreams.MUMBLES);
+        markSleep("talk");
+        mumbleTimer.restart();
+    }
+    function canWalk() {
+        const s = stand();
+        return mode === "sleep" && !!here && !!world && !support && !grab && !Clawd.lowMotion && grounded() && !!s && s.x1 - s.x0 >= 60;
+    }
+    // A few sleeping steps toward the side with more room, then back to sleep there.
+    function sleepwalk() {
+        if (!canWalk()) return false;
+        const s = stand(), left = x - s.x0, right = s.x1 - x;
+        const dir = Math.abs(left - right) < 80 ? (Clawd.roll() < 0.5 ? -1 : 1) : left > right ? -1 : 1;
+        const to = Math.max(s.x0, Math.min(s.x1, x + dir * (60 + Clawd.roll() * 80)));
+        if (Math.abs(to - x) < 30) return false;
+        dreamAbort();
+        markSleep("walk");
+        target = to;
+        enter("sleepwalk", "sleep_walk", to < x);
+        return true;
+    }
+    // IPC / menu names of js/dreams.mjs: dream, nightmare, blanket, sleepwalk, dream_<id>, nightmare_<id>. Puts him to sleep first if needed.
+    function playDream(name) {
+        if (Dreams.NAMES.indexOf(name) < 0 || owned() || grab || !here || !grounded() || dead) return;
+        const blanket = name === "blanket";
+        if (mode !== "sleep" && !asleep || blanket && mode === "sleep") sleep(blanket ? "blanket" : "classic", blanket && mode === "sleep");
+        if (blanket || mode !== "sleep") return;
+        if (name === "sleepwalk") { sleepwalk(); return; }
+        if (dreamPhase) dreamAbort();
+        const cut = name.indexOf("_"), kind = cut < 0 ? name : name.slice(0, cut), id = cut < 0 ? Dreams.pick(kind, () => Clawd.roll(), Clawd.dreams ? Clawd.dreams.seen : {}) : name.slice(cut + 1);
+        startDream(id);
     }
     function enqueueQuota(name) {
         quotaQueue = quotaQueue.concat([name]);
@@ -895,6 +1050,7 @@ Item {
 
     function perform(name) {
         if (holding()) { letGo(false); return; }  // let go first; the request is dropped
+        if (Dreams.NAMES.indexOf(name) >= 0) return playDream(name);
         if (Acts.NAMES.indexOf(name) >= 0) { if (!owned() && mode !== "act" && !grab && here && grounded() && !support) startAct(name); return; }  // a special by name (IPC play)
         if (name === "limit") return explode(Math.random() < 0.5 ? "singularity" : "nuke");  // the quota ran out: either end
         if (name === "explode") return explode("singularity");
@@ -916,7 +1072,8 @@ Item {
     // they hide him, then reappear(gx) drops his corpse at global x gx and blastDone() ends it.
     function explode(kind) {
         if (blast || !here || dead) return;
-        grab = null; menuOpen = false; journalOpen = false; target = null; intent = null; resume = null; hop = null;
+        grab = null; menuOpen = false; journalOpen = false; chatOpen = false; target = null; intent = null; resume = null; hop = null;
+        dreamAbort();
         brain.stop();
         blast = { kind: kind === "nuke" ? "nuke" : "singularity", screen: Clawd.screenName, x, y, animation, frame: clock.frame, mirrored, scale: Clawd.scale, clock: 0 };
         mode = "explode";
@@ -934,8 +1091,9 @@ Item {
     function die(gx) {
         const d = (gx !== undefined ? displayAt(gx, here ? here.y + here.h / 2 : 0) : null) || here || displays[0];
         if (!d) return;
-        grab = null; menuOpen = false; journalOpen = false; target = null; intent = null; resume = null; hop = null;
+        grab = null; menuOpen = false; journalOpen = false; chatOpen = false; target = null; intent = null; resume = null; hop = null;
         support = null; cover = null; coverId = ""; peeking = null; lost = false; fallTarget = null;
+        dreamAbort();
         dead = true;
         deadAt = Date.now();
         Config.setSetting("addonsV2ClawdDead", deadAt);
@@ -967,7 +1125,7 @@ Item {
     function recharge() {
         if (dead) return revive();
         if (blast || !here || !grounded() || grab && grab.moved || ["recharge", "weekly", "surge", "revive", "corpse", "carried", "explode", "fall", "hop", "drag"].indexOf(mode) >= 0) return;
-        grab = null; menuOpen = false; journalOpen = false; target = null; intent = null; resume = null; hop = null;
+        grab = null; menuOpen = false; journalOpen = false; chatOpen = false; target = null; intent = null; resume = null; hop = null;
         rechargeAt = Date.now();
         enter("recharge", "idle");
     }
@@ -976,7 +1134,7 @@ Item {
     function weekly() {
         if (dead) return revive();
         if (blast || !here || !grounded() || grab && grab.moved || ["recharge", "weekly", "surge", "revive", "corpse", "carried", "explode", "fall", "hop", "drag"].indexOf(mode) >= 0) return;
-        grab = null; menuOpen = false; journalOpen = false; target = null; intent = null; resume = null; hop = null;
+        grab = null; menuOpen = false; journalOpen = false; chatOpen = false; target = null; intent = null; resume = null; hop = null;
         weeklyAt = Date.now();
         enter("weekly", "idle");
     }
@@ -992,7 +1150,7 @@ Item {
     function surge() {
         if (dead) return revive();
         if (blast || !here || !grounded() || grab && grab.moved || ["recharge", "weekly", "surge", "revive", "corpse", "carried", "explode", "fall", "hop", "drag"].indexOf(mode) >= 0) return;
-        grab = null; menuOpen = false; journalOpen = false; target = null; intent = null; resume = null; hop = null;
+        grab = null; menuOpen = false; journalOpen = false; chatOpen = false; target = null; intent = null; resume = null; hop = null;
         surgeAt = Date.now();
         surgeHome = null;
         enter("surge", "idle");
@@ -1065,8 +1223,9 @@ Item {
     }
     // Dropped: he falls onto whatever is below, a window top included.
     function release(gx, gy) {
-        const g = grab;
+        const g = grab, swallow = dbl;
         grab = null;
+        dbl = false;
         if (!g) return;
         touch();
         if (dead) {  // dropped corpse: it falls to the floor of the screen it was dropped on
@@ -1079,9 +1238,8 @@ Item {
             return;
         }
         if (!g.moved) {
-            journalOpen = !journalOpen;
-            if (mode === "sleep") wake();
-            else if (["work", "fall", "hop", "climb", "hang", "shimmy", "drop"].indexOf(mode) < 0) enter("land", Math.random() < 0.5 ? "land" : "blink");
+            if (swallow) return;
+            clickTimer.restart();  // a double-click turns this into the chat
             return;
         }
         refresh();
@@ -1098,8 +1256,9 @@ Item {
     }
     // A session got busy, needs the user or went quiet: stop wandering (and wake) or go back to normal life.
     function busy() {
+        if (mode === "chat") return;  // bubbles still show, he stays in the chat
         if ((Clawd.activity || mode === "work") && holding()) { letGo(false); return; }  // drop -> land -> work
-        if ((Clawd.activity || mode === "work") && ["idle", "sit", "sleep", "walk", "turn", "work", "perch", "teeter", "peek", "dance", "act"].indexOf(mode) >= 0) idle();
+        if ((Clawd.activity || mode === "work") && ["idle", "sit", "sleep", "dream", "nightmare", "sleepwalk", "walk", "turn", "work", "perch", "teeter", "peek", "dance", "act"].indexOf(mode) >= 0) idle();
     }
     // Every 8-12 s at work: the other variant of the loop, or a sweat break when the lead session is strained.
     function shuffle() {
@@ -1109,16 +1268,62 @@ Item {
         else if (Clawd.manifest.animations[two]) enter("work", animation === fam ? two : animation === two ? fam : Clawd.variant(fam));
         else if (animation !== fam) enter("work", fam);
     }
+    // The single click, 250 ms late (a double-click cancels it): the journal.
+    function singleClick() {
+        if (dead || chatOpen) return;
+        if (!journalOpen) journalTab = "sessions";
+        journalOpen = !journalOpen;
+        if (asleep) wake();
+        else if (["work", "fall", "hop", "climb", "hang", "shimmy", "drop", "chat"].indexOf(mode) < 0) enter("land", Math.random() < 0.5 ? "land" : "blink");
+    }
+    // Double-click on him (the overlay calls it): the chat.
+    function doubleClick() {
+        clickTimer.stop();
+        dbl = false;
+        if (dead || blasting || owned() || ["recharge", "weekly", "surge"].indexOf(mode) >= 0) return;
+        dbl = true;
+        if (typeof Clawd.chat === "undefined" || Clawd.chat) chatOpen = true;
+    }
+    function chatClip() {
+        if (chatPhase === "wait") return "think";
+        if (chatPhase === "talk") return has("talk") ? "talk" : "idle";
+        return Math.random() < 0.25 ? "blink" : "idle";
+    }
+    // He stays put, facing the screen centre (the panel).
+    function enterChat() {
+        const mid = here ? here.x + here.w / 2 : x + width / 2;
+        enter("chat", chatClip(), mid < x + width / 2);
+    }
+    // A notification popup (qs-popups) on his screen: he walks under it, looks up, reads. False when he does not.
+    function notifWalk() {
+        if (!world || !Clawd.world || Clawd.lowMotion || !here || support || chatOpen || menuOpen || journalOpen || grab || owned() || holding() || Clawd.activity
+            || ["idle", "sit"].indexOf(mode) < 0 || !grounded()) return false;
+        const r = (world.layerRects || []).find(r => r.ns === "qs-popups" && r.display === here.id);
+        if (!r || verdict("notif", Date.now()).act !== "react") return false;
+        mind = Mind.commit(mind, "notif", Date.now());
+        const to = clampX(here, r.x + r.w / 2 - width / 2);
+        touch();
+        if (!walkTo(to, { kind: "notif" })) lookRead();
+        return true;
+    }
+    function lookRead() { react("look_up"); chain = "read"; }
     function openMenu() {
         if (["revive", "corpse", "carried", "recharge", "weekly", "surge"].indexOf(mode) >= 0) return;
         if (mode === "walk" || mode === "turn" || mode === "act") idle();
         journalOpen = false;
+        chatOpen = false;  // the menu takes over from the chat
         menuOpen = true;
     }
 
     onHeightChanged: if (!switching) placeOnSupport()
     onHereChanged: if (here) placeOnSupport(); else if (displays.length) Qt.callLater(spawn)  // spawn() rewrites screenName, which here depends on
     onSummonChanged: spawn()
+    onChatOpenChanged: {
+        if (chatOpen && (dead || blasting || owned() || ["recharge", "weekly", "surge"].indexOf(mode) >= 0)) { chatOpen = false; return; }
+        if (chatOpen) { menuOpen = false; journalOpen = false; target = null; intent = null; resume = null; chain = ""; if (asleep) wake(); enterChat(); }
+        else if (mode === "chat") idle();
+    }
+    onChatPhaseChanged: if (mode === "chat" && chatOpen) enterChat()
     Component.onCompleted: {
         deadAt = Number(Config.getSetting("addonsV2ClawdDead", 0)) || 0;
         dead = deadAt > 0;
@@ -1159,9 +1364,12 @@ Item {
         running: pet.mode === "work" && Clawd.activity === "work"
         onTriggered: { interval = 8000 + Math.random() * 4000; pet.shuffle(); }
     }
+    Timer { id: clickTimer; interval: 250; onTriggered: pet.singleClick() }
     Timer { id: rising; interval: 1500; onTriggered: pet.revive() }
-    Timer { id: brain; onTriggered: pet.mode === "idle" || pet.mode === "perch" ? pet.think() : pet.next() }
+    Timer { id: brain; onTriggered: pet.asleep ? pet.sleepTick() : pet.mode === "idle" || pet.mode === "perch" ? pet.think() : pet.next() }
+    Timer { id: bubbleTimer; interval: 30000; onTriggered: if (pet.dreamPhase === "bubble") { pet.dreamPhase = ""; pet.dream = null; } }
+    Timer { id: mumbleTimer; interval: 3500; onTriggered: pet.mumble = "" }
     Timer { id: drowsy; interval: pet.sleepAfter; onTriggered: { pet.tired = true; if (["sit", "perch"].indexOf(pet.mode) >= 0 || pet.mode === "idle" && pet.animation === "idle") pet.sleep(); } }
-    Timer { interval: 16; repeat: true; running: ["walk", "fall", "hop", "corpse", "climb", "shimmy", "act"].indexOf(pet.mode) >= 0; onTriggered: pet.step() }
+    Timer { interval: 16; repeat: true; running: ["walk", "fall", "hop", "corpse", "climb", "shimmy", "act", "sleepwalk"].indexOf(pet.mode) >= 0; onTriggered: pet.step() }
     Timer { interval: 2000; repeat: true; running: Clawd.world && Clawd.follow && !Clawd.lowMotion && !!pet.world; onTriggered: pet.follow() }
 }

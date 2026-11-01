@@ -13,9 +13,10 @@ the hook socket stays, so he knows what your agents are doing when he comes back
 | `Super+Shift+L` | Toggle Clawd (`addonsV2Clawd`). Search `clawd` in Keybinds to change it; the installer preserves edits |
 | Left drag | Pick him up; he follows the pointer, across monitors |
 | Release | Falls onto whatever is under the drop point: a window top (he lands, then perches on it) or the floor of that screen |
-| Left click | Small reaction (none while working); wakes him up; opens / closes the sessions journal |
+| Left click | Small reaction (none while working); wakes him up; opens / closes the sessions journal (after 250 ms, so a double click does not open it) |
+| Double click | Opens the chat (see Chat) |
 | Middle click | Petpet: a hand pets him for ~3 s (`> <` eyes); middle click again while petted for `^ ^` eyes and hearts. While an agent works he only startles, then goes back to work |
-| Right click | ASCII menu: `> sleep` / `> wake` (`> revive` while he is dead), `> hide` (turns Clawd off), `> settings`. Escape or an outside click closes it |
+| Right click | ASCII menu: `> sleep` / `> wake` (`> revive` while he is dead), `> dreams` (the journal's dream tab), `> talk` (opens the chat; hidden while dead or chat is off), `> hide` (turns Clawd off), `> settings`. Escape or an outside click closes it |
 
 Left alone he walks along the bottom of his screen (above the bar's reserved
 area), blinks, looks toward the pointer, sits, and falls asleep after the
@@ -200,7 +201,7 @@ ancestor): nothing happens.
 with `typeof` and each event arbitrated by `js/mind.mjs`: a new track shows `♪ <title>` (28 chars); while Spotify plays (not a video
 player) at its own volume ≥ 90 % (MPRIS `volume`) and the reactions are `all` he registers as a Cava consumer (released on stop, OFF, performance mode, quiet/off and
 destruction) and dances (`dance`, `dance_2`, `vibe` with headphones, favoured on a slow beat, `twirl`, `wiggle`, `breakdance`; swing under the bar) at the pace `js/beat.mjs` finds in the low bars (no beat:
-normal pace); notifications make him look up and read (critical: alert, timer app: alert + `⏰ timer`; do-not-disturb mutes
+normal pace); notifications make him walk under the popups layer (`qs-popups`) when he is on the floor and free, then look up and read (critical: alert, timer app: alert + `⏰ timer`; do-not-disturb mutes
 all but critical); bubbles name the app only, never the summary or body; the system volume is ignored, mute
 shushes, brightness ≤ 15 % makes him drowsy (shorter nap delay), a battery ≤ 15 % not charging exhausted (≤ 5 %: urgent
 reaction), charging cheers; the launcher, clipboard and menus make him look up. Moods (`drowsy`, `exhausted`, `rain`)
@@ -218,6 +219,61 @@ dance spot. Rain or storm (`Weather.currentIcon`) puts him in the `rain` mood (a
 mood (shivering); both clear with the sky. A running timer (`TimerState.isActive`) makes him glance up toward the bar now
 and then. All of it follows the reactions setting and Mind's budget, and stops in performance mode, while he is dead or in a scene.
 
+## Chat (lot 6)
+
+Open him from the menu (`> talk`) or double-click him. A terminal panel opens beside him with the last
+lines of the talk and a prompt. `Enter` sends, `Escape` closes it (the history stays), an outside click closes it too.
+`[look]` or `/look …` attaches a screenshot of his screen (grim, JPEG, 1280 px wide at most, on demand only;
+the image is used once and its temporary file deleted). `[clear]` forgets the talk. He answers in the user's
+language; the UI stays English.
+
+Each message carries a context block built by the shell: the active agent sessions (agent, tool, sanitized
+target), quotas, time and mood. Never commands or paths.
+
+Answers come from Codex CLI with the ChatGPT subscription (`gpt-6-luna`, effort low), run isolated: `--ignore-user-config`,
+read-only sandbox, hooks, memories, plugins, apps, shell, exec, browser and computer-use disabled, web search off, env
+whitelist, temporary dir removed after each run. The read-only sandbox alone does not prevent reads, hence the rest.
+History: `~/.local/state/serpantinum/clawd/chat.json` (dir 0700, file 0600), 60 kept, the last 20 sent with each message.
+An answer gets an 85 s budget (one retry after 1.5 s when Codex is busy); the desktop gives up at 95 s.
+Setup: sign in once with `codex login`. The card's `chat` row (`addonsV2ClawdChat`, default on) shows
+`ChatGPT via Codex · signed in` or `run codex login`.
+While he waits he thinks (`think`); while the answer shows he talks (`talk`, pet mode `chat`).
+Files: `scripts/clawd/{brain.js,codex.js,cli-runner.py}`, `payload/clawd/{ClawdChat,ClawdBrain}.qml`.
+
+## Sleep and dreams (lot 7)
+
+He falls asleep after the idle delay (or `> sleep`), the classic way or, one time in two, under a blanket
+(`sleep_blanket_in` then the `sleep_blanket` loop). Pet modes `sleep`, `dream`, `nightmare`, `sleepwalk`; `pet.asleep` covers
+all four. While he sleeps, a tick every 14–28 s (60 s in low motion) may bring one event (`js/dreams.mjs` `nextSleepEvent`):
+
+| Event | Chance per tick | Rules | What you see |
+| --- | --- | --- | --- |
+| turn over | 0.2 | 60 s apart | `sleep_roll` / `sleep_blanket_roll`, then the loop mirrored |
+| dream | 0.18 | after 40 s asleep, 4 min apart; ~1 in 4 is a nightmare | a cloud above his head for 30 s |
+| sleep talk | 0.12 | 90 s apart | a mumbled line (`z five more minutes…`) where his thoughts go; not with Thoughts off |
+| sleepwalk | 0.03 | after 3 min asleep, 15 min apart; on the floor, not in low motion | `sleep_walk`, 60–140 px, then asleep again |
+
+Click the cloud to watch the dream: `ClawdDream.qml` plays the entry's scene under him over the whole screen
+(click-through), wrapped in `shaders/dream.frag` (an iris opening from his head, pastel vignette and stars; for a
+nightmare black-red flicker and grain). He keeps sleeping through a dream. A nightmare ends in a jumpscare: he jolts
+awake (`sleep_jolt`) and wakes up sweating. Anything else (a click, a drag, work, a quota scene, the chat) ends the dream.
+
+| Dream | Kind | Length | Scene |
+| --- | --- | --- | --- |
+| Rainbow surf | dream | 24 s | `ClawdDreamSurf.qml`: the surge's max helper (`clone` poses 38–49, `clone.frag` rainbow) surfs a wave of rainbow tokens, two flips, a shaka under the moon |
+| Gemini | nightmare | 11.7 s | `ClawdNightmareGemini.qml`: her drawing (`sprites/gemini.png`) in the dark, made evil by `shaders/evil.frag` (glitch slices, RGB split, red eyes); jumpscare at 11 s |
+
+Every dream he has is recorded in `addonsV2ClawdDreams` (`{seen: {id: {n, first, last}}, log: [{id, kind, at}]}`, last 40):
+the journal's `☾ dreams` tab shows the collection (`? ???` for the ones he never had, `xN` for the others) and the
+recent ones with their time. Waking up after 15 min or more is groggy (`wake_groggy`: squint, yawn, stretch, wobble); a
+blanket is thrown off first (`sleep_blanket_out`).
+
+IPC: `play dream`, `play nightmare` (a random one), `play dream_surf`, `play nightmare_gemini` (the cloud appears: click it),
+`play blanket`, `play sleepwalk`; every new strip also plays by name. A new dream: an entry in `js/dreams.mjs` `DREAMS`
+(`id`, `kind`, `title`, `glyph`, `scene`, `duration`, `jump` for a nightmare), a scene file taking `t`, `manifest`, `pixel`,
+`ox`, `oy`, `floorY`, `seed`, `reduced`, one line in `ClawdDream.qml` `scenes`, and its name in `clawd.py` `TYPES`.
+Storyboard: `animations/DREAMS.md` in the Clawd project.
+
 ## Settings card
 
 | Row | Setting |
@@ -232,13 +288,14 @@ and then. All of it follows the reactions setting and Mind's budget, and stops i
 | Thoughts | `addonsV2ClawdThoughts`: full (default), verbs, off |
 | World | `addonsV2ClawdWorld` (`windows`: perching, peeking, exploring, window reactions) and `addonsV2ClawdFollow` (`follow` the cursor to other screens), both default on |
 | Reacts | `addonsV2ClawdReactions`: all (default), quiet (urgent events, bubbles, moods), off (urgent only) |
+| Chat | `addonsV2ClawdChat`, default on; the `chat` row shows the Codex sign-in status (`codex login`) |
 
 Settings are shared with the separate Settings process through `settings.json`,
 so the card works in the Settings app and in the integrated `Super+Shift+P` panel.
 
 ## Animations
 
-51 strips (plus the idle specials below). Besides the idle life (`idle`, `blink`, `look_*`, `walk`, `turn`, `sit`, `sleep`,
+60 strips (plus the idle specials below). Besides the idle life (`idle`, `blink`, `look_*`, `walk`, `turn`, `sit`, `sleep`,
 `drag`, `fall`, `land`, `spawn`), petting (`petpet`, `petpetheart`, `startled`) and the working
 loops above:
 
@@ -260,12 +317,20 @@ loops above:
 | `stumble` | 10 / once | workspace switched under him | trips forward, flails, rights himself |
 | `teeter` | 6 / loop | at the end of a window top | tilts over the edge, arms windmilling |
 | `peek` | 4 / loop | half hidden behind a window | eyes at the leading edge, blinks |
+| `talk` | loop, 4 frames | chat answer on screen | rebounds with a stump gesture |
+| `sleep_blanket_in` | 6 / once | falls asleep, blanket variant | notices the folded blanket, lifts it, yawns, lies down, pulls it over |
+| `sleep_blanket` | 2 / loop | asleep under the blanket | breathing quilt, a foot out, floating z |
+| `sleep_roll`, `sleep_blanket_roll` | 8 / once | turns over in his sleep | on his side, belly up, the other side / the quilt heaves into a mound; ends mirrored |
+| `sleep_blanket_out` | 8 / once | wakes under the blanket | eyes open, sits up, the quilt slides off, kicked aside |
+| `sleep_jolt` | 10 / once | a nightmare's jumpscare | leaps up wide-eyed with a `!` and sweat, the quilt flung |
+| `wake_groggy` | 5 / once | wakes after 15 min or more | squints, yawns, arms up on tiptoe, wobbles, shakes it off |
+| `sleep_walk` | 6 / loop | sleepwalking | eyes shut, one arm out ahead, z |
 
 An animation may have a `grip` in `clawd.json`: the point that touches the support, in frame
 pixels from the frame's top-left, unmirrored (`perch` and `perch_look`: the seat line
 `[10.5, 12]`, so his legs hang below the window edge). Without one it is the bottom centre
 (standing). Missing new animations fall back: `perch`/`perch_look` → `sit`, `hop` → `land`,
-`stumble` → `oops`, `teeter` → `idle`, `peek` → `look_right`.
+`stumble` → `oops`, `teeter` → `idle`, `peek` → `look_right`, the sleep strips → `sleep` / `idle` / `walk`.
 
 ### Idle specials
 
@@ -299,9 +364,11 @@ python3 scripts/clawd/sprites.py --check  # exits 1 if committed outputs are sta
 
 Output is deterministic. Palette: transparent, body `#D97757`, eyes `#000000`,
 cream `#F0EEE6` for small props (sleep "z", ✻, keyboard, "!", paper, coin, confetti, sweat drop),
-pink `#EC5B86` for petpet hearts, pencils, ticks and confetti. Frames face right; left is mirrored
+pink `#EC5B86` for petpet hearts, pencils, ticks and confetti. The blanket strips add blanket blue `#6F8FD8`, quilting
+`#4A63B0`, pink trim `#F4B6C8` and sweat `#8FD3FF`. Frames face right; left is mirrored
 at runtime. `hand.png` (the petpet hand, 7 frames frame-locked to `petpet*`) is cut out of
 `scripts/clawd/hand-pet.gif`'s black background by the same script; its size is in `clawd.json` → `hand`.
+`gemini.png` (the nightmare's drawing) is copied as is from `scripts/clawd/gemini.png`; its size is in `clawd.json` → `gemini`.
 
 ## Install and remove
 
@@ -385,7 +452,8 @@ spinner line with a spinner verb) and each sends a vertical beam across the scre
 rings, white sweeps, rainbow, lightning arcs and shake). Then he rises, light at the end of his arms, their streams
 arc into him and an ASCII bar recharges the week (`[#####.....]  48% left` -> `RESTORED`), a burst, the helpers vanish,
 he lands, a blackout hides the way back to the workspace he left, and he stays in the middle of his screen.
-Storyboard: `animations/SURGE.md` in the Clawd project. Poses `surge` (22); helpers `clone` (8, white body).
+Storyboard: `animations/SURGE.md` in the Clawd project. Poses `surge` (22); helpers `clone` (38 poses, white body; 38–49 are
+the dream surfer's).
 
 ### Dead, and revived
 

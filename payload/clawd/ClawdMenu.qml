@@ -9,7 +9,7 @@ FocusScope {
     property Item anchor: null
     property int current: 0
     readonly property int cols: 12
-    readonly property var rows: [pet.dead ? "revive" : pet.mode === "sleep" ? "wake" : "sleep", "hide", "settings"]
+    readonly property var rows: (!pet.dead && Clawd.chat ? ["talk"] : []).concat([pet.dead ? "revive" : pet.asleep ? "wake" : "sleep", "dreams", "hide", "settings"])
     readonly property color accent: ThemeBackend.primary
     width: box.implicitWidth
     height: box.implicitHeight
@@ -25,8 +25,10 @@ FocusScope {
 
     function choose(i) {
         pet.menuOpen = false;
-        if (rows[i] === "sleep") pet.sleep();
+        if (rows[i] === "talk") pet.chatOpen = true;
+        else if (rows[i] === "sleep") pet.sleep();
         else if (rows[i] === "wake") pet.wake();
+        else if (rows[i] === "dreams") { pet.journalTab = "dreams"; pet.journalOpen = true; }
         else if (rows[i] === "revive") pet.revive();
         else if (rows[i] === "hide") Config.setSetting("addonsV2Clawd", false);
         else Quickshell.execDetached(["bash", Caching.serpantinumDir + "/scripts/settings.sh", "open", "addons", "addons_general"]);

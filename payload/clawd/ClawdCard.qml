@@ -27,6 +27,7 @@ Rectangle {
     property bool summoned: false
     property string hookNote: ""
     property bool hookFailed: false
+    property var chatSigned: null
     property int hookRuns: 0       // hooks.py runs in flight: they share ~/.claude/settings.json, one change at a time
     function setScale(value) { Config.setSetting("addonsV2ClawdScale", Math.max(2, Math.min(8, Math.round(value)))); }
     function nap(step) {
@@ -376,6 +377,27 @@ Rectangle {
                 }
             }
             T { visible: !card.compact; color: card.dim; text: "  ⎿ above his head while claude works" }
+        }
+        Line {
+            label: "chat"
+            Key {
+                objectName: "clawdChatToggle"
+                label: (Clawd.chat ? "[x]" : "[ ]") + " on"
+                accessibleName: "Chat"
+                checkable: true; checked: Clawd.chat
+                onActivated: Config.setSetting("addonsV2ClawdChat", !Clawd.chat)
+            }
+            Process {
+                id: chatStatus
+                command: ["node", Clawd.scripts + "/brain.js", "status"]
+                running: true
+                stdout: StdioCollector {
+                    onStreamFinished: {
+                        try { const r = JSON.parse(text); card.chatSigned = r.ok && r.data ? r.data.signedIn === true : false; } catch (error) { card.chatSigned = false; }
+                    }
+                }
+            }
+            T { visible: !card.compact; color: card.dim; text: "  ⎿ ChatGPT via Codex · " + (card.chatSigned === null ? "checking" : card.chatSigned ? "signed in" : "run codex login") }
         }
         Item { width: 1; height: card.lh * 0.5 }
         Frame {

@@ -9,7 +9,8 @@ from pathlib import Path
 MARK = 'serpantinum-clawd-v2'
 TYPES = ['singleton Clawd 1.0 clawd/Clawd.qml'] + [f'{name} 1.0 clawd/{name}.qml' for name in
          ('AddonClawd', 'ClawdOverlay', 'ClawdPet', 'ClawdWorld', 'ClawdEvents', 'ClawdSprite', 'ClawdMenu', 'ClawdBubble', 'ClawdJournal', 'ClawdThought', 'ClawdSettings', 'ClawdCard',
-          'ClawdSingularity', 'ClawdBlast', 'ClawdNuke', 'ClawdRevive', 'ClawdRecharge', 'ClawdSymphony', 'ClawdSurge')]
+          'ClawdSingularity', 'ClawdBlast', 'ClawdNuke', 'ClawdRevive', 'ClawdRecharge', 'ClawdSymphony', 'ClawdSurge', 'ClawdChat', 'ClawdBrain',
+          'ClawdDream', 'ClawdDreamSurf', 'ClawdNightmareGemini', 'ClawdDreamBubble')]
 CHORD = 'SUPER + SHIFT + L'
 
 

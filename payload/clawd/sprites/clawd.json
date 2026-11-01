@@ -498,6 +498,60 @@
       "fps": 8,
       "loop": true
     },
+    "talk": {
+      "file": "talk.png",
+      "frames": 4,
+      "fps": 6,
+      "loop": true
+    },
+    "sleep_blanket_in": {
+      "file": "sleep_blanket_in.png",
+      "frames": 10,
+      "fps": 6,
+      "loop": false
+    },
+    "sleep_blanket": {
+      "file": "sleep_blanket.png",
+      "frames": 6,
+      "fps": 2,
+      "loop": true
+    },
+    "sleep_roll": {
+      "file": "sleep_roll.png",
+      "frames": 8,
+      "fps": 8,
+      "loop": false
+    },
+    "sleep_blanket_roll": {
+      "file": "sleep_blanket_roll.png",
+      "frames": 8,
+      "fps": 8,
+      "loop": false
+    },
+    "sleep_blanket_out": {
+      "file": "sleep_blanket_out.png",
+      "frames": 6,
+      "fps": 8,
+      "loop": false
+    },
+    "sleep_jolt": {
+      "file": "sleep_jolt.png",
+      "frames": 6,
+      "fps": 10,
+      "loop": false
+    },
+    "wake_groggy": {
+      "file": "wake_groggy.png",
+      "frames": 10,
+      "fps": 5,
+      "loop": false
+    },
+    "sleep_walk": {
+      "file": "sleep_walk.png",
+      "frames": 4,
+      "fps": 6,
+      "loop": true
+    },
     "book_idle": {
       "file": "book_idle.png",
       "frames": 1,
@@ -904,7 +958,7 @@
   },
   "clone": {
     "file": "clone.png",
-    "frames": 38,
+    "frames": 50,
     "w": 21,
     "h": 14
   },
@@ -919,5 +973,10 @@
     "frames": 7,
     "w": 158,
     "h": 166
+  },
+  "gemini": {
+    "file": "gemini.png",
+    "w": 270,
+    "h": 503
   }
 }

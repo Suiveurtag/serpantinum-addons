@@ -9,9 +9,11 @@ import "../"
 PanelWindow {
     id: overlay
     required property var pet
+    property var brain: null
     readonly property var here: pet.display(screen.name)
     readonly property bool menuHere: pet.menuOpen && Clawd.screenName === screen.name
-    readonly property bool journalHere: pet.journalOpen && Clawd.screenName === screen.name && !menuHere
+    readonly property bool chatHere: pet.chatOpen && Clawd.chat && Clawd.screenName === screen.name
+    readonly property bool journalHere: pet.journalOpen && Clawd.screenName === screen.name && !menuHere && !chatHere
     readonly property bool petHere: !!here && pet.width > 0 && pet.x < here.x + here.w && pet.x + pet.width > here.x
         && pet.y < here.y + here.h && pet.y + pet.height > here.y
     readonly property bool exploding: pet.blasting && petHere   // ClawdSingularity draws him meanwhile
@@ -19,6 +21,7 @@ PanelWindow {
     readonly property bool recharging: pet.mode === "recharge" && Clawd.screenName === screen.name
     readonly property bool symphonic: pet.mode === "weekly" && Clawd.screenName === screen.name
     readonly property bool surging: pet.mode === "surge" && Clawd.screenName === screen.name
+    readonly property bool dreaming: (pet.mode === "dream" || pet.mode === "nightmare") && Clawd.screenName === screen.name
     readonly property alias thought: thought
     readonly property alias frameBox: frameBox
     readonly property alias viewport: viewport
@@ -27,19 +30,24 @@ PanelWindow {
     readonly property alias recharge: recharge
     readonly property alias symphony: symphony
     readonly property alias surge: surge
+    readonly property alias dreamScene: dreamScene
+    readonly property alias dreamBubble: dreamBubble
     readonly property alias menu: menu
+    readonly property alias chat: chat
     color: "transparent"
     anchors { top: true; bottom: true; left: true; right: true }
     exclusionMode: ExclusionMode.Ignore
-    focusable: menuHere
+    focusable: menuHere || chatHere
     WlrLayershell.namespace: "qs-addon-clawd"
     WlrLayershell.layer: WlrLayer.Top
-    WlrLayershell.keyboardFocus: menuHere ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+    WlrLayershell.keyboardFocus: (menuHere || chatHere) ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
     mask: Region {
         Region { item: hitBox.visible ? hitBox : null }
         Region { item: menu.visible ? menu : null }
         Region { item: bubble.visible ? bubble : null }
+        Region { item: dreamBubble.visible ? dreamBubble : null }
         Region { item: journal.visible ? journal : null }
+        Region { item: chat.visible ? chat : null }
     }
 
     // frameBox = his whole frame, the anchor of everything around him; viewport = the part of it you see: minus what
@@ -89,6 +97,7 @@ PanelWindow {
             onPressed: mouse => { const p = at(mouse); overlay.pet.press(mouse.button, p.x, p.y); }
             onPositionChanged: mouse => { const p = at(mouse); overlay.pet.move(p.x, p.y); }
             onReleased: mouse => { if (mouse.button === Qt.LeftButton) { const p = at(mouse); overlay.pet.release(p.x, p.y); } }
+            onDoubleClicked: mouse => { if (mouse.button === Qt.LeftButton) overlay.pet.doubleClick(); }
             onCanceled: overlay.pet.release()
         }
     }
@@ -119,6 +128,34 @@ PanelWindow {
         sourceClipRect: strip ? Qt.rect(frame % strip.frames * strip.w, 0, strip.w, strip.h) : Qt.rect(0, 0, 0, 0)
         smooth: false
         Timer { interval: smoke.strip ? 1000 / smoke.strip.fps : 166; repeat: true; running: smoke.visible; onTriggered: smoke.frame++ }
+    }
+
+    // His dream (or nightmare) over his sleep, under him: click-through (not in the mask). The registry entry says how long it
+    // lasts and when a nightmare's jumpscare makes him jolt awake; its end puts him back to sleep, or wakes him sweating.
+    ClawdDream {
+        id: dreamScene
+        property bool jolted: false
+        z: -1
+        anchors.fill: parent
+        visible: overlay.dreaming && !!overlay.here
+        entry: overlay.pet.dream ? overlay.pet.dream.entry : null
+        seed: overlay.pet.dream ? overlay.pet.dream.seed : 0
+        manifest: Clawd.manifest
+        pixel: Clawd.scale
+        ox: frameBox.x
+        oy: frameBox.y
+        floorY: overlay.here ? overlay.here.floor - overlay.here.y : height
+        onVisibleChanged: jolted = false
+        FrameAnimation {
+            running: dreamScene.visible
+            onTriggered: {
+                const e = dreamScene.entry;
+                if (!e) return;
+                dreamScene.t = (Date.now() - overlay.pet.dreamAt) / 1000;
+                if (e.jump !== undefined && !dreamScene.jolted && dreamScene.t >= e.jump) { dreamScene.jolted = true; overlay.pet.jolt(); }
+                if (dreamScene.t >= e.duration) overlay.pet.dreamed();
+            }
+        }
     }
 
     // His revival over the live desktop: click-through (not in the mask); its end brings him back.
@@ -228,11 +265,20 @@ PanelWindow {
         visible: !!Clawd.bubble && overlay.petHere && !overlay.menuHere && !overlay.journalHere && !overlay.exploding && !overlay.surging
     }
 
-    // Above his head while an agent works; deliberately not in the mask: clicks go through it.
+    // The cloud of a dream waiting for a click (in the mask: the click opens it).
+    ClawdDreamBubble {
+        id: dreamBubble
+        pet: overlay.pet
+        anchor: frameBox
+        visible: overlay.pet.mode === "sleep" && overlay.pet.dreamPhase === "bubble" && !!overlay.pet.dream && overlay.petHere && !overlay.menuHere && !overlay.journalHere && !overlay.chatHere
+    }
+
+    // Above his head while an agent works, or what he mumbles in his sleep; deliberately not in the mask: clicks go through it.
     ClawdThought {
         id: thought
         anchor: frameBox
-        visible: Clawd.thinking && overlay.petHere && !bubble.visible && !overlay.menuHere && !overlay.journalHere && !overlay.exploding && !overlay.pet.dead && !overlay.recharging && !overlay.symphonic && !overlay.surging
+        say: overlay.pet.mumble
+        visible: (Clawd.thinking || !!overlay.pet.mumble && Clawd.thoughts !== "off") && !dreamBubble.visible && overlay.petHere && !bubble.visible && !overlay.menuHere && !overlay.journalHere && !overlay.exploding && !overlay.pet.dead && !overlay.recharging && !overlay.symphonic && !overlay.surging
     }
 
     ClawdJournal {
@@ -252,6 +298,14 @@ PanelWindow {
         font.family: ThemeBackend.fontFamily; font.pixelSize: Math.round(Scaler.s(12)); font.bold: true
     }
 
+    ClawdChat {
+        id: chat
+        pet: overlay.pet
+        brain: overlay.brain
+        anchor: frameBox
+        visible: overlay.chatHere && !overlay.exploding
+    }
+
     ClawdMenu {
         id: menu
         pet: overlay.pet
@@ -259,7 +313,7 @@ PanelWindow {
         visible: overlay.menuHere
     }
 
-    HyprlandFocusGrab { windows: [overlay]; active: overlay.menuHere; onCleared: overlay.pet.menuOpen = false }
+    HyprlandFocusGrab { windows: [overlay]; active: overlay.menuHere || overlay.chatHere; onCleared: { overlay.pet.menuOpen = false; overlay.pet.chatOpen = false; } }
     Component.onCompleted: Clawd.mounted()
     Component.onDestruction: Clawd.unmounted()
 }

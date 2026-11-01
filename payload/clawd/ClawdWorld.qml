@@ -14,7 +14,7 @@ Scope {
     property var pet: null
     readonly property bool hypr: Hyprland.requestSocketPath !== ""
     readonly property bool live: Clawd.world
-    readonly property bool asleep: !!pet && pet.mode === "sleep"
+    readonly property bool asleep: !!pet && pet.asleep
     property var fake: null            // injected {clients, monitors, screens}
     property var clients: []           // last j/clients
     property bool fed: false           // clients arrived at least once since the world was turned on

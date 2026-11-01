@@ -46,13 +46,14 @@ Scope {
             readonly property alias world: around
             readonly property alias blasts: singular.instances
             readonly property alias events: shell
+            ClawdBrain { id: brainHost }
             ClawdWorld { id: around; pet: body }
             ClawdPet { id: body; world: around }
             ClawdEvents { id: shell; pet: body }
             Variants {
                 id: views
                 model: Quickshell.screens
-                delegate: ClawdOverlay { required property var modelData; screen: modelData; pet: body }
+                delegate: ClawdOverlay { required property var modelData; screen: modelData; pet: body; brain: brainHost }
             }
             // above everything only while he goes singular
             Variants {

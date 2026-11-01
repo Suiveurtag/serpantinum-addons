@@ -32,7 +32,7 @@ ShellRoot {
                 break;
             case 1:
                 if (!wait(Clawd.instances === Quickshell.screens.length && Clawd.manifest && host.pet, "one overlay per screen")) break;
-                expect(!!Clawd.manifest.animations.explode && Object.keys(Clawd.manifest.animations).length === 109 && Clawd.manifest.frame.w === 21, "manifest loaded");
+                expect(!!Clawd.manifest.animations.explode && Object.keys(Clawd.manifest.animations).length === 118 && Clawd.manifest.frame.w === 21, "manifest loaded");
                 expect(p.mode === "spawn" && Clawd.screenName === Quickshell.screens[0].name, "spawns on a screen");
                 expect(Math.abs(p.y - floorY()) < 1 && p.height === Clawd.manifest.frame.h * 4, "spawn on the floor at x4");
                 break;
@@ -68,7 +68,7 @@ ShellRoot {
                 break;
             case 6:
                 if (!wait(p.mode === "idle", "land, then idle")) break;
-                p.press(Qt.LeftButton, p.x + 5, p.y + 5); p.release(p.x + 5, p.y + 5);
+                p.singleClick();  // the click itself is 250 ms late (a double-click cancels it): its timer's effect
                 expect(p.mode === "land", "click reacts");
                 p.walk();
                 break;
@@ -79,12 +79,14 @@ ShellRoot {
             case 8:
                 if (!wait(p.mode === "idle" && !p.mirrored, "walk ends facing front")) break;
                 expect(Math.abs(p.x - startX) >= 8 && Math.abs(p.y - floorY()) < 1, "walked along the floor");
+                Clawd.dice = 0.9;   // the classic sleep (< 0.5: under a blanket)
                 p.sleepAfter = 300; p.touch();
                 break;
             case 9:
                 if (!wait(p.mode === "sleep" && p.animation === "sleep", "falls asleep")) break;
-                p.press(Qt.LeftButton, p.x + 5, p.y + 5); p.release(p.x + 5, p.y + 5);
+                p.singleClick();
                 expect(p.mode === "idle", "click wakes");
+                Clawd.dice = null;
                 p.sleepAfter = 600000; p.touch();
                 break;
             case 10:
@@ -144,7 +146,7 @@ ShellRoot {
                 Clawd.focus("codex:c9");  // no window owns 99999: nothing happens
                 hook("codex", "SessionEnd", "c9");
                 expect(Clawd.busyCount === 1 && fam(p.animation) === "bash", "back to the other session's tool");
-                p.press(Qt.LeftButton, p.x + 5, p.y + 5); p.release(p.x + 5, p.y + 5);
+                p.singleClick();
                 expect(p.journalOpen && p.mode === "work", "click opens the journal without leaving work");
                 p.openMenu();
                 expect(!p.journalOpen, "menu closes the journal");

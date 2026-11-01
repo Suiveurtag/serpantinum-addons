@@ -60,7 +60,10 @@ Scope {
         const timerApp = typeof I18n !== "undefined" ? I18n.t("quickactions.timer.notification.app_name") : "";
         if (full && full === timerApp) tell("timer_ring", {}, "⏰ timer");
         else if (urgency >= 2) tell("notif_critical", {}, "! " + (app || "notification"));
-        else if (urgency === 1 || isNaN(urgency)) tell("notif", { chain: "read" }, "✉ " + (app || "notification"));
+        else if (urgency === 1 || isNaN(urgency)) {
+            if (pet && pet.notifWalk()) Clawd.say("shell:notif", "notif", "✉ " + (app || "notification"));
+            else tell("notif", { chain: "read" }, "✉ " + (app || "notification"));
+        }
         else tell("notif", {}, "");
     }
     Connections {

@@ -12,7 +12,11 @@ conduct = the weekly reset's conductor (bow tie 'r', baton 'z'/'w'; 16 poses: fr
 orchestra = its 7 musicians 15x12, A/B frames each (violin, flute, cello, trumpet, harp, timpani, cymbals; brown 'k').
 surge = the superpowered weekly scene's poses (ClawdSurge.qml: startle, look, poker face, inhale, power, dash, wink, skid, slam,
 levitate, triumph; white 'w' glowing eyes); clone = his helpers, white-bodied ('w', recoloured per effort level by clone.frag):
-idle, bob, typing A/B, cheer A/B, landing squash, looking at the middle, then A/B work poses copied from read, bash, search, edit, todo, web.
+idle, bob, typing A/B, cheer A/B, landing squash, looking at the middle, then A/B work poses copied from read, bash, search, edit, todo, web,
+then (38..49) the dream surfer on a brown 'k' board with a gold 'q' stripe: ride, crouch, lean forward/back, balance A/B, pre-jump crouch,
+launch, tuck, back view (mid-flip), landing squash, shaka (ClawdDreamSurf.qml picks them by index).
+lot 7 (sleep): the blanket clips use SLEEPY (blanket blue 'b', quilting 'n', pink trim 'p', sweat 'y'); a roll's last frame is the mirror
+of its loop's frame 0 (the pet flips `mirrored` when it ends). gemini.png (the nightmare's drawing) is copied as is from scripts/clawd/gemini.png.
 recharge = the 5 h reset poses (ClawdRecharge.qml): drained and dark ('e'), refilling from the feet up in 5 levels, white, cream.
 hand.png (the petpet hand, drawn over Clawd in sync with his frames) is cut out of scripts/clawd/hand-pet.gif.
 An animation may set a grip = its contact point with the support, in frame pixels from the frame's top-left, unmirrored
@@ -70,6 +74,11 @@ ANIMS = {
     'vibe': (4, True), 'twirl': (8, True), 'wiggle': (8, True),
     # breakdance: toprock, drop, handstand, head spin with legs flying, recover (ClawdPet.danceClip picks it too)
     'breakdance': (8, True),
+    # lot 6: chat
+    'talk': (6, True),
+    # lot 7: sleep (a blanket, turning over, the nightmare's jolt, the groggy wake-up, sleepwalking)
+    'sleep_blanket_in': (6, False), 'sleep_blanket': (2, True), 'sleep_roll': (8, False), 'sleep_blanket_roll': (8, False),
+    'sleep_blanket_out': (8, False), 'sleep_jolt': (10, False), 'wake_groggy': (5, False), 'sleep_walk': (6, True),
 }
 BLAST = {**PALETTE, **{k: tuple(bytes.fromhex(v)) + (255,) for k, v in {
     'a': 'e8946c', 'b': 'f4b68e', 'c': 'fcddc2', 'w': 'ffffff', 'v': '6e3bff'}.items()}}
@@ -86,8 +95,11 @@ SPECIALS = ('book_idle', 'book_blink', 'bike_ride', 'broom_fly', 'boat_idle', 'b
             'camp_fire_burn', 'camp_fire_die', 'camp_binoc_raise', 'camp_binoc_look_right', 'camp_binoc_flip_left', 'camp_binoc_look_left',
             'camp_binoc_lower', 'camp_camera_raise', 'camp_camera_shoot', 'camp_camera_away', 'camp_lie_down', 'camp_lie_idle', 'camp_stand_up',
             'content_idle', 'content_bounce')
+SLEEPY = {**PALETTE, **{k: tuple(bytes.fromhex(v)) + (255,) for k, v in {'b': '6f8fd8', 'n': '4a63b0', 'p': 'f4b6c8', 'y': '8fd3ff'}.items()}}
+SLEEPY_CLIPS = {'sleep_blanket_in', 'sleep_blanket', 'sleep_blanket_roll', 'sleep_blanket_out', 'sleep_jolt'}
 NEW = {'nuke', 'dead', 'dead_land', 'revive', 'tada', 'recharge', 'conduct', 'surge'}
 HAND = Path(__file__).resolve().parent/'hand-pet.gif'
+GEMINI = Path(__file__).resolve().parent/'gemini.png'
 HAND_SCALE = 3  # source frames are 474x498, Clawd shows the hand at most ~16 px x8
 
 
@@ -188,7 +200,7 @@ def build():
     files = {}
     manifest = {'frame': {'w': W, 'h': H}, 'animations': {}}
     for name, (fps, loop, *grip) in ANIMS.items():
-        palette = BLAST if name == 'explode' else LIMIT if name in NEW else PALETTE
+        palette = BLAST if name == 'explode' else LIMIT if name in NEW else SLEEPY if name in SLEEPY_CLIPS else PALETTE
         blocks = frames(name, palette=palette)
         files[f'{name}.png'] = png(blocks, palette=palette)
         manifest['animations'][name] = {'file': f'{name}.png', 'frames': len(blocks), 'fps': fps, 'loop': loop}
@@ -214,6 +226,9 @@ def build():
     files['mushroom.png'] = png(cloud, 96, 96, MUSHROOM)
     manifest['mushroom'] = {'file': 'mushroom.png', 'frames': len(cloud), 'w': 96, 'h': 96}
     files['hand.png'], manifest['hand'] = hand()
+    files['gemini.png'] = GEMINI.read_bytes()
+    gw, gh = Image.open(GEMINI).size
+    manifest['gemini'] = {'file': 'gemini.png', 'w': gw, 'h': gh}
     files['clawd.json'] = (json.dumps(manifest, indent=2) + '\n').encode()
     return files
 

@@ -28,7 +28,8 @@ ANIMATIONS = ['idle', 'blink', 'look_left', 'look_right', 'look_up', 'walk', 'tu
               'edit', 'edit_2', 'work_2', 'read_2', 'bash_2', 'search_2', 'web_2', 'task_2', 'todo_2', 'think_2', 'happy_2',
               'celebrate', 'sweat', 'coin', 'sad', 'wave', 'explode',
               'perch', 'perch_look', 'hop', 'stumble', 'teeter', 'peek', 'nuke', 'dead', 'dead_land', 'revive', 'tada', 'recharge', 'conduct', 'surge',
-              'climb', 'climb_top', 'hang', 'shimmy', 'swing', 'drop', 'dance', 'dance_2', 'shush', 'drowsy', 'exhausted', 'umbrella', 'shiver', 'chime', 'vibe', 'twirl', 'wiggle', 'breakdance']
+              'climb', 'climb_top', 'hang', 'shimmy', 'swing', 'drop', 'dance', 'dance_2', 'shush', 'drowsy', 'exhausted', 'umbrella', 'shiver', 'chime', 'vibe', 'twirl', 'wiggle', 'breakdance', 'talk',
+              'sleep_blanket_in', 'sleep_blanket', 'sleep_roll', 'sleep_blanket_roll', 'sleep_blanket_out', 'sleep_jolt', 'wake_groggy', 'sleep_walk']
 SPECIALS = ['book_idle', 'book_blink', 'bike_ride', 'broom_fly', 'boat_idle', 'boat_row_in', 'boat_row', 'boat_row_out', 'boat_row_brief', 'boat_fish_in', 'boat_fish_wait', 'boat_fish_catch', 'boat_fish_out', 'boat_bino', 'carry_walk', 'camp_stand', 'camp_fire_build', 'camp_fire_burn', 'camp_fire_die', 'camp_binoc_raise', 'camp_binoc_look_right', 'camp_binoc_flip_left', 'camp_binoc_look_left', 'camp_binoc_lower', 'camp_camera_raise', 'camp_camera_shoot', 'camp_camera_away', 'camp_lie_down', 'camp_lie_idle', 'camp_stand_up', 'content_idle', 'content_bounce']  # the idle specials: own canvas (w, h) and grip
 ANIMATIONS += SPECIALS
 HOOKS = ROOT/'scripts/clawd/hooks.py'
@@ -44,7 +45,10 @@ BLAST = PALETTE | {(0xE8, 0x94, 0x6C, 255), (0xF4, 0xB6, 0x8E, 255), (0xFC, 0xDD
 # the limit's nuclear variant, his corpse and his revival: red alarm, sweat, greys, dust, gold
 LIMIT = BLAST | {(0xE5, 0x48, 0x4D, 255), (0x8F, 0xD3, 0xFF, 255), (0x8C, 0x87, 0x82, 255), (0x5C, 0x58, 0x54, 255), (0xB8, 0xB2, 0xAA, 255),
                  (0xC9, 0xC4, 0xBE, 255), (0xFF, 0xD5, 0x6B, 255), (0x8F, 0x4A, 0x38, 255), (0x7A, 0x4A, 0x30, 255)}
-SHADERS = ['bulge', 'clone', 'desk', 'fx', 'lens', 'nuke', 'revive', 'surge', 'symphony']
+SHADERS = ['bulge', 'clone', 'desk', 'dream', 'evil', 'fx', 'lens', 'nuke', 'revive', 'surge', 'symphony']
+# lot 7: the blanket clips (and the nightmare's jolt): blanket blue, quilting, pink trim, sweat
+SLEEPY = PALETTE | {(0x6F, 0x8F, 0xD8, 255), (0x4A, 0x63, 0xB0, 255), (0xF4, 0xB6, 0xC8, 255), (0x8F, 0xD3, 0xFF, 255)}
+SLEEPY_CLIPS = ('sleep_blanket_in', 'sleep_blanket', 'sleep_blanket_roll', 'sleep_blanket_out', 'sleep_jolt')
 COLORS = {'base': '#1e1e2e', 'mantle': '#181825', 'crust': '#11111b', 'text': '#cdd6f4', 'subtext0': '#a6adc8', 'subtext1': '#bac2de', 'surface0': '#313244',
           'surface1': '#45475a', 'surface2': '#585b70', 'overlay0': '#6c7086', 'overlay1': '#7f849c', 'overlay2': '#9399b2', 'blue': '#89b4fa', 'primary': '#89b4fa',
           'mauve': '#cba6f7', 'green': '#a6e3a1', 'red': '#f38ba8', 'pink': '#f5c2e7', 'yellow': '#f9e2af', 'peach': '#fab387'}
@@ -127,8 +131,8 @@ class ClawdInstallTests(unittest.TestCase):
         copied = clawd.resources(PAYLOAD, qs)
         files = sorted(p for p in PAYLOAD.rglob('*') if p.is_file())
         names = {str(p.relative_to(PAYLOAD)) for p in files}
-        expected = ({line.split()[-1].removeprefix('clawd/') for line in clawd.TYPES} | {'sprites/clawd.json'} | {f'sprites/{a}.png' for a in ANIMATIONS + ['hand', 'antimatter', 'smoke', 'mushroom', 'orchestra', 'clone']}
-                    | {'js/world.mjs', 'js/mind.mjs', 'js/beat.mjs', 'js/acts.mjs', 'shaders/manifest.json'} | {f'shaders/{n}.frag{q}' for n in SHADERS for q in ('', '.qsb')})
+        expected = ({line.split()[-1].removeprefix('clawd/') for line in clawd.TYPES} | {'sprites/clawd.json'} | {f'sprites/{a}.png' for a in ANIMATIONS + ['hand', 'antimatter', 'smoke', 'mushroom', 'orchestra', 'clone', 'gemini']}
+                    | {'js/world.mjs', 'js/mind.mjs', 'js/beat.mjs', 'js/acts.mjs', 'js/dreams.mjs', 'shaders/manifest.json'} | {f'shaders/{n}.frag{q}' for n in SHADERS for q in ('', '.qsb')})
         self.assertEqual(names, expected)  # nothing stray gets installed
         self.assertEqual(len(copied), len(files))
         hashed = {}
@@ -139,7 +143,8 @@ class ClawdInstallTests(unittest.TestCase):
                 self.assertEqual((path.parent, blob), (qs/'clawd/shaders', source.read_bytes()))
             elif b'shaders/' not in source.read_bytes() or source.suffix != '.qml':
                 self.assertEqual((path, blob), (qs/'clawd'/source.relative_to(PAYLOAD), source.read_bytes()))
-        used = {'ClawdBlast.qml': ['desk', 'fx', 'lens'], 'ClawdNuke.qml': ['nuke', 'lens'], 'ClawdRevive.qml': ['revive'], 'ClawdSymphony.qml': ['symphony'], 'ClawdSurge.qml': ['bulge', 'surge', 'clone']}
+        used = {'ClawdBlast.qml': ['desk', 'fx', 'lens'], 'ClawdNuke.qml': ['nuke', 'lens'], 'ClawdRevive.qml': ['revive'], 'ClawdSymphony.qml': ['symphony'], 'ClawdSurge.qml': ['bulge', 'surge', 'clone'],
+                'ClawdDream.qml': ['dream'], 'ClawdDreamSurf.qml': ['clone'], 'ClawdNightmareGemini.qml': ['evil']}
         for qml, names in used.items():
             text = dict(copied)[qs/'clawd'/qml].decode()
             self.assertNotRegex(text, r'shaders/\w+\.frag\.qsb', qml)
@@ -211,16 +216,38 @@ class ClawdSpriteTests(unittest.TestCase):
                     self.assertEqual(image.mode, 'RGBA')
                     self.assertEqual(image.size, (clip['frames'] * cw, ch))
                     if not special:
-                        self.assertLessEqual({c for _, c in image.getcolors(image.width * image.height)}, BLAST if name == 'explode' else LIMIT if name in ('nuke', 'dead', 'dead_land', 'revive', 'tada', 'recharge', 'conduct', 'surge') else PALETTE)
+                        self.assertLessEqual({c for _, c in image.getcolors(image.width * image.height)}, BLAST if name == 'explode' else LIMIT if name in ('nuke', 'dead', 'dead_land', 'revive', 'tada', 'recharge', 'conduct', 'surge') else SLEEPY if name in SLEEPY_CLIPS else PALETTE)
         self.assertEqual({n for n, c in manifest['animations'].items() if c['loop']}, {'idle', 'walk', 'sit', 'sleep', 'drag', 'fall', 'work', 'alert', 'petpet', 'petpetheart',
                                                                                                'read', 'bash', 'search', 'web', 'task', 'todo',
                                                                                                'edit', 'edit_2', 'work_2', 'read_2', 'bash_2', 'search_2', 'web_2', 'task_2', 'todo_2', 'sweat',
                                                                                                'perch', 'teeter', 'peek', 'dead',
                                                                                                'climb', 'hang', 'shimmy', 'swing', 'dance', 'dance_2', 'drowsy', 'exhausted', 'umbrella', 'shiver', 'vibe', 'twirl', 'wiggle', 'breakdance',
                                                                                                'book_idle', 'bike_ride', 'broom_fly', 'boat_idle', 'boat_row', 'boat_fish_wait', 'carry_walk',
-                                                                                               'camp_stand', 'camp_fire_burn', 'camp_binoc_look_right', 'camp_binoc_look_left', 'camp_lie_idle', 'content_idle'})
+                                                                                               'camp_stand', 'camp_fire_burn', 'camp_binoc_look_right', 'camp_binoc_look_left', 'camp_lie_idle', 'content_idle', 'talk',
+                                                                                               'sleep_blanket', 'sleep_walk'})
         self.assertEqual(manifest['animations']['perch'].get('grip'), [10.5, 12])  # seated on the ledge, legs below it
         self.assertEqual(manifest['hand']['frames'], manifest['animations']['petpet']['frames'])  # the hand is frame-locked to him
+
+    def test_sleep_lot_strips(self):
+        from PIL import Image, ImageOps
+        manifest = json.loads((SPRITES/'clawd.json').read_text())
+        frame = lambda name, i: Image.open(SPRITES/f'{name}.png').crop((21 * i, 0, 21 * (i + 1), 14))
+        # a roll ends on the mirror of its loop's first frame: the pet flips `mirrored` when it ends, seamless
+        for roll, loop in (('sleep_roll', 'sleep'), ('sleep_blanket_roll', 'sleep_blanket')):
+            last = manifest['animations'][roll]['frames'] - 1
+            self.assertEqual(frame(roll, last).tobytes(), ImageOps.mirror(frame(loop, 0)).tobytes(), roll)
+        self.assertEqual(frame('sleep_blanket_in', 9).tobytes(), frame('sleep_blanket', 0).tobytes())  # the intro lands in the loop
+        self.assertEqual(frame('wake_groggy', 9).tobytes(), frame('idle', 0).tobytes())                 # both wake-ups end standing
+        self.assertEqual(frame('sleep_blanket_out', 5).tobytes(), frame('idle', 0).tobytes())
+        # ClawdDreamSurf picks the surfer's poses 38..49 of clone.png; the 38 surge helpers' poses stay where they were
+        self.assertEqual(manifest['clone']['frames'], 50)
+        clone = Image.open(SPRITES/'clone.png')
+        self.assertEqual(len({clone.crop((21 * i, 0, 21 * (i + 1), 14)).tobytes() for i in range(38, 50)}), 12)
+        with Image.open(ROOT/'scripts/clawd/gemini.png') as drawing:
+            self.assertEqual(manifest['gemini'], {'file': 'gemini.png', 'w': drawing.width, 'h': drawing.height})
+        # the dream's surfer glows in the same light colours as the surge's max helper
+        palette = lambda qml: re.search(r'property var rainbow: (\[[^\]]*\])', (PAYLOAD/qml).read_text()).group(1)
+        self.assertEqual(palette('ClawdDreamSurf.qml'), palette('ClawdSurge.qml'))
 
 
 class ClawdHooksInstallerTests(unittest.TestCase):
@@ -633,6 +660,15 @@ class ClawdJsTests(unittest.TestCase):
     def test_idle_specials_plans(self):
         self.node('acts.mjs', 'CLAWD_ACTS_PASS')
 
+    def test_dreams_registry_and_sleep_events(self):
+        self.node('dreams.mjs', 'CLAWD_DREAMS_PASS')
+
+    def test_chat_brain_sidecar(self):
+        if not (ROOT/'tests/clawd/chat.cjs').exists():
+            self.skipTest('tests/clawd/chat.cjs does not exist yet')
+        result = subprocess.run(['node', str(ROOT/'tests/clawd/chat.cjs')], capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
 
 @unittest.skipUnless(shutil.which('qml6'), 'Qt qml runtime unavailable')
 class ClawdBlastRenderTests(unittest.TestCase):
@@ -779,6 +815,54 @@ class ClawdSurgeRenderTests(unittest.TestCase):
             self.assertLess(alpha(43.59, (0, 0, 640, 360)), 10)                            # gone again
 
 
+class ClawdDreamRenderTests(unittest.TestCase):
+    """The dream and the nightmare on the GPU (offscreen OpenGL), hosted by ClawdDream: a few moments checked by their pixels."""
+    SURF = '({ id: "surf", kind: "dream", scene: "ClawdDreamSurf", duration: 24 })'
+    GEMINI = '({ id: "gemini", kind: "nightmare", scene: "ClawdNightmareGemini", duration: 11.7, jump: 11 })'
+
+    def render(self, entry, times):
+        from PIL import Image
+        scene = ClawdSymphonyRenderTests.SCENE.replace('C.ClawdSymphony { id: scene;', 'C.ClawdDream { id: scene; entry: ' + entry + ';').replace('ox: 100; oy: 300', 'ox: 300; oy: 302')
+        directory = tempfile.mkdtemp(prefix='clawd-dream-')
+        self.addCleanup(shutil.rmtree, directory)
+        out = Path(directory)
+        (out/'scene.qml').write_text(scene % (PAYLOAD.as_uri(), ', '.join(map(str, times)), (SPRITES/'clawd.json').read_text(), out))
+        env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='rhi', QSG_RHI_BACKEND='opengl', QML_DISABLE_DISK_CACHE='1')
+        result = subprocess.run(['qml6', str(out/'scene.qml')], env=env, capture_output=True, text=True, timeout=90)
+        output = result.stdout + result.stderr
+        self.assertNotRegex(output, r'ClawdDream|ClawdNightmare|shader|Shader|TypeError|ReferenceError', output)
+        frames = {}
+        for t in times:
+            if not (out/f't{t}.png').is_file():
+                self.skipTest('no offscreen GPU rendering here: ' + output[-300:])
+            frames[t] = Image.open(out/f't{t}.png').convert('RGB')
+        return frames
+
+    def test_rainbow_surf(self):
+        from PIL import ImageStat
+        frames = self.render(self.SURF, [0.02, 2, 7, 15.2, 23.99])  # QML writes 2.0 as 2
+        mean = lambda image, box=None: sum(ImageStat.Stat(image.crop(box) if box else image).mean) / 3
+        diff = lambda a, b, box: sum(abs(x - y) for x, y in zip(ImageStat.Stat(a.crop(box)).mean, ImageStat.Stat(b.crop(box)).mean))
+        self.assertLess(diff(frames[0.02], frames[23.99], (0, 0, 640, 360)), 6)        # nothing yet / gone again: the bare backdrop
+        self.assertGreater(diff(frames[2], frames[0.02], (0, 0, 80, 60)), 15)         # the violet vignette in the corner
+        hues = {round(h / 43) for _, (h, s, v) in frames[7].crop((0, 240, 640, 320)).convert('HSV').getcolors(1 << 20) if s > 90 and v > 150}
+        self.assertGreaterEqual(len(hues), 5)                                           # the rainbow wave
+        sky = lambda t: mean(frames[t], (200, 60, 440, 160))
+        self.assertGreater(sky(15.2), sky(7) + 5)                                     # he flies high above it
+
+    def test_gemini_nightmare(self):
+        from PIL import ImageStat
+        frames = self.render(self.GEMINI, [3, 8.5, 11.2])
+        mean = lambda image, box=None: sum(ImageStat.Stat(image.crop(box) if box else image).mean) / 3
+        stat = lambda t, box=None: ImageStat.Stat(frames[t].crop(box) if box else frames[t]).mean
+        self.assertLess(mean(frames[3]), 25)                                            # the cold dark room
+        r, g, b = stat(8.5, (250, 90, 390, 180))
+        self.assertGreater(r, g + 25)                                                   # her red eyes light up
+        r, g, b = stat(11.2)
+        self.assertGreater(r, g + 40)                                                   # the jumpscare fills the screen, red
+        self.assertGreater(mean(frames[11.2], (0, 0, 640, 360)), mean(frames[8.5]))
+
+
 class ClawdNukeRenderTests(unittest.TestCase):
     """The nuclear variant on the GPU (offscreen OpenGL), a few moments of its storyboard checked by their pixels."""
     TIMES = [0.2, 2.5, 8, 9.8, 9.9, 10.2, 12, 19.85]
@@ -824,18 +908,48 @@ class ClawdRuntimeTests(unittest.TestCase):
     def test_shell_events_music_notifications_moods(self):
         self.run_fixture('clawd_events.qml', 150)
 
+    def test_sleep_dreams_nightmares_collection(self):
+        self.run_fixture('clawd_dreams.qml', 120)
+
     def test_settings_card_controls(self):
         self.run_fixture('clawd_settings.qml', 40)
 
-    def run_fixture(self, scenario, timeout):
+    def test_chat_vision_double_click(self):
+        # fake codex / grim / hyprctl in a temp bin dir: the real sidecar (brain.js) is driven through the real overlay
+        bins = {
+            'CLAWD_CODEX': ('codex', '''#!/usr/bin/env node
+const a = process.argv.slice(2);
+const fs = require('fs');
+fs.mkdirSync(process.env.CODEX_HOME, {recursive: true});
+fs.appendFileSync(process.env.CODEX_HOME + '/argv.log', JSON.stringify(a) + '\\n');
+if (a[0] === 'login') { console.log('Logged in using ChatGPT'); process.exit(0); }
+const img = a.includes('-i') || a.includes('--image') ? ' [img]' : '';
+console.log(JSON.stringify({type: 'thread.started', thread_id: 'fake-thread'}));
+console.log(JSON.stringify({type: 'item.completed', item: {id: 'item_0', type: 'agent_message', text: 'bonjour from fake' + img}}));
+console.log(JSON.stringify({type: 'turn.completed', usage: {input_tokens: 1, output_tokens: 1}}));
+'''),
+            'CLAWD_GRIM': ('grim', '#!/bin/sh\nfor last; do :; done\nif [ "$last" = "-" ]; then printf "\\377\\330\\377\\340fake"; else printf "\\377\\330\\377\\340fake" > "$last"; fi\n'),
+            'CLAWD_HYPRCTL': ('hyprctl', '#!/bin/sh\necho \'[{"id":0,"name":"offscreen","x":0,"y":0,"width":1280,"height":720,"scale":1.0,"focused":true}]\'\n'),
+        }
+        logs = {}
+        def after(fixture):
+            logs['argv'] = (fixture/'codex/argv.log').read_text() if (fixture/'codex/argv.log').exists() else ''
+        self.run_fixture('clawd_chat.qml', 90, bins=bins, after=after)
+        calls = [json.loads(line) for line in logs['argv'].splitlines() if line]
+        sends = [c for c in calls if c and c[0] != 'login']
+        self.assertEqual(len(sends), 2, logs['argv'])
+        self.assertFalse(any('-i' in c for c in sends[:1]), 'first message has no image')
+        self.assertIn('-i', sends[1], 'look sends the screenshot')
+
+    def run_fixture(self, scenario, timeout, bins=None, after=None):
         with tempfile.TemporaryDirectory(prefix='serpantinum-clawd-test-') as directory:
             fixture = Path(directory)
             shutil.copytree(PAYLOAD, fixture/'clawd')
             # No layer-shell offscreen: the real overlay in a plain window (the layer surface and mask are checked live).
             overlay = (fixture/'clawd/ClawdOverlay.qml').read_text()
-            for line in ('    anchors { top: true; bottom: true; left: true; right: true }\n', '    exclusionMode: ExclusionMode.Ignore\n', '    focusable: menuHere\n',
+            for line in ('    anchors { top: true; bottom: true; left: true; right: true }\n', '    exclusionMode: ExclusionMode.Ignore\n', '    focusable: menuHere || chatHere\n',
                          '    WlrLayershell.namespace: "qs-addon-clawd"\n', '    WlrLayershell.layer: WlrLayer.Top\n',
-                         '    WlrLayershell.keyboardFocus: menuHere ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None\n'):
+                         '    WlrLayershell.keyboardFocus: (menuHere || chatHere) ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None\n'):
                 self.assertIn(line, overlay)
                 overlay = overlay.replace(line, '')
             self.assertEqual(overlay.count('PanelWindow {'), 1)
@@ -900,6 +1014,12 @@ QtObject {
             env.update(QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', XDG_RUNTIME_DIR=str(runtime), QML_DISABLE_DISK_CACHE='1',
                        XDG_DATA_HOME=str(fixture/'data'), XDG_STATE_HOME=str(fixture/'state'), XDG_CACHE_HOME=str(fixture/'cache'),
                        CLAUDE_CONFIG_DIR=str(fixture/'claude'), CODEX_HOME=str(fixture/'codex'))
+            if bins:
+                (fixture/'bin').mkdir()
+                for key, (name, body) in bins.items():
+                    (fixture/'bin'/name).write_text(body)
+                    (fixture/'bin'/name).chmod(0o755)
+                    env[key] = str(fixture/'bin'/name)
             process = subprocess.Popen(['quickshell', '-p', str(fixture/'Shell.qml')], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
             if scenario == 'clawd_runtime.qml':
                 threading.Thread(target=self.hook_when_listening, args=(runtime, env), daemon=True).start()
@@ -917,6 +1037,7 @@ QtObject {
             self.assertNotRegex(output, r'TypeError|ReferenceError|SyntaxError|RangeError|Binding loop|Cannot assign|Unable to assign')
             if scenario == 'clawd_settings.qml':
                 self.assertTrue(json.loads((fixture/'claude/settings.json').read_text())['hooks'])
+            if after: after(fixture)
             return output
 
     @staticmethod
