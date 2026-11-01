@@ -2,6 +2,8 @@
 
 Addons pack for the [Serpantinum](https://github.com/Suiveurtag) desktop shell: Clawd, Capri, Halloween, AI Tokens, Wallpaper Engine backgrounds, cursors, keybinds, monitors and more.
 
+Discord: <https://discord.gg/qwVDZAtJqE>
+
 ```sh
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons-v2/main/install/install.sh)"
 ```
@@ -26,10 +28,9 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-a
    8. [Monitors](#8-monitors)
    9. [Desktop tools](#9-desktop-tools)
    10. [Theme and colours](#10-theme-and-colours)
-   11. [Appearance: Liquid Glass and classic blur](#11-appearance-liquid-glass-and-classic-blur)
-   12. [Network and idle](#12-network-and-idle)
-   13. [Startup](#13-startup)
-   14. [General settings (Addons → General)](#14-general-settings-addons--general)
+   11. [Network and idle](#11-network-and-idle)
+   12. [Startup](#12-startup)
+   13. [General settings (Addons → General)](#13-general-settings-addons--general)
 7. [Keyboard shortcuts added](#keyboard-shortcuts-added)
 8. [IPC commands](#ipc-commands)
 9. [Tests and validation](#tests-and-validation)
@@ -542,15 +543,7 @@ Tab **Addons → Mouse** (sub-tab "Mouse").
 - A video wallpaper uses its starting image for Matugen.
 - Matugen mode follows the native generator.
 
-### 11. Appearance: Liquid Glass and classic blur
-
-- **Classic blur**: addon surfaces follow the native blur and opacity, with a soft edge on hover and pulses on the clock and copies. The colour picker only blurs the captured area.
-- **Liquid Glass**: clock/calendar, colour picker, drawing toolbar, screen controls, shortcut editor, cursor settings and seasonal effects follow the native glass material. Hover shows the edge, the clock has a lens tinted by the time, and copying a colour sends a pulse.
-- Turning off native blur restores opaque fills.
-- Sampled colours, cursors and drawing ink stay exact.
-- **Window outline**: see [General settings](#14-general-settings-addons--general).
-
-### 12. Network and idle
+### 11. Network and idle
 
 **Mullvad DNS** (Addons → General and the Network panel)
 - Switches to Mullvad DNS-over-TLS on the active Wi-Fi or Ethernet connection; the network panel shows the connection and its mode.
@@ -563,18 +556,18 @@ Tab **Addons → Mouse** (sub-tab "Mouse").
 - Off by default; only visible and usable on laptops (UPower detection).
 - Keeps the session and network alive during long tasks, downloads and AI streams.
 
-### 13. Startup
+### 12. Startup
 
 - Tab next to Keybinds, also reachable from the built-in panel `Super+Shift+P`.
 - List of commands launched once when the session starts (`discord`, for example).
 - Add, edit, delete, search; same editor as Keybinds.
 - Saved in `~/.config/hypr/config/serpantinum_startup.json`, generates `serpantinum_startup.lua` (`hl.on("hyprland.start", …)`). A configuration error restores the previous files.
 
-### 14. General settings (Addons → General)
+### 13. General settings (Addons → General)
 
 - **Themed window outline**: thin Hyprland border in the colours of the active palette, seasonal colours included. Off by default.
 - **Hide weather location**: the city name in the weather widget is continuously scrambled (random characters), without changing the data.
-- **Mullvad DNS**: switch to Mullvad DNS-over-TLS on the active connection (see [Network and idle](#12-network-and-idle)).
+- **Mullvad DNS**: switch to Mullvad DNS-over-TLS on the active connection (see [Network and idle](#11-network-and-idle)).
 - **Legacy clock design**: restores the v1 calendar and clock.
 - **Passive addons**: list of tools without a switch, with their shortcut (Capri, Clawd, drawing, zoom, colour picker, capture, monitors, shortcuts, Vibrant/Vivid).
 - **Halloween**: switch for the seasonal effects (see [Halloween](#3-halloween-seasonal-effects)).
