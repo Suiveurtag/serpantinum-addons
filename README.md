@@ -1,6 +1,6 @@
 # Serpantinum — personal addons v2
 
-Addons pack for the [Serpantinum](https://github.com/Suiveurtag) desktop shell: Clawd, Capri, Halloween, AI Tokens, Wallpaper Engine backgrounds, cursors, keybinds, monitors and more.
+Addons pack for the [Serpantinum](https://github.com/Suiveurtag) desktop shell: Clawd, Capri, Seasonal effects, AI Tokens, cursors, keybinds, monitors and more.
 
 **Discord:** <https://discord.gg/qwVDZAtJqE>
 
