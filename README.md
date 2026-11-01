@@ -5,7 +5,7 @@ Addons pack for the [Serpantinum](https://github.com/Suiveurtag) desktop shell: 
 **Discord:** <https://discord.gg/qwVDZAtJqE>
 
 ```sh
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons-v2/main/install/install.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons/main/install/install.sh)"
 ```
 
 > **Note:** this is a personal project that I use daily. It is shared as is: it may be unstable, and updates and support are best effort. Large chunks of the code was written with vibe coding. Installation backs up every file it touches and can be undone, but review the changes and try them in your own setup before relying on them.
@@ -70,7 +70,7 @@ After a Serpantinum update the addons must be reinstalled; the shell shows "Rein
 ### Install
 
 ```sh
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons-v2/main/install/install.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons/main/install/install.sh)"
 ```
 
 This opens the terminal manager (`addons.py`). Extra arguments go after `_`, e.g. `... _ update`.
@@ -82,7 +82,7 @@ This opens the terminal manager (`addons.py`). Extra arguments go after `_`, e.g
 ### Update
 
 - In the shell: the peach **Addons update** button at the bottom of the Settings sidebar (checked about hourly), or the addons card in Settings → About (hold to update).
-- In a terminal: `bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons-v2/main/install/install.sh)" _ update`
+- In a terminal: `bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons/main/install/install.sh)" _ update`
 
 ### Reinstall
 
@@ -90,7 +90,7 @@ Needed after each Serpantinum update (Settings shows "Reinstall addons"), or to 
 
 ```sh
 python3 addons.py reinstall          # from a clone
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons-v2/main/install/install.sh)" _ reinstall
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons/main/install/install.sh)" _ reinstall
 ```
 
 To install a specific release (rollback), add `--ref vX.Y.Z`.
@@ -100,7 +100,7 @@ To install a specific release (rollback), add `--ref vX.Y.Z`.
 Settings → About → red **hold to uninstall** button (opens the terminal manager on Uninstall), or:
 
 ```sh
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons-v2/main/install/install.sh)" _ uninstall
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons/main/install/install.sh)" _ uninstall
 ```
 
 Uninstall restores the shell and removes the services, hooks and addon files. Your settings values and data (for example the AI Tokens database, backups) are **kept**; add `--purge` to remove them too.
@@ -122,7 +122,7 @@ Setting values stay in the configuration, dormant, and come back when you reinst
 ### Developer mode
 
 ```sh
-git clone https://github.com/Suiveurtag/serpantinum-addons-v2
+git clone https://github.com/Suiveurtag/serpantinum-addons
 cd serpantinum-addons-v2
 python3 install.py && serpantinum reload
 ```
@@ -134,11 +134,11 @@ python3 install.py && serpantinum reload
 - Run `python3 addons.py doctor --report`: it checks the installation and prints a report you can paste into an issue.
 - Logs: `~/.local/state/serpantinum-addons-v2/logs/`.
 - Quickshell shows a ghost or old shell after installing: run `serpantinum reload`.
-- Open an issue on [GitHub](https://github.com/Suiveurtag/serpantinum-addons-v2/issues) with the doctor report, your Serpantinum version and what you expected.
+- Open an issue on [GitHub](https://github.com/Suiveurtag/serpantinum-addons/issues) with the doctor report, your Serpantinum version and what you expected.
 
 ## Releases and changelog
 
-See [`CHANGELOG.md`](CHANGELOG.md) and the [GitHub Releases](https://github.com/Suiveurtag/serpantinum-addons-v2/releases). Maintainers: [`docs/releasing.md`](docs/releasing.md).
+See [`CHANGELOG.md`](CHANGELOG.md) and the [GitHub Releases](https://github.com/Suiveurtag/serpantinum-addons/releases). Maintainers: [`docs/releasing.md`](docs/releasing.md).
 
 ---
 

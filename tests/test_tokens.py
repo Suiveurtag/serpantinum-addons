@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import sqlite3
 import stat
 import sys
 import tempfile
@@ -58,6 +59,7 @@ class TokenTests(unittest.TestCase):
         self.mode = root/'mode'
         self.account(1000)
         collector.CODEX, collector.CLAUDE, collector.STATE, collector.CODEX_CMD = root/'codex/sessions', root/'claude/projects', root/'state', str(fake)
+        collector.SETTINGS = root/'settings.json'                                   # no user settings: defaults apply
         self.open()
 
     def tearDown(self):
@@ -75,6 +77,48 @@ class TokenTests(unittest.TestCase):
         if sync:
             self.c.sync()
         return self.c.publish(True)
+
+    def write_settings(self, **options):
+        collector.SETTINGS.write_text(json.dumps(options))
+
+    def test_opencode_sessions_count_once_and_survive_deletion(self):
+        path = Path(self.tmp.name)/'opencode.db'
+        db = sqlite3.connect(path)
+        db.execute('CREATE TABLE session(id TEXT PRIMARY KEY, tokens_input INTEGER, tokens_output INTEGER, tokens_reasoning INTEGER, tokens_cache_read INTEGER, tokens_cache_write INTEGER)')
+        db.execute("INSERT INTO session VALUES('s1', 10, 5, 0, 100, 1)")
+        db.execute("INSERT INTO session VALUES('s2', 1, 1, 1, 1, 1)")
+        db.commit()
+        db.close()
+        collector.OPENCODE_DB = path
+        self.write_settings(addonsV2TokensOpencode=True)
+        self.assertEqual(self.run_once(sync=False)['sources']['opencode']['total'], 116 + 5)
+        db = sqlite3.connect(path)
+        db.execute("UPDATE session SET tokens_input=200 WHERE id='s1'")
+        db.execute("DELETE FROM session WHERE id='s2'")                             # opencode prunes a session
+        db.commit()
+        db.close()
+        self.c.opencode_at = 0
+        state = self.run_once(sync=False)
+        self.assertEqual((state['sources']['opencode']['total'], state['sources']['opencode']['sessions']), (306 + 5, 2))
+
+    def test_llama_cpp_counters_start_at_zero_and_survive_restarts(self):
+        readings = iter([(100, 50), (120, 60), (5, 2)])
+        original = collector.llama_counters
+        collector.llama_counters = lambda url: next(readings)
+        self.addCleanup(setattr, collector, 'llama_counters', original)
+        self.write_settings(addonsV2TokensLlamaCpp=True)
+        self.c.llama_at = 0
+        self.assertEqual(self.run_once(sync=False)['sources']['llamacpp']['total'], 0)     # first reading is the baseline
+        self.c.llama_at = 0
+        self.assertEqual(self.run_once(sync=False)['sources']['llamacpp']['total'], 30)
+        self.c.llama_at = 0
+        self.assertEqual(self.run_once(sync=False)['sources']['llamacpp']['total'], 30 + 5 + 2)   # restart: counters begin again at zero
+
+    def test_disabled_sources_are_left_out_of_the_total(self):
+        (self.codex/'rollout-a.jsonl').write_text(codex_event(300))
+        self.write_settings(addonsV2TokensCodex=False)
+        state = self.run_once(sync=False)
+        self.assertEqual((state['codex']['status'], state['combined']['total']), ('off', 0))
 
     def test_account_baseline_is_included_and_local_growth_adds_once(self):
         log = self.codex/'rollout-a.jsonl'
@@ -124,6 +168,22 @@ class TokenTests(unittest.TestCase):
         self.assertEqual(state['claude']['total'], 1115 + 10 + 28)
         self.assertEqual(state['claude']['cache_read'], 1000 + 4 + 7)
         self.assertEqual(state['corrupt_lines'], 1)
+
+    def test_periods_count_recent_days_only(self):
+        (self.claude/'s1.jsonl').write_text(claude_event('m1') + claude_event('m-old', ts='2020-01-01T00:00:00.000Z'))
+        state = self.run_once(sync=False)
+        self.assertEqual(state['claude']['total'], 1115 * 2)                  # lifetime keeps the old day
+        for window in ('today', 'week', 'month'):
+            self.assertEqual(state['periods']['claude'][window], 1115)         # the 2020 day is outside every window
+
+    def test_disabled_codex_has_no_windows(self):
+        self.write_settings(addonsV2TokensCodex=False)
+        (self.claude/'s1.jsonl').write_text(claude_event('m1'))
+        self.open()
+        state = self.run_once(sync=False)
+        self.assertEqual(state['codex']['status'], 'off')
+        self.assertEqual(state['periods']['codex'], {})
+        self.assertEqual(state['periods']['claude']['today'], 1115)
 
     def test_claude_message_growth_is_added_once_and_partial_lines_wait(self):
         log = self.claude/'s1.jsonl'

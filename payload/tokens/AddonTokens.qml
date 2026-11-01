@@ -9,7 +9,7 @@ Scope {
     Component.onCompleted: {
         BarModuleRegistry.registerModule("tokens", {
             name: qsTr("AI Tokens"),
-            icon: "󰧑",
+            icon: Qt.resolvedUrl("assets/token.svg").toString(),
             defaultVariant: "default",
             face: "../tokens/TokensBarFace.qml"
         });

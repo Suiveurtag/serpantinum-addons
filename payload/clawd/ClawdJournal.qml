@@ -2,7 +2,7 @@ import QtQuick
 import Quickshell
 import "../"
 
-// Left click on Clawd: his agent sessions as a terminal box, newest first. The circle follows; the rest of a row raises its terminal.
+// Left click on Clawd: his agent sessions as a terminal box, newest first. A click on a row follows it; a double click raises its terminal.
 // Second tab (pet.journalTab "dreams"): his dream collection (Clawd.dreamBook,
 // the ones he never had are ???) and the last dreams he had, with their time.
 Item {
@@ -134,7 +134,7 @@ Item {
                 onClicked: Clawd.selectSession("")
             }
         }
-        // One click target per row: the circle (column 2) selects it, the rest raises its terminal.
+        // One click target per row: a click follows it, a double click raises its terminal.
         Repeater {
             model: journal.dreams ? [] : journal.rows
             Item {
@@ -161,10 +161,8 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: mouse => {
-                        if (mouse.x < metrics.averageCharacterWidth * 3) Clawd.selectSession(sessionRow.modelData.key);
-                        else { Clawd.focus(sessionRow.modelData.parentKey); journal.pet.journalOpen = false; }
-                    }
+                    onClicked: Clawd.selectSession(sessionRow.modelData.key)
+                    onDoubleClicked: { Clawd.focus(sessionRow.modelData.parentKey); journal.pet.journalOpen = false; }
                 }
             }
         }

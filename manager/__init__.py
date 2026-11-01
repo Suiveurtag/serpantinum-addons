@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ISSUES_URL = "https://github.com/Suiveurtag/serpantinum-addons-v2/issues"
+ISSUES_URL = "https://github.com/Suiveurtag/serpantinum-addons/issues"
 SERPANTINUM_URL = "https://github.com/ilyamiro/serpantinum"
 
 _release = None

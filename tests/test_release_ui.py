@@ -93,7 +93,7 @@ class ReleaseUiTests(unittest.TestCase):
         self.assertTrue(text.startswith('pragma Singleton'))
         for token in ['if (proc.running) return', 'JSON.parse', 'catch (e)', 'interval: 60 * 60 * 1000', 'function check(force)',
                       'updateAvailable', 'needsReinstall', 'attention', 'kitty --hold', '${TERM:-xterm} -hold -e',
-                      'curl -fsSL', 'https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons-v2/', 'installerRef', '"/install/install.sh"', r'/^[0-9]+(\.[0-9]+)*$/', '"main"',
+                      'curl -fsSL', 'https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons/', 'installerRef', '"/install/install.sh"', r'/^[0-9]+(\.[0-9]+)*$/', '"main"',
                       'source/install/install.sh', '"--force"', 'addons_release.py']:
             self.assertIn(token, text)
         match = re.search(r'allowedArgs: (\[[^\]]*\])', text)
@@ -136,7 +136,8 @@ class ReleaseUiTests(unittest.TestCase):
         self.assertIn('icon: "󰏗"', text)
         self.assertIn('AddonsReleaseCard { rootObj: root.rootObj; showUninstall: true }', text)
         self.assertGreater(text.index('addons_maintenance'), text.index('title: "Passive addons"'))
-        self.assertEqual(text.count('SettingsGroup {'), 2)
+        # Passive addons is a foldable header section now, so only the maintenance group is a SettingsGroup.
+        self.assertEqual(text.count('SettingsGroup {'), 1)
 
     def test_qmllint_syntax(self):
         linter = next((p for p in (shutil.which('qmllint'), shutil.which('qmllint6'), '/usr/lib/qt6/bin/qmllint') if p and Path(p).exists()), None)

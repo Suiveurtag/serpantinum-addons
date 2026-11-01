@@ -32,7 +32,7 @@ from pathlib import Path
 
 SOURCE = Path(__file__).resolve().parent
 MARK = 'serpantinum-addons-v2'
-ISSUES = 'https://github.com/Suiveurtag/serpantinum-addons-v2/issues'
+ISSUES = 'https://github.com/Suiveurtag/serpantinum-addons/issues'
 UPSTREAM_RAW = 'https://raw.githubusercontent.com/ilyamiro/serpantinum'
 NO_SERVICES = 'SERPANTINUM_ADDONS_NO_SERVICES'   # set to skip systemctl / agent-hook side effects (tests)
 
@@ -221,6 +221,10 @@ def patch_guide(text):
         text = text.replace(
             'return translated === translationKey ? (t.name || t.id) : translated;',
             'return translated && translated !== translationKey ? translated : (t.name || t.id);')
+        # Addons get their own separated group; Wellbeing and Idle stay together above it.
+        if 'separatorBefore: true, file: "AddonsTab.qml"' not in text:
+            if text.count('icon: "󰐱", file: "AddonsTab.qml"') != 1: raise InstallError('Guide addons separator anchor changed')
+            text = text.replace('icon: "󰐱", file: "AddonsTab.qml"', 'icon: "󰐱", separatorBefore: true, file: "AddonsTab.qml"', 1)
         return text
     # Migrate our first revision while leaving every upstream tab intact.
     text = re.sub(r'        // BEGIN serpantinum-addons-v2 tabs.*?        // END serpantinum-addons-v2 tabs[\s,]*(?=    \])', '', text, flags=re.S)
@@ -578,6 +582,324 @@ def patch_weather_face(text):
         return pattern.sub(lambda match: replacement + ('\n' if match.group(0).endswith('\n') else ''), text, count=1)
     if text.count(anchor) != 1: raise InstallError('Weather city label anchor changed')
     return text.replace(anchor, replacement, 1)
+
+
+LEFT_FACE_UPDATE_COMPONENT = '''    // BEGIN serpantinum-addons-v2 update button
+    // Imperative-dots style update icon (topbar update button). Serpantinum's update wins over the addons' one.
+    component UpdateButton: Item {
+        id: updateBtn
+        property string glyph: ""
+        property color tone: ThemeBackend.green
+        readonly property bool hovered: updateMouse.containsMouse
+        signal clicked()
+
+        width: root.isVertical ? root.s(root.isCompact ? 28 : 30) : root.s(root.isCompact ? 30 : 32)
+        height: root.s(root.isCompact ? 28 : 30)
+
+        Rectangle {
+            anchors.fill: parent
+            visible: !root.iconOnly
+            radius: Math.max(0, ThemeBackend.borderRadius - root.s(2))
+            color: Qt.alpha(updateBtn.tone, updateBtn.hovered ? 0.15 : 0.05)
+            Behavior on color { ColorAnimation { duration: 200 } }
+        }
+
+        Text {
+            id: updateGlyph
+            anchors.centerIn: parent
+            text: updateBtn.glyph
+            font.family: ThemeBackend.iconFont
+            font.pixelSize: root.s(root.isCompact ? 16 : 17)
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            color: updateBtn.hovered ? ThemeBackend.text : updateBtn.tone
+            Behavior on color { ColorAnimation { duration: 200 } }
+
+            rotation: updateBtn.hovered ? 360 : 0
+            Behavior on rotation { NumberAnimation { duration: 600; easing.type: Easing.OutBack } }
+            scale: updateBtn.hovered ? 1.15 : 1.0
+            Behavior on scale { NumberAnimation { duration: 250; easing.type: Easing.OutExpo } }
+
+            SequentialAnimation on opacity {
+                running: !updateBtn.hovered
+                loops: Animation.Infinite
+                NumberAnimation { to: 0.45; duration: 900; easing.type: Easing.InOutSine }
+                NumberAnimation { to: 1.0; duration: 900; easing.type: Easing.InOutSine }
+            }
+        }
+
+        MouseArea {
+            id: updateMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: updateBtn.clicked()
+        }
+    }
+
+    readonly property string updateState: Updater.updateAvailable ? "serpantinum" : (AddonsUpdater.updateAvailable ? "addons" : "")
+    // Settings → Bar → Modules → Actions → "Show update icon" (bar.menuShowUpdate, default on). Previews show the icon whenever the option is on, even without an update, so the toggle is visible.
+    readonly property string updateShown: updateState !== "" ? updateState : "serpantinum"
+    readonly property bool showUpdate: {
+        if (widget && widget !== root && widget.menuShowUpdate !== undefined) return widget.menuShowUpdate;
+        let dummy = configRevision;
+        if (typeof Config !== "undefined" && Config.rawSettings && Config.rawSettings.bar && Config.rawSettings.bar.menuShowUpdate !== undefined) return Boolean(Config.rawSettings.bar.menuShowUpdate);
+        return true;
+    }
+
+    // END serpantinum-addons-v2 update button
+'''
+
+LEFT_FACE_UPDATE_ITEM = '''        // BEGIN serpantinum-addons-v2 update button
+        UpdateButton {
+            visible: root.showUpdate && (root.isPreview || root.updateState !== "")
+            glyph: root.updateShown === "serpantinum" ? "󰚰" : "󰇚"
+            tone: root.updateShown === "serpantinum" ? ThemeBackend.green : ThemeBackend.peach
+            onClicked: if (!root.isPreview) {
+                let dir = (typeof Caching !== "undefined" && Caching.serpantinumDir) ? Caching.serpantinumDir : "";
+                let args = "open settings about";
+                let cmd = (dir ? ("if [ -f '" + dir + "/scripts/qs_manager.sh' ]; then bash '" + dir + "/scripts/qs_manager.sh' " + args + "; else ") : "")
+                    + "if command -v serpantinum >/dev/null 2>&1; then serpantinum msg " + args + "; elif command -v qs_manager.sh >/dev/null 2>&1; then qs_manager.sh " + args + "; fi"
+                    + (dir ? "; fi" : "");
+                Quickshell.execDetached(["bash", "-c", cmd]);
+            }
+        }
+        // END serpantinum-addons-v2 update button
+
+'''
+
+
+def patch_left_face(text):
+    import re
+    pattern = re.compile(r'(?m)^[ \t]*// BEGIN serpantinum-addons-v2 update button\n.*?^[ \t]*// END serpantinum-addons-v2 update button\n\n?', re.S)
+    text = pattern.sub('', text)
+    component_anchor = '    AxisFlow {\n'
+    item_anchor = '        MenuButton {\n            id: settingsBtn\n'
+    if text.count(component_anchor) != 1 or text.count(item_anchor) != 1:
+        raise InstallError('Left menu anchors changed; the update button cannot be placed')
+    text = text.replace(component_anchor, LEFT_FACE_UPDATE_COMPONENT + component_anchor, 1)
+    return text.replace(item_anchor, LEFT_FACE_UPDATE_ITEM + item_anchor, 1)
+
+
+# Settings → Bar → Modules → Actions → "Show update icon": stored as bar.menuShowUpdate (default on).
+# Each block is marked, so a re-install strips the old copy before placing the new one.
+UPDATE_SETTING_PROPERTY_CARD = '''            // BEGIN serpantinum-addons-v2 update icon setting
+            property bool menuShowUpdate: tab.menuShowUpdate
+            // END serpantinum-addons-v2 update icon setting
+'''
+
+UPDATE_SETTING_ROW_CARD = '''
+    // BEGIN serpantinum-addons-v2 update icon setting
+    SettingsRow {
+        rootObj: card.rootObj
+        settingId: "bar_menu_show_update"
+        searchKeywords: "menu update icon upgrade button"
+        baseColor: Qt.alpha(ThemeBackend.surface1, 0.35)
+        icon: "󰚰"
+        title: I18n.t("guide.bar.menu.show_update.title") !== "guide.bar.menu.show_update.title" ? I18n.t("guide.bar.menu.show_update.title") : "Show update icon"
+        description: I18n.t("guide.bar.menu.show_update.desc") !== "guide.bar.menu.show_update.desc" ? I18n.t("guide.bar.menu.show_update.desc") : "Display the button that appears when an update is available"
+
+        Toggle {
+            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+            checked: card.tab.menuShowUpdate
+            accentColor: ThemeBackend.mauve
+            baseColor: ThemeBackend.surface1
+            handleColor: ThemeBackend.crust
+            handleOffColor: ThemeBackend.text
+            onToggled: function(c) {
+                card.tab.setMenuShowUpdate(c);
+            }
+        }
+    }
+    // END serpantinum-addons-v2 update icon setting
+'''
+
+UPDATE_SETTING_PROPERTY_SETTINGS = '''
+    // BEGIN serpantinum-addons-v2 update icon setting
+    property bool menuShowUpdate: {
+        let bs = Config.getSetting("bar", {});
+        if (bs && bs.menuShowUpdate !== undefined) return Boolean(bs.menuShowUpdate);
+        return true;
+    }
+    // END serpantinum-addons-v2 update icon setting
+'''
+
+UPDATE_SETTING_LOAD_SETTINGS = '''        // BEGIN serpantinum-addons-v2 update icon setting
+        barModulesRoot.menuShowUpdate = (bs && bs.menuShowUpdate !== undefined) ? Boolean(bs.menuShowUpdate) : true;
+        // END serpantinum-addons-v2 update icon setting
+'''
+
+UPDATE_SETTING_SETTER_SETTINGS = '''
+    // BEGIN serpantinum-addons-v2 update icon setting
+    function setMenuShowUpdate(val) {
+        barModulesRoot.menuShowUpdate = val;
+        let current = Config.getSetting("bar", {});
+        current.menuShowUpdate = val;
+        Config.setSetting("bar", current);
+    }
+    // END serpantinum-addons-v2 update icon setting
+'''
+
+
+def strip_update_setting(text):
+    import re
+    pattern = re.compile(r'(?m)^\n?[ \t]*// BEGIN serpantinum-addons-v2 update icon setting\n.*?^[ \t]*// END serpantinum-addons-v2 update icon setting\n', re.S)
+    return pattern.sub('', text)
+
+
+def insert_update_setting(text, anchor, block, after=False):
+    if text.count(anchor) != 1:
+        raise InstallError('Bar menu anchors changed; the update icon setting cannot be placed')
+    return text.replace(anchor, anchor + block if after else block + anchor, 1)
+
+
+def patch_bar_menu_card(text):
+    text = strip_update_setting(text)
+    text = insert_update_setting(text, '            property bool menuShowLauncher: tab.menuShowLauncher\n', UPDATE_SETTING_PROPERTY_CARD, after=True)
+    return insert_update_setting(text, '                card.tab.setMenuShowLauncher(c);\n            }\n        }\n    }\n', UPDATE_SETTING_ROW_CARD, after=True)
+
+
+def patch_bar_modules_settings(text):
+    text = strip_update_setting(text)
+    text = insert_update_setting(text, '    property string wifiStyle: {\n', UPDATE_SETTING_PROPERTY_SETTINGS)
+    text = insert_update_setting(text, '        barModulesRoot.menuShowLauncher = (bs && bs.menuShowLauncher !== undefined) ? Boolean(bs.menuShowLauncher) : true;\n', UPDATE_SETTING_LOAD_SETTINGS, after=True)
+    return insert_update_setting(text, '    function setWifiStyle(styleName) {\n', UPDATE_SETTING_SETTER_SETTINGS)
+
+
+# bar/BarModuleRegistry.qml and widgets/WidgetRegistry.qml: register*() assigned `types`, which removes its binding. Labels built
+# before the translations loaded then stayed as raw keys. The built-in list becomes `baseTypes` (still bound to I18n), and
+# registered entries live in their own property, merged into `types` by a binding.
+REGISTRY_REGISTER_OLD = '''    function registerModule(moduleId, def) {
+        if (!moduleId || !def) return;
+        let updated = Object.assign({}, types);
+        updated[moduleId] = def;
+        types = updated;
+    }
+'''
+REGISTRY_REGISTER_NEW = '''    function registerModule(moduleId, def) {
+        if (!moduleId || !def) return;
+        let updated = Object.assign({}, registered);
+        updated[normalizeId(moduleId)] = def;
+        registered = updated;
+    }
+'''
+REGISTRY_UNREGISTER_OLD = '''    function unregisterModule(moduleId) {
+        if (!types[moduleId]) return;
+        let updated = Object.assign({}, types);
+        delete updated[moduleId];
+        types = updated;
+    }
+'''
+REGISTRY_UNREGISTER_NEW = '''    function unregisterModule(moduleId) {
+        let id = normalizeId(moduleId);
+        if (!registered[id]) return;
+        let updated = Object.assign({}, registered);
+        delete updated[id];
+        registered = updated;
+    }
+'''
+
+
+def patch_binding_safe_registry(text, label, insert_before, register_old, register_new, unregister_old, unregister_new):
+    marker = 'serpantinum-addons-v2 binding-safe ' + label
+    if marker in text:
+        return text
+    anchors = ('    property var types: ({\n', insert_before, register_old, unregister_old)
+    if any(text.count(anchor) != 1 for anchor in anchors):
+        raise InstallError(f'{label} anchors changed; the labels cannot be fixed')
+    block = ('    // BEGIN ' + marker + '\n'
+             '    // Built-in types stay bound to I18n; registered entries are merged in here (a JS assignment to types would drop the binding).\n'
+             '    property var registered: ({})\n'
+             '    readonly property var types: Object.assign({}, baseTypes, registered)\n'
+             '    // END ' + marker + '\n\n')
+    text = text.replace('    property var types: ({\n', '    property var baseTypes: ({\n', 1)
+    text = text.replace(insert_before, block + insert_before, 1)
+    text = text.replace(register_old, register_new, 1)
+    return text.replace(unregister_old, unregister_new, 1)
+
+
+def patch_bar_module_registry(text):
+    return patch_binding_safe_registry(text, 'registry', '    function getModuleVariant(moduleId) {\n',
+                                       REGISTRY_REGISTER_OLD, REGISTRY_REGISTER_NEW, REGISTRY_UNREGISTER_OLD, REGISTRY_UNREGISTER_NEW)
+
+
+WIDGET_REGISTER_OLD = '''    function registerType(typeId, def) {
+        if (!typeId || !def) return;
+        let updated = Object.assign({}, types);
+        updated[typeId] = def;
+        types = updated;
+    }
+'''
+WIDGET_REGISTER_NEW = '''    function registerType(typeId, def) {
+        if (!typeId || !def) return;
+        let updated = Object.assign({}, registered);
+        updated[typeId] = def;
+        registered = updated;
+    }
+'''
+WIDGET_UNREGISTER_OLD = '''    function unregisterType(typeId) {
+        if (!types[typeId]) return;
+        let updated = Object.assign({}, types);
+        delete updated[typeId];
+        types = updated;
+    }
+'''
+WIDGET_UNREGISTER_NEW = '''    function unregisterType(typeId) {
+        if (!types[typeId]) return;
+        let updated = Object.assign({}, registered);
+        delete updated[typeId];
+        registered = updated;
+    }
+'''
+
+
+def patch_widget_registry(text):
+    return patch_binding_safe_registry(text, 'widget registry', '    function registerType(typeId, def) {\n',
+                                       WIDGET_REGISTER_OLD, WIDGET_REGISTER_NEW, WIDGET_UNREGISTER_OLD, WIDGET_UNREGISTER_NEW)
+
+
+def patch_click_button(text):
+    # Bar configuration chips draw their icon with a Text. An icon that starts with "file:" (a module's SVG) is drawn as an Image instead.
+    import re
+    text = re.sub(r'(?m)^[ \t]*// BEGIN serpantinum-addons-v2 image (?:icon|import)\n.*?^[ \t]*// END serpantinum-addons-v2 image (?:icon|import)\n', '', text, flags=re.S)
+    text = text.replace('                visible: root.buttonIcon !== "" && root.buttonIcon.indexOf("file:") !== 0\n', '                visible: root.buttonIcon !== ""\n')
+    # Width lines that must also count the image icon (restored first, so re-running the patch is a no-op).
+    click_pairs = [
+        ('    property real calculatedContentWidth: (iconLabel.visible ? iconLabel.implicitWidth : 0)\n',
+         '    property real calculatedContentWidth: (iconLabel.visible ? iconLabel.implicitWidth : 0) + (iconImage.visible ? root.iconFontSize * 1.15 : 0)\n'),
+        ('                                         + (iconLabel.visible && textCol.visible ? mainRow.spacing : 0)\n',
+         '                                         + ((iconLabel.visible || iconImage.visible) && textCol.visible ? mainRow.spacing : 0)\n'),
+        ('(iconLabel.visible ? (iconLabel.implicitWidth + mainRow.spacing) : 0)',
+         '((iconLabel.visible ? (iconLabel.implicitWidth + mainRow.spacing) : 0) + (iconImage.visible ? root.iconFontSize * 1.15 + mainRow.spacing : 0))'),
+    ]
+    for old, new in click_pairs:
+        text = text.replace(new, old)
+    import_anchor = 'import QtQuick.Layouts\n'
+    icon_anchor = '            Text {\n                id: iconLabel\n                visible: root.buttonIcon !== ""\n'
+    if text.count(import_anchor) != 1 or text.count(icon_anchor) != 1:
+        raise InstallError('ClickButton anchors changed; image icons cannot be placed')
+    import_block = ('// BEGIN serpantinum-addons-v2 image import\nimport QtQuick.Effects\n// END serpantinum-addons-v2 image import\n')
+    icon_block = '''            // BEGIN serpantinum-addons-v2 image icon
+            Image {
+                id: iconImage
+                visible: root.buttonIcon.indexOf("file:") === 0
+                source: visible ? root.buttonIcon : ""
+                Layout.alignment: Qt.AlignVCenter
+                Layout.preferredWidth: root.iconFontSize * 1.15
+                Layout.preferredHeight: root.iconFontSize * 1.15
+                sourceSize: Qt.size(width, height)
+                smooth: true; mipmap: true
+                layer.enabled: true
+                layer.effect: MultiEffect { colorization: 1; colorizationColor: root.displayTextColor }
+            }
+            // END serpantinum-addons-v2 image icon
+'''
+    text = text.replace(import_anchor, import_anchor + import_block, 1)
+    for old, new in click_pairs:
+        if text.count(old) != 1: raise InstallError('ClickButton width lines changed; image icon width cannot be placed')
+        text = text.replace(old, new, 1)
+    text = text.replace(icon_anchor, icon_block + icon_anchor.replace('visible: root.buttonIcon !== ""', 'visible: root.buttonIcon !== "" && root.buttonIcon.indexOf("file:") !== 0'), 1)
+    return text
 
 
 def patch_theme(text):
@@ -1051,7 +1373,10 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
                QS/'Shell.qml': patch_shell, QS/'screenshot/ScreenshotOverlay.qml': patch_screenshot_overlay, QS/'quickactions/Floating.qml': patch_floating,
                QS/'guide/GuidePopup.qml': patch_guide, QS/'guide/GuideSidebar.qml': patch_guide_sidebar, QS/'guide/IdleTab.qml': patch_idle_tab,
                (theme_state if theme_state.exists() else theme_view): patch_theme,QS/'network/NetworkPopup.qml': patch_network,
-               QS/'singletons/theme/Matugen.qml': patch_matugen, QS/'widgets/faces/weather/WeatherFaceFull.qml': patch_weather_face}
+               QS/'singletons/theme/Matugen.qml': patch_matugen, QS/'widgets/faces/weather/WeatherFaceFull.qml': patch_weather_face,
+               QS/'bar/faces/left/LeftFace.qml': patch_left_face, QS/'reusables/buttons/ClickButton.qml': patch_click_button,
+               QS/'guide/bar/modules/BarMenuCard.qml': patch_bar_menu_card, QS/'guide/bar/modules/BarModulesSettings.qml': patch_bar_modules_settings,
+               QS/'bar/BarModuleRegistry.qml': patch_bar_module_registry, QS/'widgets/WidgetRegistry.qml': patch_widget_registry}
     for path, transform in patches.items():
         pending[path] = patch_file(path, transform)
     pending[theme_view] = patch_file(theme_view, patch_theme_view, pending.get(theme_view))

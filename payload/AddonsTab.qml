@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Io
 import "../"
@@ -18,6 +19,22 @@ Item {
     Behavior on slideY { NumberAnimation { duration: 250; easing.type: Easing.OutQuart } }
     transform: Translate { y: root.slideY }
     Behavior on opacity { NumberAnimation { duration: 250 } }
+    // Platform logo for a sub-setting row: white source SVG tinted with the given theme colour, in the 32px icon slot.
+    component PlatformLogo: Item {
+        id: logoRoot
+        required property string logo
+        required property color tint
+        width: root.rootObj.s(32); height: width
+        Image {
+            anchors.centerIn: parent
+            width: root.rootObj.s(18); height: width
+            source: Qt.resolvedUrl("../tokens/assets/logos/" + logoRoot.logo)
+            sourceSize: Qt.size(width, height)
+            smooth: true; mipmap: true
+            layer.enabled: true
+            layer.effect: MultiEffect { colorization: 1; colorizationColor: logoRoot.tint }
+        }
+    }
     Flickable {
         id: addonsViewport
         anchors.fill: parent; anchors.margins: rootObj.s(24); contentWidth: width; contentHeight: settings.implicitHeight; clip: true
@@ -60,48 +77,218 @@ Item {
                     onToggled: { Config.setSetting("addonsV2LegacyClock", checked); }
                 }
             }
-            SettingsGroup {
-                rootObj: root.rootObj
-                icon: "󰐱"
-                title: "Passive addons"
-                description: "Shell tools enabled without individual switches"
-                subSettings: [
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: rootObj.s(2)
-                        Repeater {
-                            model: [
-                                { id: "addons_passive_desktop_draw", title: "Desktop drawing", icon: "󰏫", keywords: "desktop draw drawing annotation pen circle rectangle dessiner entourer dessin addonDesktopDraw", detail: "Super+Shift+D · Draw, circle or box · Esc to close" },
-                                { id: "addons_passive_desktop_zoom", title: "Desktop zoom", icon: "󰍉", keywords: "desktop zoom magnifier loupe souris curseur raccourci addonDesktopZoom", detail: "Super+Shift+Z · Scroll to zoom · Esc to close" },
-                                { id: "addons_passive_color_picker", title: "Color picker", icon: "󰈊", keywords: "color picker pipette palette couleur", detail: "Super+Shift+C" },
-                                { id: "addons_passive_screenshot", title: "Screenshot tools", icon: "󰹑", keywords: "screenshot capture freeze screenshot tool capture écran image", detail: "Frozen capture fixed · Super+Shift+S" },
-                                { id: "addons_passive_tokens", title: "AI Tokens counter", icon: "󰞷", keywords: "AI tokens counter Codex Claude usage compteur jetons", detail: "Widget and bar module · Codex + Claude usage" },
-                                { id: "addons_passive_monitors", title: "Monitor tools", icon: "󰍹", keywords: "monitor display screen monitors écran", detail: "Display tools for connected monitors" },
-                                { id: "addons_passive_screen_switch", title: "Next screen", icon: "󰍹", keywords: "screen monitor next switch Super Tab écran moniteur", detail: "Super+Tab · Move pointer to the screen centre" },
-                                { id: "addons_passive_window_switch", title: "Next window", icon: "󰖯", keywords: "window next switch Alt Tab fenêtre", detail: "Alt+Tab · Next window on this screen and workspace" },
-                                { id: "addons_passive_keybinds", title: "Keybind editor", icon: "󰌌", keywords: "keybind shortcut keyboard raccourci clavier", detail: "Edit and record shell shortcuts" },
-                                { id: "addons_passive_theme_modes", title: "Vibrant and Vivid theme modes", icon: "󰏘", keywords: "theme matugen vibrant vivid color mode thème", detail: "Colour modes for the shell palette" }
-                            ]
-                            delegate: SettingsRow {
-                                required property var modelData
-                                rootObj: root.rootObj
-                                settingId: modelData.id; searchTab: "addons"; searchKeywords: modelData.keywords
-                                title: modelData.title; icon: modelData.icon; description: modelData.detail
+            // AI tokens counter: a header that folds the sources open and shut. Closed by default.
+            ColumnLayout {
+                id: tokensSources
+                property bool expanded: false
+                readonly property bool isOpen: expanded
+                property real progress: isOpen ? 1 : 0
+                // Opening: a soft decelerate. Closing: shorter, ease-in-out so it tucks away without a bounce.
+                Behavior on progress { NumberAnimation { duration: tokensSources.isOpen ? 420 : 280; easing.type: tokensSources.isOpen ? Easing.OutCubic : Easing.InOutQuad } }
+                // Each row starts a little after the one above it, so the list unfolds instead of sliding as one block.
+                function stagger(i) { return Math.max(0, Math.min(1, (progress - Math.min(i * 0.07, 0.35)) / 0.65)); }
+                Layout.fillWidth: true
+                spacing: 0
+                SettingsRow {
+                    rootObj: root.rootObj
+                    // The whole header toggles the list, like the wallpaper accents.
+                    clickable: true
+                    onClicked: tokensSources.expanded = !tokensSources.expanded
+                    settingId: "addons_tokens_sources"; searchTab: "addons"
+                    searchKeywords: "tokens counter sources codex claude opencode llama.cpp ollama lmstudio compteur jetons sources"
+                    icon: "󰞷"
+                    title: "AI tokens counter"
+                    description: "Tools whose usage the counter adds up"
+                    Text {
+                        text: "󰅀"
+                        font.family: ThemeBackend.iconFont
+                        font.pixelSize: rootObj.s(14)
+                        color: tokensSources.expanded ? ThemeBackend.text : ThemeBackend.overlay2
+                        rotation: tokensSources.expanded ? 180 : 0
+                        // Plain ease, no overshoot: a chevron that bounces reads as a glitch.
+                        Behavior on rotation { NumberAnimation { duration: 340; easing.type: Easing.OutCubic } }
+                    }
+                }
+                Item {
+                    id: tokensBody
+                    Layout.fillWidth: true
+                    clip: true
+                    visible: tokensSources.progress > 0.001
+                    implicitHeight: (tokensRows.implicitHeight + rootObj.s(4)) * tokensSources.progress
+                    opacity: Math.min(1.0, tokensSources.progress * 2.5)
+                    RowLayout {
+                        id: tokensRows
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                        anchors.topMargin: rootObj.s(4)
+                        spacing: rootObj.s(6)
+                        Item {
+                            Layout.preferredWidth: rootObj.s(20)
+                            Layout.fillHeight: true
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.top: parent.top; anchors.bottom: parent.bottom
+                                anchors.topMargin: rootObj.s(2); anchors.bottomMargin: rootObj.s(2)
+                                width: Math.max(1, rootObj.s(2))
+                                radius: rootObj.s(1)
+                                color: Qt.rgba(ThemeBackend.surface2.r, ThemeBackend.surface2.g, ThemeBackend.surface2.b, 0.7)
+                            }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: rootObj.s(6)
+                            SettingsRow {
+                                rootObj: root.rootObj; settingId: "addons_tokens_codex"; searchTab: "addons"; searchKeywords: "codex openai tokens"
+                                title: "Codex"; customLeftContent: Component { PlatformLogo { logo: "codex.svg"; tint: ThemeBackend.text } }
+                                description: "Codex sessions and the account total."; wrapText: true
+                                opacity: tokensSources.stagger(0)
+                                transform: Translate { y: rootObj.s(-8) * (1 - tokensSources.stagger(0)) }
+                                Toggle {
+                                    checked: Config.getSetting("addonsV2TokensCodex", true)
+                                    accentColor: ThemeBackend.mauve
+                                    onToggled: { Config.setSetting("addonsV2TokensCodex", checked); }
+                                }
+                            }
+                            SettingsRow {
+                                rootObj: root.rootObj; settingId: "addons_tokens_claude"; searchTab: "addons"; searchKeywords: "claude anthropic tokens"
+                                title: "Claude Code"; customLeftContent: Component { PlatformLogo { logo: "claudecode.svg"; tint: ThemeBackend.peach } }
+                                description: "Claude Code transcripts, subagents included."; wrapText: true
+                                opacity: tokensSources.stagger(1)
+                                transform: Translate { y: rootObj.s(-8) * (1 - tokensSources.stagger(1)) }
+                                Toggle {
+                                    checked: Config.getSetting("addonsV2TokensClaude", true)
+                                    accentColor: ThemeBackend.mauve
+                                    onToggled: { Config.setSetting("addonsV2TokensClaude", checked); }
+                                }
+                            }
+                            SettingsRow {
+                                rootObj: root.rootObj; settingId: "addons_tokens_opencode"; searchTab: "addons"; searchKeywords: "opencode sessions tokens"
+                                title: "opencode"; customLeftContent: Component { PlatformLogo { logo: "opencode.svg"; tint: ThemeBackend.green } }
+                                description: "Totals of opencode sessions, read from its local database."; wrapText: true
+                                opacity: tokensSources.stagger(2)
+                                transform: Translate { y: rootObj.s(-8) * (1 - tokensSources.stagger(2)) }
+                                Toggle {
+                                    checked: Config.getSetting("addonsV2TokensOpencode", false)
+                                    accentColor: ThemeBackend.mauve
+                                    onToggled: { Config.setSetting("addonsV2TokensOpencode", checked); }
+                                }
+                            }
+                            SettingsRow {
+                                rootObj: root.rootObj; settingId: "addons_tokens_llamacpp"; searchTab: "addons"; searchKeywords: "llama.cpp llama-server metrics tokens"
+                                title: "llama.cpp"; customLeftContent: Component { PlatformLogo { logo: "llamacpp.svg"; tint: ThemeBackend.yellow } }
                                 wrapText: true
-                                iconSize: 24; iconFontSize: 12
-                                verticalPadding: rootObj.s(6)
-                                titlePixelSize: 12; descriptionPixelSize: 10
-
-                                Text {
-                                    text: modelData.status || "Enabled"
-                                    color: ThemeBackend.green
-                                    font.family: ThemeBackend.fontFamily
-                                    font.pixelSize: rootObj.s(11)
+                                description: "Reads http://127.0.0.1:8080/metrics. Start llama-server with --metrics. Counts from when it is first seen."
+                                opacity: tokensSources.stagger(3)
+                                transform: Translate { y: rootObj.s(-8) * (1 - tokensSources.stagger(3)) }
+                                Toggle {
+                                    checked: Config.getSetting("addonsV2TokensLlamaCpp", false)
+                                    accentColor: ThemeBackend.mauve
+                                    onToggled: { Config.setSetting("addonsV2TokensLlamaCpp", checked); }
                                 }
                             }
                         }
                     }
-                ]
+                }
+            }
+            // Passive addons: same fold as the tokens header, but open by default.
+            ColumnLayout {
+                id: passiveSection
+                property bool expanded: true
+                // Search and the highlight call holdOpen/releaseOpen on the owner group (same contract as SettingsGroup).
+                property int openHolds: 0
+                readonly property bool isOpen: expanded || openHolds > 0
+                function holdOpen() { openHolds++; }
+                function releaseOpen() { if (openHolds > 0) openHolds--; }
+                property real progress: isOpen ? 1 : 0
+                Behavior on progress { NumberAnimation { duration: passiveSection.isOpen ? 420 : 280; easing.type: passiveSection.isOpen ? Easing.OutCubic : Easing.InOutQuad } }
+                function stagger(i) { return Math.max(0, Math.min(1, (progress - Math.min(i * 0.05, 0.35)) / 0.65)); }
+                Layout.fillWidth: true
+                spacing: 0
+                SettingsRow {
+                    rootObj: root.rootObj
+                    clickable: true
+                    onClicked: passiveSection.expanded = !passiveSection.expanded
+                    settingId: "addons_passive_group"; searchable: false
+                    icon: "󰐱"
+                    title: "Passive addons"
+                    description: "Shell tools enabled without individual switches"
+                    Text {
+                        text: "󰅀"
+                        font.family: ThemeBackend.iconFont
+                        font.pixelSize: rootObj.s(14)
+                        color: passiveSection.expanded ? ThemeBackend.text : ThemeBackend.overlay2
+                        rotation: passiveSection.expanded ? 180 : 0
+                        Behavior on rotation { NumberAnimation { duration: 340; easing.type: Easing.OutCubic } }
+                    }
+                }
+                Item {
+                    id: passiveBody
+                    readonly property bool isGroupSubWrapper: true
+                    readonly property var ownerGroup: passiveSection
+                    Layout.fillWidth: true
+                    clip: true
+                    visible: passiveSection.progress > 0.001
+                    implicitHeight: (passiveRows.implicitHeight + rootObj.s(4)) * passiveSection.progress
+                    opacity: Math.min(1.0, passiveSection.progress * 2.5)
+                    RowLayout {
+                        id: passiveRows
+                        layoutDirection: I18n.layoutDirection
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                        anchors.topMargin: rootObj.s(4)
+                        spacing: rootObj.s(6)
+                        Item {
+                            Layout.preferredWidth: rootObj.s(20)
+                            Layout.fillHeight: true
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.top: parent.top; anchors.bottom: parent.bottom
+                                anchors.topMargin: rootObj.s(2); anchors.bottomMargin: rootObj.s(2)
+                                width: Math.max(1, rootObj.s(2))
+                                radius: rootObj.s(1)
+                                color: Qt.rgba(ThemeBackend.surface2.r, ThemeBackend.surface2.g, ThemeBackend.surface2.b, 0.7)
+                            }
+                        }
+                        ColumnLayout {
+                            id: passiveList
+                            Layout.fillWidth: true
+                            spacing: rootObj.s(2)
+                            Repeater {
+                                model: [
+                                    { id: "addons_passive_desktop_draw", title: "Desktop drawing", icon: "󰏫", keywords: "desktop draw drawing annotation pen circle rectangle dessiner entourer dessin addonDesktopDraw", detail: "Super+Shift+D · Draw, circle or box · Esc to close" },
+                                    { id: "addons_passive_desktop_zoom", title: "Desktop zoom", icon: "󰍉", keywords: "desktop zoom magnifier loupe souris curseur raccourci addonDesktopZoom", detail: "Super+Shift+Z · Scroll to zoom · Esc to close" },
+                                    { id: "addons_passive_color_picker", title: "Color picker", icon: "󰈊", keywords: "color picker pipette palette couleur", detail: "Super+Shift+C" },
+                                    { id: "addons_passive_screenshot", title: "Screenshot tools", icon: "󰹑", keywords: "screenshot capture freeze screenshot tool capture écran image", detail: "Frozen capture fixed · Super+Shift+S" },
+                                    { id: "addons_passive_tokens", title: "AI Tokens counter", icon: "󰞷", keywords: "AI tokens counter Codex Claude usage compteur jetons", detail: "Widget and bar module · Codex + Claude usage" },
+                                    { id: "addons_passive_monitors", title: "Monitor tools", icon: "󰍹", keywords: "monitor display screen monitors écran", detail: "Display tools for connected monitors" },
+                                    { id: "addons_passive_screen_switch", title: "Next screen", icon: "󰍹", keywords: "screen monitor next switch Super Tab écran moniteur", detail: "Super+Tab · Move pointer to the screen centre" },
+                                    { id: "addons_passive_window_switch", title: "Next window", icon: "󰖯", keywords: "window next switch Alt Tab fenêtre", detail: "Alt+Tab · Next window on this screen and workspace" },
+                                    { id: "addons_passive_keybinds", title: "Keybind editor", icon: "󰌌", keywords: "keybind shortcut keyboard raccourci clavier", detail: "Edit and record shell shortcuts" },
+                                    { id: "addons_passive_theme_modes", title: "Vibrant and Vivid theme modes", icon: "󰏘", keywords: "theme matugen vibrant vivid color mode thème", detail: "Colour modes for the shell palette" }
+                                ]
+                                delegate: SettingsRow {
+                                    required property var modelData
+                                    required property int index
+                                    rootObj: root.rootObj
+                                    settingId: modelData.id; searchTab: "addons"; searchKeywords: modelData.keywords
+                                    title: modelData.title; icon: modelData.icon; description: modelData.detail
+                                    wrapText: true
+                                    iconSize: 24; iconFontSize: 12
+                                    verticalPadding: rootObj.s(6)
+                                    titlePixelSize: 12; descriptionPixelSize: 10
+                                    readonly property real reveal: passiveSection.stagger(index)
+                                    opacity: reveal
+                                    transform: Translate { y: rootObj.s(-8) * (1 - reveal) }
+
+                                    Text {
+                                        text: modelData.status || "Enabled"
+                                        color: ThemeBackend.green
+                                        font.family: ThemeBackend.fontFamily
+                                        font.pixelSize: rootObj.s(11)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
             SettingsGroup {
                 rootObj: root.rootObj

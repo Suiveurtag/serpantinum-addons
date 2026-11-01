@@ -150,7 +150,7 @@ Item {
             Text { text: word.text; font: word.font; x: -card.rootObj.s(6); color: card.red; visible: card.glitch }
             Text {
                 id: word
-                text: "CAPRI"
+                text: "CAPRICORN"
                 x: card.glitch ? card.rootObj.s(3) : 0
                 font.family: card.display; font.pixelSize: card.rootObj.s(card.compact ? 56 : 84); font.bold: true; font.letterSpacing: card.rootObj.s(2)
                 color: card.mix(card.paper3, card.paper, card.ignition)

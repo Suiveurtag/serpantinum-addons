@@ -1,6 +1,6 @@
 export const STRINGS = {
   en: {
-    eyebrow:'DESKTOP COMPANION', headline:'Capri is here', body:'A little chaos. A familiar presence. Right on your desktop.', toggle:'Enable Capri', enabled:'ENABLED', disabled:'DISABLED',
+    eyebrow:'DESKTOP COMPANION', headline:'Capri is here', body:'Powerful, like an A.I., but born of humans.', toggle:'Enable Capri', enabled:'ENABLED', disabled:'DISABLED',
     options:'Capri options', details:'Appearance, behaviour, assistants and AI', expand:'Show options', collapse:'Hide options',
     size:'Size', sizeDetail:'Changes the live pet immediately.', screen:'Screen', screenDetail:'Move Capri to this screen.',
     motion:'Animations', motionDetail:'Automatic follows shell performance mode. The card always respects performance mode.', language:'Language', languageDetail:'Automatic follows the shell; unsupported languages use English.',

@@ -28,7 +28,7 @@ QtObject {
     // The only arguments launch() will ever pass to install.sh.
     readonly property var allowedArgs: ["update", "reinstall", "--focus uninstall"]
 
-    readonly property string installerBase: "https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons-v2/"
+    readonly property string installerBase: "https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons/"
     // Pinned to the release tag when a version is known (validated, so nothing can be injected); main otherwise.
     readonly property string installerRef: {
         let ok = /^[0-9]+(\.[0-9]+)*$/;

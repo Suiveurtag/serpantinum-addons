@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import "../reusables"
 import "../"
 
@@ -60,6 +61,17 @@ Item {
         acceptedButtons: Qt.NoButton
     }
 
+    // Token icon (assets/token.svg, white stroke), tinted with the theme's primary colour.
+    component TokenIcon: Image {
+        required property real side
+        width: side; height: side
+        source: Qt.resolvedUrl("assets/token.svg")
+        sourceSize: Qt.size(side, side)
+        smooth: true; mipmap: true
+        layer.enabled: true
+        layer.effect: MultiEffect { colorization: 1; colorizationColor: ThemeBackend.primary }
+    }
+
     // Live indicator: steady dot, pulsing ring while tokens flow.
     component LiveDot : Item {
         id: dot
@@ -96,19 +108,15 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         x: root.pad
         spacing: root.gap
+        opacity: root.showLayout ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
 
         Item {
             id: icon
-            width: root.s(16)
-            height: root.s(16)
+            width: root.s(19)
+            height: root.s(19)
             anchors.verticalCenter: parent.verticalCenter
-            Text {
-                anchors.centerIn: parent
-                text: "󰧑"
-                font.family: ThemeBackend.iconFont
-                font.pixelSize: root.s(14)
-                color: ThemeBackend.primary
-            }
+            TokenIcon { anchors.centerIn: parent; side: root.s(19) }
             LiveDot { x: parent.width - width * 0.7; y: -height * 0.25 }
         }
 
@@ -125,7 +133,7 @@ Item {
                 pixelSize: root.fontSize
                 weight: Font.Bold
                 color: ThemeBackend.text
-                animate: root.visible && root.showLayout
+                animate: root.visible && root.showLayout && !!Tokens.data
                 duration: 700
                 opacity: root.hovered ? 0 : 1
                 Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
@@ -168,8 +176,8 @@ Item {
         visible: root.isVertical
         anchors.centerIn: parent
         spacing: root.s(3)
-        Item { width: root.s(14); height: root.s(14); anchors.horizontalCenter: parent.horizontalCenter
-            Text { anchors.centerIn: parent; text: "󰧑"; font.family: ThemeBackend.iconFont; font.pixelSize: root.s(13); color: ThemeBackend.primary } }
+        Item { width: root.s(17); height: root.s(17); anchors.horizontalCenter: parent.horizontalCenter
+            TokenIcon { anchors.centerIn: parent; side: root.s(16) } }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: Tokens.compact(Tokens.total)

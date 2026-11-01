@@ -13,7 +13,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-REPO = "Suiveurtag/serpantinum-addons-v2"
+REPO = "Suiveurtag/serpantinum-addons"
 UPSTREAM_REPO = "ilyamiro/serpantinum"
 CACHE_TTL = 3600
 TIMEOUT = 5

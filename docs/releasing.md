@@ -29,7 +29,7 @@ If a step fails the script stops with the reason. Nothing is rolled back automat
 
 - The Serpantinum shell checks for a new release about every hour and shows the peach "Addons update" button at the bottom of the Settings sidebar.
 - Settings → About shows the addons card: version, compatibility, changelog, hold-to-update.
-- Terminal: `bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons-v2/main/install/install.sh)" _ update`.
+- Terminal: `bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons/main/install/install.sh)" _ update`.
 
 ## Hotfix and rollback
 

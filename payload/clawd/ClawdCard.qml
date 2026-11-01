@@ -179,7 +179,7 @@ Rectangle {
                     T { text: "✻ "; color: card.accent; font.bold: true }
                     T { text: "Welcome to Clawd!"; font.bold: true }
                 }
-                T { width: parent.width; elide: Text.ElideRight; color: card.dim; height: card.lh; text: "Claude Code's pixel pal" + (card.compact ? "" : ", on your desktop") }
+                T { width: parent.width; elide: Text.ElideRight; color: card.dim; height: card.lh; text: "Claude Code's cute pal" +(card.compact ? "" : ", on your desktop") }
                 T {
                     width: parent.width; elide: Text.ElideRight; height: card.lh
                     color: Clawd.enabled ? ThemeBackend.green : card.faint

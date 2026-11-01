@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Serpantinum Addons bootstrap.
-#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons-v2/main/install/install.sh)"
+#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-addons/main/install/install.sh)"
 # Arguments after the script are passed to addons.py, e.g.:
 #   bash -c "$(curl -fsSL .../install.sh)" _ update
 #   bash -c "$(curl -fsSL .../install.sh)" _ --focus uninstall
 # Extra option handled here: --ref <tag|branch> (source version to check out).
 set -euo pipefail
 
-REPO_SLUG="Suiveurtag/serpantinum-addons-v2"
+REPO_SLUG="Suiveurtag/serpantinum-addons"
 REPO_URL="https://github.com/${REPO_SLUG}.git"
 API_URL="https://api.github.com/repos/${REPO_SLUG}/releases/latest"
 ISSUES_URL="https://github.com/${REPO_SLUG}/issues"

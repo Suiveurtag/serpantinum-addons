@@ -11,6 +11,7 @@ total survives Claude deleting old transcripts. Output: state.json (atomic, 0600
     collector.py status     print the last state.json
 """
 import calendar
+import datetime
 import hashlib
 import json
 import os
@@ -19,6 +20,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
 from pathlib import Path
 
 HOME = Path.home()
@@ -30,6 +32,15 @@ SCAN = 3          # seconds between log scans
 SYNC = 600        # seconds between account syncs
 ACTIVE = 8        # seconds a token event keeps the live indicator on
 PRUNE = 400 * 86400
+PERIODS = (('today', 0), ('week', 6), ('month', 29))   # recent windows, in UTC days back from today (Codex and Claude only)
+SETTINGS = Path(os.environ.get('QS_SETTINGS') or HOME/'.config/serpantinum/settings.json')
+OPENCODE_DB = Path(os.environ.get('TOKENS_OPENCODE_DB') or HOME/'.local/share/opencode/opencode.db')
+LLAMA_URL = os.environ.get('TOKENS_LLAMACPP_URL') or 'http://127.0.0.1:8080'
+OPENCODE_EVERY = 60   # seconds between reads of opencode's session table
+LLAMA_EVERY = 10      # seconds between llama.cpp /metrics reads
+# source -> (shell setting that enables it, default). Codex and Claude were always on; the new sources are opt-in.
+OPTIONS = {'codex': ('addonsV2TokensCodex', True), 'claude': ('addonsV2TokensClaude', True),
+           'opencode': ('addonsV2TokensOpencode', False), 'llamacpp': ('addonsV2TokensLlamaCpp', False)}
 
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS files(path TEXT PRIMARY KEY, inode INTEGER, off INTEGER, hw INTEGER DEFAULT 0, seen REAL);
@@ -39,7 +50,41 @@ CREATE TABLE IF NOT EXISTS claude_day(day TEXT PRIMARY KEY, input INTEGER, outpu
 CREATE TABLE IF NOT EXISTS claude_seen(key INTEGER PRIMARY KEY, total INTEGER, ts REAL);
 CREATE TABLE IF NOT EXISTS account(id INTEGER PRIMARY KEY CHECK(id=1), lifetime INTEGER, buckets TEXT, synced REAL);
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS opencode_seen(id TEXT PRIMARY KEY, total INTEGER);
+CREATE TABLE IF NOT EXISTS llama_seen(id INTEGER PRIMARY KEY CHECK(id=1), prompt INTEGER, predicted INTEGER, total INTEGER);
 '''
+
+
+def option_enabled(source):
+    key, default = OPTIONS[source]
+    try:
+        return json.loads(SETTINGS.read_text()).get(key, default) is True
+    except (OSError, ValueError, AttributeError):
+        return default
+
+
+def opencode_totals():
+    """Running token totals per opencode session, read-only: its session table already holds the counters."""
+    db = sqlite3.connect(OPENCODE_DB.as_uri() + '?mode=ro', uri=True, timeout=2)
+    try:
+        rows = db.execute('SELECT id, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write FROM session').fetchall()
+    finally:
+        db.close()
+    return {sid: sum(num(v) for v in values) for sid, *values in rows}
+
+
+def llama_counters(url):
+    """Lifetime prompt and generated token counters of a llama-server started with --metrics."""
+    with urllib.request.urlopen(url.rstrip('/') + '/metrics', timeout=2) as reply:
+        text = reply.read().decode('utf-8', 'replace')
+    found = {}
+    for line in text.splitlines():
+        name, _, value = line.partition(' ')
+        if name in ('llamacpp:prompt_tokens_total', 'llamacpp:tokens_predicted_total'):
+            found[name] = int(float(value))
+    if len(found) != 2:
+        raise ValueError('no llama.cpp token counters (start llama-server with --metrics)')
+    return found['llamacpp:prompt_tokens_total'], found['llamacpp:tokens_predicted_total']
 
 
 def h64(text):
@@ -84,6 +129,11 @@ class Collector:
         self.published = None
         self.pub_at = 0.0
         self.importing = False
+        self.enabled = {name: option_enabled(name) for name in OPTIONS}
+        self.opencode_at = 0.0
+        self.opencode_error = None
+        self.llama_at = 0.0
+        self.llama_error = None
 
     def meta(self, key):
         row = self.db.execute('SELECT v FROM meta WHERE k=?', (key,)).fetchone()
@@ -92,12 +142,15 @@ class Collector:
     # ---- logs ----
     def files(self):
         for root, kind in ((CODEX, 'codex'), (CLAUDE, 'claude')):
+            if not self.enabled.get(kind):
+                continue
             for dirpath, _, names in os.walk(root):
                 for name in names:
                     if name.endswith('.jsonl'):
                         yield os.path.join(dirpath, name), kind
 
     def scan(self):
+        self.enabled = {name: option_enabled(name) for name in OPTIONS}
         changed = False
         todo = []
         for path, kind in self.files():
@@ -114,6 +167,7 @@ class Collector:
             except OSError:
                 continue           # vanished or unreadable: retried on the next change
             self.stat[path] = (st.st_mtime_ns, st.st_size)
+        self.poll_sources()
         self.db.commit()
         return changed
 
@@ -207,8 +261,41 @@ class Collector:
             self.last_event = time.time()
             self.db.execute("INSERT INTO meta VALUES('last_event', ?) ON CONFLICT(k) DO UPDATE SET v=?", (str(self.last_event),) * 2)
 
+    # ---- other tools ----
+    def poll_sources(self):
+        now = time.time()
+        if self.enabled.get('opencode') and now - self.opencode_at >= OPENCODE_EVERY:
+            self.opencode_at = now
+            try:
+                for sid, total in opencode_totals().items():
+                    # max(): a session never gives back tokens it already showed, even once opencode deletes it
+                    self.db.execute('INSERT INTO opencode_seen VALUES(?,?) ON CONFLICT(id) DO UPDATE SET total=max(total, excluded.total)', (sid, total))
+                self.opencode_error = None
+            except (sqlite3.Error, OSError, ValueError) as error:
+                self.opencode_error = 'unreadable'     # the exception text can carry the database path: keep it out of state.json
+            self.db.commit()
+        if self.enabled.get('llamacpp') and now - self.llama_at >= LLAMA_EVERY:
+            self.llama_at = now
+            try:
+                prompt, predicted = llama_counters(LLAMA_URL)
+            except (OSError, ValueError) as error:
+                self.llama_error = 'not running'        # server not running: nothing is added until it answers again (no URL in state.json)
+                return
+            self.llama_error = None
+            row = self.db.execute('SELECT prompt, predicted, total FROM llama_seen WHERE id=1').fetchone()
+            if row is None:
+                self.db.execute('INSERT INTO llama_seen VALUES(1,?,?,0)', (prompt, predicted))   # first reading is the baseline
+            else:
+                last_prompt, last_predicted, total = row
+                # a counter below its last reading means the server restarted: everything it shows is new
+                grown = (prompt - last_prompt if prompt >= last_prompt else prompt) + (predicted - last_predicted if predicted >= last_predicted else predicted)
+                self.db.execute('UPDATE llama_seen SET prompt=?, predicted=?, total=? WHERE id=1', (prompt, predicted, total + grown))
+            self.db.commit()
+
     # ---- account ----
     def sync(self):
+        if not self.enabled.get('codex'):
+            return
         self.sync_at = time.time()
         try:
             result = account_usage()
@@ -230,6 +317,19 @@ class Collector:
         return time.time() - self.sync_at >= wait
 
     # ---- output ----
+    def periods(self):
+        """Tokens per recent window. Days are UTC, like the logs. opencode and llama.cpp keep no per-day history, so they are not here."""
+        today = datetime.datetime.now(datetime.timezone.utc).date()
+        result = {'codex': {}, 'claude': {}}
+        for name, back in PERIODS:
+            since = (today - datetime.timedelta(days=back)).isoformat()
+            if self.enabled.get('codex'):
+                result['codex'][name] = sum(tokens for day, tokens in self.db.execute('SELECT day, tokens FROM codex_day') if day >= since)
+            if self.enabled.get('claude'):
+                result['claude'][name] = self.db.execute(
+                    'SELECT coalesce(sum(input+output+cache_create+cache_read),0) FROM claude_day WHERE day>=?', (since,)).fetchone()[0]
+        return result
+
     def state(self):
         local = dict(self.db.execute('SELECT day, tokens FROM codex_day'))
         acct = self.db.execute('SELECT lifetime, buckets, synced FROM account').fetchone()
@@ -245,9 +345,24 @@ class Collector:
         c = self.db.execute('SELECT coalesce(sum(input),0), coalesce(sum(output),0), coalesce(sum(cache_create),0), coalesce(sum(cache_read),0), min(day) FROM claude_day').fetchone()
         claude = {'input': c[0], 'output': c[1], 'cache_creation': c[2], 'cache_read': c[3], 'total': sum(c[:4]), 'since': c[4],
                   'status': 'local' if c[4] else 'empty' if CLAUDE.is_dir() else 'missing'}
-        total = (codex['total'] or 0) + claude['total']
-        return {'version': 1, 'codex': codex, 'claude': claude,
-                'combined': {'total': total, 'complete': codex['status'] == 'ok' and claude['status'] != 'missing'},
+        sources = {}
+        if self.enabled.get('opencode'):
+            count, sessions = self.db.execute('SELECT coalesce(sum(total),0), count(*) FROM opencode_seen').fetchone()
+            sources['opencode'] = {'total': count, 'sessions': sessions, 'status': 'error' if self.opencode_error else 'ok', 'error': self.opencode_error}
+        if self.enabled.get('llamacpp'):
+            row = self.db.execute('SELECT total FROM llama_seen WHERE id=1').fetchone()
+            sources['llamacpp'] = {'total': row[0] if row else 0, 'status': 'error' if self.llama_error else 'ok', 'error': self.llama_error}
+        if not self.enabled.get('codex'):
+            codex['status'] = 'off'
+        if not self.enabled.get('claude'):
+            claude['status'] = 'off'
+        periods = self.periods()
+        codex_total = (codex['total'] or 0) if self.enabled.get('codex') else 0
+        claude_total = claude['total'] if self.enabled.get('claude') else 0
+        total = codex_total + claude_total + sum(source['total'] for source in sources.values())
+        complete = codex['status'] in ('ok', 'off') and claude['status'] != 'missing' and not any(source['status'] == 'error' for source in sources.values())
+        return {'version': 1, 'codex': codex, 'claude': claude, 'sources': sources, 'periods': periods,
+                'combined': {'total': total, 'complete': complete},
                 'active': time.time() - self.last_event < ACTIVE, 'importing': self.importing, 'corrupt_lines': self.corrupt}
 
     def publish(self, force=False):

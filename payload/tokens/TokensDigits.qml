@@ -11,11 +11,19 @@ Item {
     property int weight: Font.Black
     property bool animate: false
     property int duration: 900
+    // Entry: the first time it animates, every wheel spins up from zero to its digit, right to left.
+    property bool spinIn: true
+    property int spinDuration: 900
+    property bool spun: false
+    property bool spinning: false
+    onAnimateChanged: if (animate && spinIn && !spun) { spun = true; spinning = true; spinEnd.restart(); }
+    Timer { id: spinEnd; interval: root.spinDuration + 600; onTriggered: root.spinning = false }
     readonly property string formatted: Math.round(value).toLocaleString(Qt.locale(), "f", 0)
     readonly property real cell: metrics.advanceWidth
     readonly property real lineHeight: metrics.height
     implicitWidth: row.width
     implicitHeight: lineHeight
+    clip: true
 
     TextMetrics {
         id: metrics
@@ -48,6 +56,15 @@ Item {
                 onChChanged: {
                     if (!isDigit) return;
                     const d = Number(ch);
+                    if (spinAnim.running) {
+                        // Changed mid-spin: stop the spin and move on from the digit actually shown,
+                        // otherwise the spin's end value overwrites the new digit and it stays stuck.
+                        spinAnim.stop();
+                        const shown = Math.round(roll) % 10;
+                        roll = Math.round(roll) + (d - shown + 10) % 10;
+                        last = d;
+                        return;
+                    }
                     // A digit cannot be rolled backwards: wrapping 9 to 0 keeps rolling forward.
                     roll = last < 0 || !root.animate ? d : roll + (d - last + 10) % 10;
                     last = d;
@@ -56,6 +73,15 @@ Item {
                 Behavior on roll {
                     enabled: root.animate
                     NumberAnimation { duration: root.duration; easing.type: Easing.OutExpo }
+                }
+                SequentialAnimation {
+                    id: spinAnim
+                    running: root.spinning && slot.isDigit
+                    // however the spin ends, the wheel lands on a whole digit (no half-rolled fragment)
+                    onStopped: slot.roll = Math.round(slot.roll)
+                    PauseAnimation { duration: slot.index * 70 }
+                    // two full turns, then settle on the digit (roll mod 10 is the digit shown)
+                    NumberAnimation { target: slot; property: "roll"; from: 0; to: Number(slot.ch) + 20; duration: root.spinDuration; easing.type: Easing.OutCubic }
                 }
 
                 Text {
