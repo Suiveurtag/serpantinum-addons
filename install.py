@@ -42,7 +42,8 @@ def patch_guide(text):
     addons_entry_with_subtabs = '''        { id: "Addons", key: "addons", name: "Addons", icon: "󰐱", file: "AddonsTab.qml", iconOffsetX: 0,
             subtabs: [
                 { id: "AddonsGeneral", key: "addons_general", name: "General", icon: "󰒓", file: "AddonsTab.qml", iconOffsetX: 0 },
-                { id: "AddonsMouse", key: "addons_mouse", name: "Mouse", icon: "󰍽", file: "AddonsMouseTab.qml", iconOffsetX: 0 }
+                { id: "AddonsMouse", key: "addons_mouse", name: "Mouse", icon: "󰍽", file: "AddonsMouseTab.qml", iconOffsetX: 0 },
+                { id: "AddonsBanners", key: "addons_banners", name: "Banners", icon: "󰓻", file: "AddonsBannersTab.qml", iconOffsetX: 0 }
             ]
         },'''
     # v2.2.8 moved guide navigation and content into a model-driven loader.
@@ -897,7 +898,7 @@ def install(without_halloween=False, without_capri=False, without_clawd=False):
         text = pending[path] if path in pending else path.read_text()
         pending[path] = clawd.remove(text) if without_clawd else transform(text)
     pending[keybind_path] = clawd.remove(pending[keybind_path]) if without_clawd else clawd.patch_keybind(pending[keybind_path], QS/'Shell.qml')
-    payloads = {'AddonWindowOutline.qml': 'AddonWindowOutline.qml', 'AddonAwake.qml': 'AddonAwake.qml', 'AddonDesktopDraw.qml': 'AddonDesktopDraw.qml', 'AddonDesktopZoom.qml': 'AddonDesktopZoom.qml', 'AddonMouseSpotlight.qml': 'AddonMouseSpotlight.qml', 'AddonColorPicker.qml': 'AddonColorPicker.qml', 'AddonsTab.qml': 'guide/AddonsTab.qml', 'AddonsMouseTab.qml': 'guide/AddonsMouseTab.qml', 'AddonMonitorsTab.qml': 'guide/AddonMonitorsTab.qml', 'AddonKeybindsTab.qml': 'guide/AddonKeybindsTab.qml', 'AddonStartupTab.qml': 'guide/AddonStartupTab.qml', 'DnsControl.qml': 'network/DnsControl.qml', 'LegacyCalendar.qml': 'calendar/LegacyCalendar.qml', 'CalendarPopup.qml': 'calendar/CalendarPopup.qml'}
+    payloads = {'AddonWindowOutline.qml': 'AddonWindowOutline.qml', 'AddonAwake.qml': 'AddonAwake.qml', 'AddonDesktopDraw.qml': 'AddonDesktopDraw.qml', 'AddonDesktopZoom.qml': 'AddonDesktopZoom.qml', 'AddonMouseSpotlight.qml': 'AddonMouseSpotlight.qml', 'AddonColorPicker.qml': 'AddonColorPicker.qml', 'AddonsTab.qml': 'guide/AddonsTab.qml', 'AddonsMouseTab.qml': 'guide/AddonsMouseTab.qml', 'AddonsBannersTab.qml': 'guide/AddonsBannersTab.qml', 'AddonMonitorsTab.qml': 'guide/AddonMonitorsTab.qml', 'AddonKeybindsTab.qml': 'guide/AddonKeybindsTab.qml', 'AddonStartupTab.qml': 'guide/AddonStartupTab.qml', 'DnsControl.qml': 'network/DnsControl.qml', 'LegacyCalendar.qml': 'calendar/LegacyCalendar.qml', 'CalendarPopup.qml': 'calendar/CalendarPopup.qml'}
     for component in ('AddonCursorSettings', 'AddonCursorPreview', 'AddonCursorRole', 'AddonCursorTestArea'):
         payloads[component + '.qml'] = 'guide/' + component + '.qml'
     for source, target in payloads.items(): pending[QS/target] = (SOURCE/'payload'/source).read_text()

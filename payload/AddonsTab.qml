@@ -23,15 +23,6 @@ Item {
         anchors.fill: parent; anchors.margins: rootObj.s(24); contentWidth: width; contentHeight: settings.implicitHeight; clip: true
         ColumnLayout {
             id: settings; width: parent.width; spacing: rootObj.s(8)
-            // BEGIN serpantinum-night-v2 option
-            HalloweenCard { rootObj: root.rootObj; Layout.bottomMargin: rootObj.s(6) }
-            // END serpantinum-night-v2 option
-            // BEGIN serpantinum-capri-v2 option
-            CapriSettings { rootObj: root.rootObj; viewport: addonsViewport; Layout.bottomMargin: rootObj.s(6) }
-            // END serpantinum-capri-v2 option
-            // BEGIN serpantinum-clawd-v2 option
-            ClawdSettings { rootObj: root.rootObj; viewport: addonsViewport; Layout.bottomMargin: rootObj.s(6) }
-            // END serpantinum-clawd-v2 option
             SettingsRow {
                 rootObj: root.rootObj; settingId: "addons_window_outline"; searchTab: "addons"; searchKeywords: "window outline border theme fenêtre contour bordure thème"
                 title: "Themed window outline"; description: "Add a fine outline to windows using the current shell palette."; icon: "󰖯"
