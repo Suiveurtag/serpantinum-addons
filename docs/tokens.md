@@ -1,7 +1,9 @@
 # AI Tokens, lifetime counter widget
 
 A native desktop widget (type `tokens`, "AI Tokens") showing every token you have used with Codex and Claude Code:
-a large odometer-style lifetime total, smaller Codex and Claude counters, a live indicator, and a status line per source.
+a large odometer-style lifetime total, smaller Codex, Claude, opencode and llama.cpp counters, a live indicator, and a status line per source.
+The Codex and Claude counters always show. opencode and llama.cpp appear at 120 % of the default size or more, the same percentage the widget editor shows (width ÷ 360). They are opt-in toggles in the Addons settings; while off they show `off`.
+Changes that arrive in the same burst (a 140 ms window, the same timing as the bar module) are rolled together: every counter that moved, the total included, rolls its digits at once for about a second; the others stay still.
 Add it from the widgets editor like any other widget; size and position are the native ones.
 
 It is also a **bar module**: Settings → Bar → Modules lists "AI Tokens" under available modules; drag it into any zone. Horizontal bars show
@@ -12,8 +14,10 @@ Removing the addon leaves the id in your bar layout; delete it from the bar sett
 
 | Source | Historical baseline | Live updates | Dedupe |
 | --- | --- | --- | --- |
-| Codex | The account's own `summary.lifetimeTokens` from `codex app-server` → `account/usage/read` (verified on codex-cli 0.166.0; its daily buckets sum exactly to it). Codex's own login is used, nothing is read or stored | `~/.codex/sessions` rollouts: growth of `total_token_usage.total_tokens`, per file high-water mark | Repeated or replayed snapshots add nothing; forked sub-agent threads replaying parent history are counted once |
+| Codex | The account's own `summary.lifetimeTokens` from `codex app-server` → `account/usage/read` (verified on codex-cli 0.166.0; its daily buckets sum exactly to it). Codex's own login is used, nothing is read or stored | `~/.codex/sessions` rollouts: growth of `total_token_usage.total_tokens`, scanned every 3 s, per file high-water mark | Repeated or replayed snapshots add nothing; forked sub-agent threads replaying parent history are counted once |
 | Claude Code | None exists locally: only what `~/.claude/projects` still holds (subagents included) plus everything the collector has kept since | Transcript tails, every 3 s | `message.id` + `requestId`; a message that grows adds only the growth |
+| opencode | None: sessions it still holds in `~/.local/share/opencode/opencode.db` (read-only, every 3 s) | Session table totals (input, output, reasoning, cache read/write) | A session keeps its highest total, even once opencode deletes it |
+| llama.cpp | None: counters start at zero when the collector first sees them | `/metrics` of the llama-server URL set in the llama.cpp row of the Addons settings (default `http://127.0.0.1:8080`; `addonsV2TokensLlamaCppUrl` in `settings.json`), every 3 s (prompt + generated tokens) | A server restart (counters go back down) adds everything it reports again from zero; nothing is added while it is not running |
 
 Claude tokens are input + output + cache creation + cache read. `~/.claude/stats-cache.json` is deliberately ignored: its daily
 totals are 2-3x those of the deduplicated transcripts.

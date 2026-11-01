@@ -18,19 +18,18 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-a
 4. [Troubleshooting](#troubleshooting)
 5. [Releases and changelog](#releases-and-changelog)
 6. [Feature list](#feature-list)
-   1. [Clawd, Claude Code mascot](#1-clawd-claude-code-mascot)
+   1. [Clawd, coding agent mascot](#1-clawd-coding-agent-mascot)
    2. [Capri, desktop companion](#2-capri-desktop-companion)
    3. [Halloween, seasonal effects](#3-halloween-seasonal-effects)
    4. [AI Tokens, token counter](#4-ai-tokens-token-counter)
-   5. [Wallpaper Engine backgrounds (scenes)](#5-wallpaper-engine-backgrounds-scenes)
-   6. [Mouse, cursors and trackpad](#6-mouse-cursors-and-trackpad)
-   7. [Keybinds and keyboard layout](#7-keybinds-and-keyboard-layout)
-   8. [Monitors](#8-monitors)
-   9. [Desktop tools](#9-desktop-tools)
-   10. [Theme and colours](#10-theme-and-colours)
-   11. [Network and idle](#11-network-and-idle)
-   12. [Startup](#12-startup)
-   13. [General settings (Addons → General)](#13-general-settings-addons--general)
+   5. [Mouse, cursors and trackpad](#5-mouse-cursors-and-trackpad)
+   6. [Keybinds and keyboard layout](#6-keybinds-and-keyboard-layout)
+   7. [Monitors](#7-monitors)
+   8. [Desktop tools](#8-desktop-tools)
+   9. [Theme and colours](#9-theme-and-colours)
+   10. [Network and idle](#10-network-and-idle)
+   11. [Startup](#11-startup)
+   12. [General settings (Addons → General)](#12-general-settings-addons--general)
 7. [Keyboard shortcuts added](#keyboard-shortcuts-added)
 8. [IPC commands](#ipc-commands)
 9. [Tests and validation](#tests-and-validation)
@@ -60,10 +59,9 @@ After a Serpantinum update the addons must be reinstalled; the shell shows "Rein
 | Node.js | Hooks and chat for Capri and Clawd |
 | `grim`, `wl-copy` | Colour picker, frozen capture |
 | `udevadm` | Trackpad detection |
-| systemd (user session) | AI Tokens collector, Wallpaper Engine service |
+| systemd (user session) | AI Tokens collector |
 | Codex CLI (`codex login`) | Clawd chat and Capri's ChatGPT provider (subscription) |
 | Ollama (optional) | Capri running locally |
-| Qt 6.12, CMake, EGL, GBM, epoxy, `we-layerd` | Wallpaper Engine backgrounds (optional) |
 
 ## Installation and removal
 
@@ -112,7 +110,7 @@ The other addons stay in place:
 ```sh
 python3 install.py --without-halloween   # seasonal effects
 python3 install.py --without-capri       # Capri
-python3 install.py --without-clawd       # Clawd (also removes its Claude/Codex hooks and the status relay)
+python3 install.py --without-clawd       # Clawd (also removes its agent hooks and the status relay)
 python3 install.py --without-tokens      # AI Tokens widget and its service (the database stays)
 serpantinum reload
 ```
@@ -146,9 +144,9 @@ See [`CHANGELOG.md`](CHANGELOG.md) and the [GitHub Releases](https://github.com/
 
 Ordered from the largest features to the smallest.
 
-### 1. Clawd, Claude Code mascot
+### 1. Clawd, coding agent mascot
 
-Pixel mascot of Claude Code, a flat orange (`#D97757`) figure, drawn as PNG strips at whole-number scale without smoothing.
+Pixel companion for Claude Code, Codex, OpenCode and Hermes: a flat orange (`#D97757`) figure, drawn as PNG strips at whole-number scale without smoothing.
 
 **Activation and settings (the "terminal" card in Addons → General)**
 - Enable (off by default); scale from 2× to 8× (4× by default); walking speed (calm, normal, active); sleep delay from 1 to 60 minutes (5 by default); "Summon on this screen".
@@ -173,12 +171,12 @@ Pixel mascot of Claude Code, a flat orange (`#D97757`) figure, drawn as PNG stri
 - Window reactions: a window opens on his screen → he looks at it; a window closes near him → `startled`; focus changes → a glance; workspace change → he trips.
 - Follows the cursor to another screen (`follow` switch) when he is free.
 
-**Claude Code and Codex**
-- `hooks` line on the card: `[ ] claude · [ ] codex · [ ] stats`. Nothing is touched until you click.
-- Install from a terminal: `scripts/clawd/hooks.py <status|install|uninstall> <claude|codex|statusline>`.
-- Each installation adds one group per event next to the existing ones, backs up the file (dated) before every change, and only removes `clawd-hook.js` commands.
-- The hook sends one local JSON line (agent, event, session id, tool, directory, process PID to find the terminal, action target, model), always exits with 0 in under 500 ms, and does nothing if the shell is not running.
-- Privacy: no prompt, no answer and no full tool input leaves the hook. The target is a short name (file name, program name of a command, search pattern, URL host, task list `x/y`). Patterns and queries stay in shell memory, never on disk.
+**Session watch**
+- The card's `hooks` line connects Claude Code, Codex, OpenCode and Hermes; `stats` is Claude's status relay. Nothing changes until you click.
+- Terminal command: `python3 scripts/clawd/hooks.py <status|install|uninstall> <claude|codex|opencode|hermes|statusline>`.
+- Claude Code and Codex use their native hooks files. OpenCode installs a global plugin; Hermes installs and enables a plugin without tool overrides. Existing Clawd-owned files are dated backups before updates or removal.
+- Each connector sends local session events (agent, event, session id, tool, directory name, terminal ancestor PIDs, short action target and model) to the shell socket. Start OpenCode and Hermes again after connecting or disconnecting.
+- Privacy: prompts, answers and full tool inputs stay in the agent. The target is a short name (file name, program name, search pattern or URL host); it is never written to disk.
 
 **What he shows for each event**
 
@@ -233,7 +231,7 @@ The effort settings are per level and per agent, in the **effort** line of the c
 - Count of running sub-agents (`2 sub-agents · Haiku 5.5 · ctx 31%`); a `[n]` counter when several sessions are working.
 
 **Session log** (left click on Clawd)
-- List of Claude Code and Codex sessions, most recent first, with state (●/○), alert/working/done, folder, role, tool, time and context.
+- List of Claude Code, Codex, OpenCode and Hermes sessions, most recent first, with state (●/○), alert/working/done, folder, role, tool, time and context.
 - Clicking the circle follows a session or a sub-agent; clicking the rest of the row brings the terminal to the front.
 - `☾ dreams` tab: the dream collection.
 
@@ -277,7 +275,7 @@ The effort settings are per level and per agent, in the **effort** line of the c
 
 **Death and revival**
 - After a scene: grey, on his back, crosses in his eyes, smoke. He no longer reacts to anything; his bubbles stay visible.
-- Revives with `> revive`, when a new Claude Code or Codex session starts (except after a compaction), or when the shell starts / is activated 3 h or more after his death. Revival takes about 9 s with a halo of light.
+- Revives with `> revive`, when a new Claude Code, Codex, OpenCode or Hermes session starts (except after a compaction), or when the shell starts / is activated 3 h or more after his death. Revival takes about 9 s with a halo of light.
 
 **Animations**: 60 strips plus 32 idle "acts" (book, cheering, bike, carrying, broom, rowing, fishing, campfire, binoculars, photo, nap), played rarely on the ground, never twice in a row.
 
@@ -422,24 +420,7 @@ Native widget (type `tokens`, "AI Tokens") and bar module.
 
 **Documentation**: [`docs/tokens.md`](docs/tokens.md).
 
-### 5. Wallpaper Engine backgrounds (scenes)
-
-Optional integration described in detail in [`WALLPAPER_ENGINE.md`](WALLPAPER_ENGINE.md).
-
-- Displays Wallpaper Engine scenes on each screen through the local daemon `we-layerd` and the `we-gui` application (scenes only, with the 16 bundled scenes).
-- Choosing a background in the shell only frees the affected screen; `output-clear` excludes a screen from global backgrounds.
-- Pauses: manual, full screen, maximised, lock and screen power combine; automatic resume keeps a manual pause.
-- Audio capture stops when no background is configured or when paused/locked.
-- GPU channel: DMA-BUF buffer shared with Qt (pool of three GBM buffers); the glass blur samples the live scene.
-- The last presented frame serves an open panel during a pause.
-- Installation: `python3 scripts/install-wallpaper-engine.py --engine <we-layerd repository>`; dated backups, atomic replacement, no system package modified.
-- Service `we-layerd.service`, assignments restored at startup.
-- Control: `we-layerd ctl status|pause|resume`, `we-layerd output-clear <screen>`.
-- Out of scope for now: universal compatibility with Workshop scenes, advanced puppets (morphing), physical unplugging, Windows parity.
-
-**Documentation**: [`WALLPAPER_ENGINE.md`](WALLPAPER_ENGINE.md).
-
-### 6. Mouse, cursors and trackpad
+### 5. Mouse, cursors and trackpad
 
 Tab **Addons → Mouse** (sub-tab "Mouse").
 
@@ -478,7 +459,7 @@ Tab **Addons → Mouse** (sub-tab "Mouse").
 
 **Documentation**: none separate; see this section.
 
-### 7. Keybinds and keyboard layout
+### 6. Keybinds and keyboard layout
 
 **Shortcut editor**
 - List of `hl.bind` bindings from `keybinds.lua`, search across shortcuts and commands.
@@ -494,7 +475,7 @@ Tab **Addons → Mouse** (sub-tab "Mouse").
 - Remove a layout (at least one must remain), applied immediately and saved in `settings.lua`, keeping the other XKB options.
 - Rollback if Hyprland reports an error.
 
-### 8. Monitors
+### 7. Monitors
 
 - Screen layout: drag and drop, snapping to the edges of other screens (screens never overlap), screen list, screen selector.
 - Resolution cards with common names (4K UHD, WUXGA, UWQHD, DCI 4K…), sorted from largest to smallest; choosing a resolution automatically picks the closest refresh rate.
@@ -504,7 +485,7 @@ Tab **Addons → Mouse** (sub-tab "Mouse").
 - Preview of a single screen; animation of changes.
 - "Apply" writes `~/.config/hypr/config/monitors.lua`, reloads Hyprland and restores the previous file on error. If the connected screens changed, it refuses and asks you to reload.
 
-### 9. Desktop tools
+### 8. Desktop tools
 
 **On-screen drawing** (`Super+Shift+D`)
 - Annotation layer on the active screen, with a toolbar at the bottom (`P` freehand pencil, `C` ellipse, `R` rectangle, `E` stroke eraser).
@@ -532,7 +513,7 @@ Tab **Addons → Mouse** (sub-tab "Mouse").
 - `Super+Tab`: next screen, pointer moved to the centre of that screen (`mouse-next-monitor-center.sh`).
 - `Alt+Tab`: next window on the current screen and workspace, brought to the front.
 
-### 10. Theme and colours
+### 9. Theme and colours
 
 - **Vibrant**: real accent colours sampled from the wallpaper.
 - **Vivid**: keeps Vibrant's hue and raises saturation and brightness.
@@ -543,7 +524,7 @@ Tab **Addons → Mouse** (sub-tab "Mouse").
 - A video wallpaper uses its starting image for Matugen.
 - Matugen mode follows the native generator.
 
-### 11. Network and idle
+### 10. Network and idle
 
 **Mullvad DNS** (Addons → General and the Network panel)
 - Switches to Mullvad DNS-over-TLS on the active Wi-Fi or Ethernet connection; the network panel shows the connection and its mode.
@@ -556,18 +537,18 @@ Tab **Addons → Mouse** (sub-tab "Mouse").
 - Off by default; only visible and usable on laptops (UPower detection).
 - Keeps the session and network alive during long tasks, downloads and AI streams.
 
-### 12. Startup
+### 11. Startup
 
 - Tab next to Keybinds, also reachable from the built-in panel `Super+Shift+P`.
 - List of commands launched once when the session starts (`discord`, for example).
 - Add, edit, delete, search; same editor as Keybinds.
 - Saved in `~/.config/hypr/config/serpantinum_startup.json`, generates `serpantinum_startup.lua` (`hl.on("hyprland.start", …)`). A configuration error restores the previous files.
 
-### 13. General settings (Addons → General)
+### 12. General settings (Addons → General)
 
 - **Themed window outline**: thin Hyprland border in the colours of the active palette, seasonal colours included. Off by default.
 - **Hide weather location**: the city name in the weather widget is continuously scrambled (random characters), without changing the data.
-- **Mullvad DNS**: switch to Mullvad DNS-over-TLS on the active connection (see [Network and idle](#11-network-and-idle)).
+- **Mullvad DNS**: switch to Mullvad DNS-over-TLS on the active connection (see [Network and idle](#10-network-and-idle)).
 - **Legacy clock design**: restores the v1 calendar and clock.
 - **Passive addons**: list of tools without a switch, with their shortcut (Capri, Clawd, drawing, zoom, colour picker, capture, monitors, shortcuts, Vibrant/Vivid).
 - **Halloween**: switch for the seasonal effects (see [Halloween](#3-halloween-seasonal-effects)).
@@ -638,7 +619,7 @@ python3 scripts/clawd/sprites.py --check                  # Clawd sprites up to 
 | `scripts/clawd/shaders.py` | Recompiles Clawd's shaders |
 | `scripts/clawd/codex_limits.py` | Reads Codex limits from local logs |
 | `scripts/clawd/verbs.py` | Reads the spinner verbs of the installed Claude Code |
-| `scripts/clawd/hooks.py` | Installs / removes the hooks and the status relay |
+| `scripts/clawd/hooks.py` | Installs / removes the agent hooks and the status relay |
 | `scripts/colors.py` | Extracts colours from the wallpaper (Vibrant / Vivid) |
 | `scripts/control.py` | Backend for shortcuts, screens and keyboard layout |
 | `scripts/startup.py` | Backend for startup |
@@ -648,7 +629,6 @@ python3 scripts/clawd/sprites.py --check                  # Clawd sprites up to 
 | `scripts/crop_frozen_screenshot.py`, `scripts/tokens/collector.py` | Frozen capture, token collector |
 | `scripts/dns.sh` | Mullvad DNS switch |
 | `scripts/release.py` | Cuts a release (`--dry-run` to rehearse; see `docs/releasing.md`) |
-| `native/wallpaper-bridge/` | C++ GPU bridge for Wallpaper Engine (`ctest` tests) |
 
 ## Detailed documentation
 
@@ -657,4 +637,3 @@ python3 scripts/clawd/sprites.py --check                  # Clawd sprites up to 
 - [`docs/halloween.md`](docs/halloween.md) — Halloween effects: design and validation
 - [`docs/tokens.md`](docs/tokens.md) — AI Tokens: sources, calculation, recovery
 - [`docs/releasing.md`](docs/releasing.md) — Releasing: versions, changelog, compatibility, rollback
-- [`WALLPAPER_ENGINE.md`](WALLPAPER_ENGINE.md) — Wallpaper Engine scenes: installation, control, GPU channel

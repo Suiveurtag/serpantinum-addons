@@ -23,9 +23,23 @@ function score(query, name) {
 }
 const blocked = /(^|[-_/ .])(quickshell|hyprland|capri|claude|codex|ollama)([-_/ .]|$)/i;
 const riskyExt = /\.(exe|bat|cmd|ps1|vbs|vbe|js|jse|wsf|wsh|msi|msp|reg|scr|com|jar|hta|cpl|pif|sh|run|appimage|desktop|py|pl|rb|so)$/i;
+function isPrivateHost(hostname) {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return true;
+  if (host.startsWith('::ffff:')) return isPrivateHost(host.slice(7));
+  const v4 = host.split('.');
+  if (v4.length === 4 && v4.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)) {
+    const [a, b] = v4.map(Number);
+    return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) || a >= 224;
+  }
+  return host.includes(':') && (host === '::1' || host === '::' || host.startsWith('fe80:') || host.startsWith('fc') || host.startsWith('fd') || host.startsWith('ff'));
+}
+
 function webUrl(address) {
   const u = new URL(/^https?:\/\//i.test(address) ? address : `https://${address}`);
-  if (!['http:', 'https:'].includes(u.protocol) || !u.hostname.includes('.') || u.username || u.password) throw new Error('Invalid web address');
+  if (!['http:', 'https:'].includes(u.protocol) || !u.hostname.includes('.') || u.username || u.password || isPrivateHost(u.hostname)) throw new Error('Invalid web address');
   return u.href;
 }
 class Actions {

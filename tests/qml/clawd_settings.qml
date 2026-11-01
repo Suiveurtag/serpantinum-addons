@@ -102,14 +102,14 @@ ShellRoot {
             case 3: test.expect(!card.animate, "performance mode stills the card"); Config.setSetting("general.performance", false); break;
             case 4:
                 test.expect(card.animate, "animates again");
-                test.expect(test.find(settings, "clawdHook_claude").label === "[x] claude" && card.hookNote === "start a new claude session", "claude connected");
+                test.expect(test.find(settings, "clawdHook_claude").label === "[x] claude" && card.hookNote === "start a new Claude Code session", "claude connected");
                 test.expect(test.find(settings, "clawdHook_codex").label === "[ ] codex", "codex untouched");
                 card.hookNote = "";
                 test.realClick("clawdHook_statusline");
                 test.expect(test.find(settings, "clawdHook_statusline").label === "[…] stats", "connecting stats");
                 break;
             case 5:
-                test.expect(test.find(settings, "clawdHook_statusline").label === "[x] stats" && card.hookNote === "start a new claude session" && !card.hookFailed, "stats connected: " + card.hookNote);
+                test.expect(test.find(settings, "clawdHook_statusline").label === "[x] stats" && card.hookNote === "start a new Claude Code session" && !card.hookFailed, "stats connected: " + card.hookNote);
                 test.expect(test.find(settings, "clawdHook_claude").label === "[x] claude", "hooks kept");
                 viewport.contentY = 2000; settings.visible = false; break;
             case 6: test.expect(!card.animate, "hidden card stills"); console.log("CLAWD_PASS"); Qt.quit(); break;

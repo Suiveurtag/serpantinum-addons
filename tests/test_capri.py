@@ -138,6 +138,20 @@ class CapriSidecarTests(unittest.TestCase):
             self.assertFalse(self.hooks(env, 'install', 'claude')['ok'])
             self.assertEqual((home/'claude/settings.json').read_text(), '{broken')
 
+    def test_uninstall_keeps_other_hooks_in_a_shared_group(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            env = dict(os.environ, CLAUDE_CONFIG_DIR=str(home/'claude'))
+            (home/'claude').mkdir()
+            shared = {'hooks': {'Stop': [{'hooks': [
+                {'type': 'command', 'command': 'echo mine'},
+                {'type': 'command', 'command': 'node "/x/capri-hook.js"'},
+            ]}]}}
+            (home/'claude/settings.json').write_text(json.dumps(shared))
+            self.assertTrue(self.hooks(env, 'uninstall', 'claude')['ok'])
+            self.assertEqual(json.loads((home/'claude/settings.json').read_text()), {
+                'hooks': {'Stop': [{'hooks': [{'type': 'command', 'command': 'echo mine'}]}]}})
+
     def test_hook_reaches_sidecar_stdout_and_sidecar_exits_with_stdin(self):
         with socket.socket() as probe:
             probe.bind(('127.0.0.1', 0))

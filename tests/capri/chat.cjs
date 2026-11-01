@@ -27,6 +27,7 @@ try {
   for(const text of ['in 1 second','in 999 hours'])assert.equal(intent.parseIntent(text,[],{text:'water',until:Date.now()+10000}).at,null);
   assert.equal(intent.parseIntent('close firefox',[{name:'firefox',label:'Firefox'}]).kind,'close');assert.equal(intent.parseIntent('pause').action,'pause');assert.equal(intent.parseIntent('find my blender project').kind,'files');
   assert(score('ouvre firefox','Firefox')>0);assert.throws(()=>webUrl('file:///etc/passwd'));assert.throws(()=>webUrl('javascript:alert(1)'));assert.equal(webUrl('example.com'),'https://example.com/');
+  for(const bad of ['http://127.0.0.1:8080/admin','http://192.168.1.1/','http://localhost./','http://[::1]/','http://169.254.169.254/'])assert.throws(()=>webUrl(bad),bad);
   const a=new Actions();await assert.rejects(a.openFile('/etc/passwd'));await assert.rejects(a.launch({kind:'app',desktop:'injected'}));await assert.rejects(a.media('$(touch /tmp/capri-should-not-exist)'));
   const executable=path.join(dir,'run.sh');fs.writeFileSync(executable,'echo hi',{mode:0o700});assert((await a.file(executable)).risky);
   // Fake CLI proves exact invocation, stdin history, no inherited credentials, JSONL/errors and cancellation.

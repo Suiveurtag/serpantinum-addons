@@ -173,12 +173,110 @@ Item {
                                 }
                             }
                             SettingsRow {
+                                id: llamaSettingsRow
                                 rootObj: root.rootObj; settingId: "addons_tokens_llamacpp"; searchTab: "addons"; searchKeywords: "llama.cpp llama-server metrics tokens"
-                                title: "llama.cpp"; customLeftContent: Component { PlatformLogo { logo: "llamacpp.svg"; tint: ThemeBackend.yellow } }
+                                // The logo sits centred in the space left of the controls. The field and the dot take extra room on the right, so shift the logo back by half of it.
+                                title: "llama.cpp"; customLeftContent: Component {
+                                    PlatformLogo {
+                                        logo: "llamacpp.svg"; tint: ThemeBackend.yellow
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        anchors.horizontalCenterOffset: (pingIndicator.width + urlField.width + 2 * llamaSettingsRow.controlSpacing) / 2
+                                    }
+                                }
                                 wrapText: true
-                                description: "Reads http://127.0.0.1:8080/metrics. Start llama-server with --metrics. Counts from when it is first seen."
+                                description: "Reads the /metrics of llama-server (start it with --metrics). Counts from when it is first seen."
                                 opacity: tokensSources.stagger(3)
                                 transform: Translate { y: rootObj.s(-8) * (1 - tokensSources.stagger(3)) }
+                                // Ping state: idle | pinging | ok | fail. The probe is a curl on the server's /metrics.
+                                QtObject {
+                                    id: llamaProbe
+                                    property string pingState: "idle"
+                                    property string target: ""
+                                    function ping() {
+                                        const url = urlField.text.trim();
+                                        pingState = "pinging";
+                                        target = url !== "" ? url : "http://127.0.0.1:8080";
+                                        llamaCurl.running = false;
+                                        llamaCurl.running = true;
+                                    }
+                                    Component.onCompleted: if (Config.getSetting("addonsV2TokensLlamaCpp", false)) ping()
+                                }
+                                Process {
+                                    id: llamaCurl
+                                    command: ["curl", "-sf", "-m", "3", "-o", "/dev/null", llamaProbe.target + "/metrics"]
+                                    onExited: (exitCode, exitStatus) => {
+                                        if (exitCode === 0) {
+                                            llamaProbe.pingState = "ok";
+                                            successRing.restart();
+                                        } else {
+                                            llamaProbe.pingState = "fail";
+                                            urlField.triggerShake();
+                                        }
+                                    }
+                                }
+                                Item {
+                                    id: pingIndicator
+                                    Layout.preferredWidth: rootObj.s(16)
+                                    Layout.preferredHeight: rootObj.s(16)
+                                    Layout.alignment: Qt.AlignVCenter
+                                    Rectangle {
+                                        id: pingRing
+                                        anchors.centerIn: parent
+                                        width: rootObj.s(8); height: width; radius: width / 2
+                                        color: "transparent"; border.width: 1; border.color: ThemeBackend.green
+                                        opacity: 0
+                                        visible: llamaProbe.pingState === "pinging" || successRing.running
+                                    }
+                                    Rectangle {
+                                        id: pingDot
+                                        anchors.centerIn: parent
+                                        width: rootObj.s(8); height: width; radius: width / 2
+                                        color: llamaProbe.pingState === "ok" ? ThemeBackend.green
+                                             : llamaProbe.pingState === "fail" ? ThemeBackend.red
+                                             : llamaProbe.pingState === "pinging" ? ThemeBackend.yellow : ThemeBackend.surface2
+                                        Behavior on color { ColorAnimation { duration: 200 } }
+                                    }
+                                    Text {
+                                        id: pingCheck
+                                        anchors.centerIn: parent
+                                        text: "✓"
+                                        color: ThemeBackend.green
+                                        font.family: ThemeBackend.fontFamily; font.bold: true
+                                        font.pixelSize: rootObj.s(11)
+                                        opacity: llamaProbe.pingState === "ok" ? 1 : 0
+                                        scale: llamaProbe.pingState === "ok" ? 1 : 0.4
+                                        Behavior on opacity { NumberAnimation { duration: 300 } }
+                                        Behavior on scale { NumberAnimation { duration: 450; easing.type: Easing.OutBack } }
+                                    }
+                                    ParallelAnimation {
+                                        running: llamaProbe.pingState === "pinging"
+                                        loops: Animation.Infinite
+                                        ScaleAnimator { target: pingRing; from: 1; to: 2.4; duration: 1000; easing.type: Easing.OutCubic }
+                                        OpacityAnimator { target: pingRing; from: 0.9; to: 0; duration: 1000; easing.type: Easing.OutCubic }
+                                    }
+                                    ParallelAnimation {
+                                        id: successRing
+                                        ScaleAnimator { target: pingRing; from: 1; to: 3; duration: 700; easing.type: Easing.OutCubic }
+                                        OpacityAnimator { target: pingRing; from: 1; to: 0; duration: 700; easing.type: Easing.OutCubic }
+                                    }
+                                }
+                                Input {
+                                    id: urlField
+                                    Layout.preferredWidth: rootObj.s(170)
+                                    Layout.alignment: Qt.AlignVCenter
+                                    text: Config.getSetting("addonsV2TokensLlamaCppUrl", "")
+                                    placeholderText: "http://127.0.0.1:8080"
+                                    isBusy: llamaProbe.pingState === "pinging"
+                                    hasError: llamaProbe.pingState === "fail"
+                                    accentColor: llamaProbe.pingState === "ok" ? ThemeBackend.green : ThemeBackend.yellow
+                                    baseColor: ThemeBackend.surface0
+                                    textColor: ThemeBackend.text
+                                    borderColor: ThemeBackend.surface2
+                                    onAccepted: finalText => {
+                                        Config.setSetting("addonsV2TokensLlamaCppUrl", finalText.trim());
+                                        llamaProbe.ping();
+                                    }
+                                }
                                 Toggle {
                                     checked: Config.getSetting("addonsV2TokensLlamaCpp", false)
                                     accentColor: ThemeBackend.mauve

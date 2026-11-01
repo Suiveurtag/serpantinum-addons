@@ -218,7 +218,7 @@ class FakeSystem:
 
 
 ALL_CMDS = ["python3", "jq", "matugen", "node", "grim", "wl-copy", "udevadm", "systemctl",
-            "nmcli", "resolvectl", "hyprctl", "quickshell", "codex", "ollama", "cmake", "qmake6"]
+            "nmcli", "resolvectl", "hyprctl", "quickshell", "codex", "ollama"]
 HYPR_057 = "Hyprland 0.57.0 built from branch v0.57.0 at commit abc clean\nTag: v0.57.0"
 
 

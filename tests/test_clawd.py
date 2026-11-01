@@ -254,7 +254,8 @@ class ClawdHooksInstallerTests(unittest.TestCase):
     def setUp(self):
         self.home = Path(tempfile.mkdtemp(prefix='clawd-hooks-'))
         self.addCleanup(shutil.rmtree, self.home)
-        self.env = dict(os.environ, CLAUDE_CONFIG_DIR=str(self.home/'claude'), CODEX_HOME=str(self.home/'codex'))
+        self.env = dict(os.environ, CLAUDE_CONFIG_DIR=str(self.home/'claude'), CODEX_HOME=str(self.home/'codex'),
+                        XDG_CONFIG_HOME=str(self.home/'config'), HERMES_HOME=str(self.home/'hermes'))
 
     def hooks(self, action, agent):
         result = subprocess.run([sys.executable, str(HOOKS), action, agent], env=self.env, capture_output=True, text=True, timeout=20)
@@ -292,6 +293,39 @@ class ClawdHooksInstallerTests(unittest.TestCase):
         file.write_text(json.dumps(shared))
         self.hooks('uninstall', 'claude')
         self.assertEqual(json.loads(file.read_text()), {'hooks': {'Stop': [{'hooks': [{'type': 'command', 'command': 'node /x/capri-hook.js'}]}]}})
+
+    def test_install_preserves_a_symlinked_settings_file(self):
+        real = self.home/'dotfiles/settings.json'
+        real.parent.mkdir()
+        real.write_text(json.dumps(CAPRI))
+        link = self.home/'claude/settings.json'
+        link.parent.mkdir()
+        link.symlink_to(real)
+        self.hooks('install', 'claude')
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(link.resolve(), real)
+        settings = json.loads(real.read_text())
+        self.assertTrue(any('clawd-hook.js' in h['command']
+                            for groups in settings['hooks'].values() for group in groups for h in group['hooks']))
+        self.hooks('uninstall', 'claude')
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(json.loads(real.read_text()), CAPRI)
+
+    def test_opencode_install_preserves_a_symlinked_plugin(self):
+        real = self.home/'dotfiles/clawd-session-watch.js'
+        real.parent.mkdir()
+        real.write_text('// Clawd session watch\n')
+        link = self.home/'config/opencode/plugins/clawd-session-watch.js'
+        link.parent.mkdir(parents=True)
+        link.symlink_to(real)
+        data = self.hooks('install', 'opencode')['data']
+        self.assertTrue(data['installed'])
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(link.resolve(), real)
+        self.assertIn('Clawd session watch', real.read_text())
+        self.hooks('uninstall', 'opencode')
+        self.assertFalse(link.exists())
+        self.assertFalse(link.is_symlink())
 
     def test_missing_files_and_bad_files(self):
         self.assertFalse(self.hooks('uninstall', 'codex')['data']['changed'])
@@ -1016,13 +1050,20 @@ QtObject {
             env.pop('HYPRLAND_INSTANCE_SIGNATURE', None)
             env.update(QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', XDG_RUNTIME_DIR=str(runtime), QML_DISABLE_DISK_CACHE='1',
                        XDG_DATA_HOME=str(fixture/'data'), XDG_STATE_HOME=str(fixture/'state'), XDG_CACHE_HOME=str(fixture/'cache'),
+                       XDG_CONFIG_HOME=str(fixture/'config'), HERMES_HOME=str(fixture/'hermes'),
                        CLAUDE_CONFIG_DIR=str(fixture/'claude'), CODEX_HOME=str(fixture/'codex'))
+            # Never let a fixture discover the real agent CLIs on this machine (Hermes can block on its state).
+            bindir = fixture/'bin'
+            bindir.mkdir(exist_ok=True)
+            hermes = bindir/'hermes'
+            hermes.write_text('#!/bin/sh\nif [ "$1" = plugins ] && [ "$2" = list ]; then echo "[]"; exit 0; fi\nexit 0\n')
+            hermes.chmod(0o755)
+            env['PATH'] = str(bindir) + os.pathsep + env.get('PATH', '')
             if bins:
-                (fixture/'bin').mkdir()
                 for key, (name, body) in bins.items():
-                    (fixture/'bin'/name).write_text(body)
-                    (fixture/'bin'/name).chmod(0o755)
-                    env[key] = str(fixture/'bin'/name)
+                    (bindir/name).write_text(body)
+                    (bindir/name).chmod(0o755)
+                    env[key] = str(bindir/name)
             process = subprocess.Popen(['quickshell', '-p', str(fixture/'Shell.qml')], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
             if scenario == 'clawd_runtime.qml':
                 threading.Thread(target=self.hook_when_listening, args=(runtime, env), daemon=True).start()

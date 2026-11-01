@@ -1,3 +1,4 @@
+import hashlib
 import importlib.util
 import json
 import tempfile
@@ -155,6 +156,48 @@ class ChangeTests(unittest.TestCase):
                 with self.assertRaises(ValueError): control.save_keys(data)
         finally:
             control.CONFIG, control.STATE, control.run = old_config, old_state, old_run
+
+    def test_restore_backup_puts_files_back(self):
+        old_qs = installer.QS
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                installer.QS = Path(directory)/'quickshell'
+                installer.QS.mkdir()
+                backup = Path(directory)/'backup'
+                path = installer.QS/'file.qml'
+                path.write_text('before')
+                installer.save_backup(path, backup, None)
+                path.write_text('after')
+                installer.restore_backup(path, backup, None)
+                self.assertEqual(path.read_text(), 'before')
+                new = installer.QS/'new.qml'
+                installer.save_backup(new, backup, None)
+                new.write_text('created')
+                installer.restore_backup(new, backup, None)
+                self.assertFalse(new.exists())
+        finally:
+            installer.QS = old_qs
+
+    def test_adding_a_layout_adds_the_missing_comma(self):
+        old_config, old_state, old_run, old_layouts = control.CONFIG, control.STATE, control.run, control.keyboard_layouts
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                control.CONFIG = Path(directory)
+                control.STATE = Path(directory)/'backups'
+                control.run = lambda *args: 'ok' if args[-1] == 'configerrors' else ''
+                control.keyboard_layouts = lambda: {'selected': ['us', 'de'], 'layouts': [
+                    {'code': 'us', 'name': 'English'}, {'code': 'de', 'name': 'German'}]}
+                path = control.CONFIG/'hypr/config/settings.lua'
+                path.parent.mkdir(parents=True)
+                original = 'hl.config({\n    kb_layout = "us"\n})\n'
+                path.write_text(original)
+                revision = hashlib.sha256(original.encode()).hexdigest()
+                control.save_keyboard_layout({'revision': revision, 'layouts': ['us', 'de']})
+                updated = path.read_text()
+                self.assertIn('kb_layout = "us,de",', updated)
+                self.assertIn('kb_options = "grp:alt_shift_toggle",', updated)
+        finally:
+            control.CONFIG, control.STATE, control.run, control.keyboard_layouts = old_config, old_state, old_run, old_layouts
 
 
 if __name__ == '__main__':

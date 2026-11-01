@@ -28,7 +28,9 @@ Rectangle {
     property string hookNote: ""
     property bool hookFailed: false
     property var chatSigned: null
-    property int hookRuns: 0       // hooks.py runs in flight: they share ~/.claude/settings.json, one change at a time
+    property string chatNote: ""
+    property int hookRuns: 0       // hooks.py runs in flight; serialize config writes across providers
+    function recheckChat() { chatSigned = null; chatStatus.running = false; chatStatus.running = true; }
     function setScale(value) { Config.setSetting("addonsV2ClawdScale", Math.max(2, Math.min(8, Math.round(value)))); }
     function nap(step) {
         const v = Clawd.sleepMinutes;
@@ -73,6 +75,36 @@ Rectangle {
         T { x: (card.cols - 1) * card.cw; y: card.lh; color: card.accent; text: "│\n".repeat(frame.lines).trim(); lineHeightMode: Text.FixedHeight; lineHeight: card.lh }
         T { y: (frame.lines + 1) * card.lh; color: card.accent; text: "╰" + "─".repeat(card.cols - 2) + "╯" }
         Item { id: inside; x: 2 * card.cw; y: card.lh; width: (card.cols - 4) * card.cw; height: frame.lines * card.lh }
+    }
+    // A one-line text field in the terminal style: underlined, commits on Enter or when it loses focus.
+    component Field: Item {
+        id: field
+        property string value: ""
+        property string placeholder: ""
+        property bool secret: false
+        property int cells: 24
+        property alias input: edit
+        signal committed(string text)
+        implicitWidth: field.cells * card.cw
+        implicitHeight: card.lh
+        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: Math.max(1, Math.round(card.rootObj.s(1))); color: edit.activeFocus ? card.accent : card.faint }
+        T { visible: !edit.text && !edit.activeFocus; width: parent.width; elide: Text.ElideRight; color: card.faint; text: field.placeholder }
+        TextInput {
+            id: edit
+            anchors.fill: parent
+            text: field.value
+            clip: true
+            font.family: ThemeBackend.fontFamily
+            font.pixelSize: card.px
+            color: card.ink
+            selectionColor: card.accent
+            selectedTextColor: ThemeBackend.base
+            echoMode: field.secret ? TextInput.Password : TextInput.Normal
+            maximumLength: 300
+            selectByMouse: true
+            onEditingFinished: field.committed(text.trim())
+            Keys.onEscapePressed: { text = field.value; focus = false; }
+        }
     }
     // A run of terminal text that is a button: inverted on hover, harder inverted while pressed.
     component Key: Item {
@@ -429,13 +461,15 @@ Rectangle {
             label: "hooks"
             Repeater {
                 // statusline: Claude's status line relays model, context, cost and limits ("stats")
-                model: ["claude", "codex", "statusline"]
+                model: ["claude", "codex", "opencode", "hermes", "statusline"]
                 Row {
                     id: hook
                     required property string modelData
                     required property int index
-                    readonly property string name: modelData === "statusline" ? "stats" : modelData
-                    readonly property string agent: modelData === "codex" ? "codex" : "claude"
+                    readonly property string name: ({ claude: "claude", codex: "codex", opencode: "OpenCode", hermes: "Hermes", statusline: "stats" })[modelData]
+                    readonly property string agent: ({ claude: "Claude Code", codex: "Codex", opencode: "OpenCode", hermes: "Hermes", statusline: "Claude Code" })[modelData]
+                    readonly property string shortName: ({ claude: "Cl", codex: "Co", opencode: "OC", hermes: "He", statusline: "St" })[modelData]
+                    readonly property bool abbreviated: card.cols < 76
                     property var info: null    // hooks.py status, or {error}
                     property bool busy: false  // Process.running only flips once the process has started
                     function run(action) { busy = true; card.hookRuns++; proc.command = ["python3", Clawd.scripts + "/hooks.py", action, modelData]; proc.running = true; }
@@ -450,15 +484,17 @@ Rectangle {
                                 card.hookRuns = Math.max(0, card.hookRuns - 1);
                                 hook.info = r && r.ok ? r.data : { error: r && r.error || "hooks.py failed" };
                                 card.hookFailed = !!hook.info.error;
-                                card.hookNote = hook.info.error ? hook.name + ": " + hook.info.error : r.data.changed ? "start a new " + hook.agent + " session" : card.hookNote;
+                                card.hookNote = hook.info.error ? hook.agent + ": " + hook.info.error : r.data.changed ? (modelData === "hermes" || modelData === "opencode" ? "restart " + hook.agent : "start a new " + hook.agent + " session") : card.hookNote;
                             }
                         }
                     }
-                    T { visible: index > 0; text: " · "; color: card.faint }
+                    T { visible: index > 0; text: hook.abbreviated ? " " : " · "; color: card.faint }
                     Key {
                         objectName: "clawdHook_" + modelData
-                        label: (hook.busy || !hook.info ? "[…] " : hook.info.error ? "[!] " : hook.info.installed ? "[x] " : "[ ] ") + hook.name
-                        accessibleName: hook.modelData === "statusline" ? "Claude status line stats" : modelData + " hooks"
+                        label: hook.abbreviated
+                            ? (hook.busy || !hook.info ? "…" : hook.info.error ? "!" : hook.info.installed ? "●" : "○") + hook.shortName
+                            : (hook.busy || !hook.info ? "[…] " : hook.info.error ? "[!] " : hook.info.installed ? "[x] " : "[ ] ") + hook.name
+                        accessibleName: hook.modelData === "statusline" ? "Claude status line stats" : hook.agent + " session hooks"
                         checkable: true; checked: !!hook.info && hook.info.installed === true
                         enabled: !hook.busy && !!hook.info && card.hookRuns === 0
                         onActivated: hook.run(checked ? "uninstall" : "install")
@@ -471,7 +507,7 @@ Rectangle {
                 text: "  ⎿ " + (card.hookNote || "he reacts to your agents")
             }
         }
-        // narrow card: three toggles fill the row, the note goes under them
+        // On a narrow card, abbreviate the provider toggles and put the note below them.
         T {
             visible: card.compact && card.hookNote !== ""
             x: 13 * card.cw; width: parent.width - x; height: card.lh; elide: Text.ElideRight
@@ -507,15 +543,85 @@ Rectangle {
             }
             Process {
                 id: chatStatus
-                command: ["node", Clawd.scripts + "/brain.js", "status"]
+                command: ["node", Clawd.scripts + "/brain.js", "status", Clawd.chatProvider, Clawd.chatUrl, Clawd.chatModel]
                 running: true
                 stdout: StdioCollector {
                     onStreamFinished: {
-                        try { const r = JSON.parse(text); card.chatSigned = r.ok && r.data ? r.data.signedIn === true : false; } catch (error) { card.chatSigned = false; }
+                        try { const r = JSON.parse(text); card.chatSigned = r.ok && r.data ? r.data.signedIn === true : false; card.chatNote = r.ok && r.data && r.data.note ? String(r.data.note) : ""; } catch (error) { card.chatSigned = false; card.chatNote = ""; }
                     }
                 }
             }
-            T { visible: !card.compact; color: card.dim; text: "  ⎿ ChatGPT via Codex · " + (card.chatSigned === null ? "checking" : card.chatSigned ? "signed in" : "run codex login") }
+            Connections {
+                target: Clawd
+                function onChatProviderChanged() { card.recheckChat(); }
+            }
+            T { visible: !card.compact; color: card.dim; text: "  ⎿ " + (Clawd.chatProvider === "codex" ? "ChatGPT via Codex · " + (card.chatSigned === null ? "checking" : card.chatSigned ? "signed in" : "run codex login")
+                : (Clawd.chatProvider === "api" ? "OpenAI-compatible API · " : "local server · ") + (card.chatSigned === null ? "checking" : card.chatSigned ? "ready " + card.chatNote : card.chatNote || "unavailable")) }
+        }
+        Line {
+            label: "provider"
+            Repeater {
+                model: ["codex", "api", "local"]
+                Row {
+                    required property string modelData
+                    required property int index
+                    T { visible: index > 0; text: " · "; color: card.faint }
+                    Key {
+                        objectName: "clawdChatProvider_" + modelData
+                        label: modelData
+                        selected: Clawd.chatProvider === modelData
+                        onActivated: Config.setSetting("addonsV2ClawdChatProvider", modelData)
+                    }
+                }
+            }
+
+        }
+        Line {
+            visible: Clawd.chatProvider !== "codex"
+            label: "model"
+            Field {
+                objectName: "clawdChatModel"
+                value: Clawd.chatModel
+                placeholder: Clawd.chatProvider === "api" ? "gpt-4o-mini" : "llama3.2"
+                onCommitted: text => { Config.setSetting("addonsV2ClawdChatModel", text); card.recheckChat(); }
+            }
+            T { visible: !card.compact; color: card.dim; text: "  ⎿ empty = default" }
+        }
+        Line {
+            visible: Clawd.chatProvider !== "codex"
+            label: "url"
+            Field {
+                objectName: "clawdChatUrl"
+                cells: 32
+                value: Clawd.chatUrl
+                placeholder: Clawd.chatProvider === "api" ? "https://api.openai.com/v1" : "http://127.0.0.1:11434/v1"
+                onCommitted: text => { Config.setSetting("addonsV2ClawdChatUrl", text); card.recheckChat(); }
+            }
+        }
+        Line {
+            visible: Clawd.chatProvider === "api"
+            label: "api key"
+            Field {
+                id: keyField
+                objectName: "clawdChatKey"
+                secret: true
+                placeholder: "paste key, Enter"
+                onCommitted: text => {
+                    if (!text) return;
+                    keyWriter.running = true;
+                    keyWriter.write(text + "\n");
+                    keyField.input.text = "";
+                    keySaved.restart();
+                }
+            }
+            T { color: card.dim; text: keySaved.running ? "  ⎿ saved" : card.compact ? "" : "  ⎿ stored in ~/.config/serpantinum/clawd/api-key" }
+            Timer { id: keySaved; interval: 2500 }
+            Process {
+                id: keyWriter
+                command: ["sh", "-c", "umask 077; d=\"${XDG_CONFIG_HOME:-$HOME/.config}/serpantinum/clawd\"; mkdir -p \"$d\" && head -n1 > \"$d/api-key\""]
+                stdinEnabled: true
+                onExited: card.recheckChat()
+            }
         }
         Item { width: 1; height: card.lh * 0.5 }
         Frame {

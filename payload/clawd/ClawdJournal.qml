@@ -37,10 +37,11 @@ Item {
     }
     function identity(s) {
         const id = s.isSubagent ? s.subId : s.key.slice(s.key.indexOf(":") + 1);
-        return (s.agent === "claude" ? "Cl" : "Co") + (s.isSubagent ? "↳" : "-")
+        const prefix = ({ claude: "Cl", codex: "Co", opencode: "OC", hermes: "He" })[s.agent] || "??";
+        return prefix + (s.isSubagent ? "↳" : "-")
             + String(id || "").replace(/[\x00-\x1f\x7f-\x9f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "").slice(-5);
     }
-    function sessionDescription(s) { return (s.agent === "claude" ? "Claude Code" : "Codex") + (s.isSubagent ? " subagent " + s.subType : " session") + " " + identity(s); }
+    function sessionDescription(s) { return ({ claude: "Claude Code", codex: "Codex", opencode: "OpenCode", hermes: "Hermes" })[s.agent] + (s.isSubagent ? " subagent " + s.subType : " session") + " " + identity(s); }
     function line(s) {
         return (Clawd.followedSessionKey === s.key ? "●" : "○") + " " + ({ alert: "⚠", work: "✻", idle: "✓" })[s.phase] + " "
             + cell(identity(s), 8) + " " + cell(s.dir, 7) + " " + cell(s.isSubagent ? s.subType : s.tool, 7)

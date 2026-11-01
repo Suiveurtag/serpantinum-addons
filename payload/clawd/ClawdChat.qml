@@ -77,7 +77,7 @@ FocusScope {
         note = ""; draft = ""; slow = false; pending = true;
         pet.chatPhase = "wait";
         history = history.concat([{ role: "user", text }]);
-        reqId = brain.rpc("send", { text, context: context(), look: !!look, output: Clawd.screenName }, d => answer(d));
+        reqId = brain.rpc("send", { text, context: context(), look: !!look, output: Clawd.screenName, provider: Clawd.chatProvider, model: Clawd.chatModel, url: Clawd.chatUrl }, d => answer(d));
         slowTimer.restart();
     }
     function answer(d) {
@@ -88,7 +88,7 @@ FocusScope {
         } else {
             pet.chatPhase = "";
             const code = d && d.code;
-            note = code === "signin" ? "✗ sign in: codex login" : code === "busy" ? "… busy, try later" : code === "stopped" ? "" : code === "running" ? "… still thinking" : "✗ failed";
+            note = code === "signin" ? (Clawd.chatProvider === "codex" ? "✗ sign in: codex login" : "✗ check api key") : code === "busy" ? "… busy, try later" : code === "stopped" ? "" : code === "running" ? "… still thinking" : "✗ failed";
         }
         if (visible) input.forceActiveFocus();
     }

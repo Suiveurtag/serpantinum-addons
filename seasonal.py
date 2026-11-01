@@ -327,12 +327,18 @@ def patch_widgets(text):
 
 def remove(text):
     """Remove our presentation hooks, retaining normal palette values and addons."""
+    # The palette marker sits directly after `id: root`, with no blank line. Remove it
+    # without eating the newline that keeps the next property on its own line.
+    text = re.sub(r'    // BEGIN serpantinum-night-v2 palette\n.*?    // END serpantinum-night-v2 palette\n', '', text, flags=re.S)
     text = re.sub(r'\n    // BEGIN serpantinum-night-v2 [^\n]*\n.*?    // END serpantinum-night-v2 [^\n]*\n', '', text, flags=re.S)
     text = re.sub(
         r'    property color _normal(\w+): ("#[0-9a-fA-F]+")\n'
         r'    property color \1: [^\n]*\n(?:    Behavior on \1 \{[^\n]*\}\n)?',
         lambda m: f'    property color {m[1]}: {m[2]}\n', text)
     text = text.replace('root["_normal" + propName]', 'root[propName]')
+    text = text.replace('root["_normal" + names[i]]', 'root[names[i]]')
+    text = text.replace('root["_normal" + item.name]', 'root[item.name]')
+    text = text.replace('root["_normal" + slot]', 'root[slot]')
     text = text.replace('                    visible: !Halloween.activeSeason\n', '')
     text = text.replace('visible: window.visible && opacity > 0.01 && !Halloween.activeSeason',
                         'visible: window.visible && opacity > 0.01')

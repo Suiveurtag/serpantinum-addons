@@ -67,8 +67,12 @@ function readSettings(file) {
   }
 }
 
+function isCapriHook(hook) {
+  return String(hook?.command || '').includes(MARK);
+}
+
 function isCapriGroup(group) {
-  return Array.isArray(group?.hooks) && group.hooks.some((h) => String(h.command || '').includes(MARK));
+  return Array.isArray(group?.hooks) && group.hooks.some(isCapriHook);
 }
 
 function strip(settings) {
@@ -76,7 +80,13 @@ function strip(settings) {
   for (const event of Object.keys(settings.hooks)) {
     const groups = settings.hooks[event];
     if (!Array.isArray(groups)) continue;
-    settings.hooks[event] = groups.filter((g) => !isCapriGroup(g));
+    // Remove only our command, even if it shares a group with another hook.
+    settings.hooks[event] = groups.flatMap((group) => {
+      if (!Array.isArray(group?.hooks)) return [group];
+      const hooks = group.hooks.filter((hook) => !isCapriHook(hook));
+      if (hooks.length === group.hooks.length) return [group];
+      return hooks.length ? [{ ...group, hooks }] : [];
+    });
     if (settings.hooks[event].length === 0) delete settings.hooks[event];
   }
   if (Object.keys(settings.hooks).length === 0) delete settings.hooks;

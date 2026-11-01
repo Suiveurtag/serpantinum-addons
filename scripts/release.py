@@ -133,7 +133,13 @@ def main():
     else:
         ok(f"installed Serpantinum {sv} (will be stamped as min = tested)")
 
-    # 6. file changes
+    # 6. gh check (before any file changes)
+    if not DRY:
+        gh = run(["gh", "auth", "status"], mutating=False) if _has("gh") else None
+        if gh is None:
+            fail("gh is not installed", "install GitHub CLI, then 'gh auth login'")
+
+    # 7. file changes
     cpath = ROOT / "compat.json"
     compat = json.loads(cpath.read_text())
     compat.setdefault("serpantinum", {}).update({"min": sv, "tested": sv})
@@ -150,7 +156,7 @@ def main():
             cl_path.write_text(new_cl)
         cl = new_cl or cl
 
-    # 7. release notes
+    # 8. release notes
     notes = changelog_section(new_cl or cl, v) or f"## [{v}]\n"
     if DRY:
         print(f"\nRelease notes would be:\n---\n{notes}---")
@@ -161,12 +167,8 @@ def main():
         tf.close()
         notes_file = tf.name
 
-    # 8. git + gh
+    # 9. git + gh
     print("\nCommands:")
-    if not DRY:
-        gh = run(["gh", "auth", "status"], mutating=False) if _has("gh") else None
-        if gh is None:
-            fail("gh is not installed", "install GitHub CLI, then 'gh auth login'")
     run(["git", "commit", "-am", f"release: {tag}"])
     run(["git", "tag", "-a", tag, "-m", f"Serpantinum addons {tag}"])
     run(["git", "push", "origin", "main", tag])

@@ -220,6 +220,11 @@ def save_keyboard_layout(payload):
         if re.search(r'(?m)^[ \t]*kb_options[ \t]*=', updated):
             raise ValueError('Unsupported kb_options setting in settings.lua')
         layout_match = setting.search(updated)
+        if ',' not in layout_match[4]:
+            # The layout line was the last table field. Adding a field after it needs a comma.
+            fixed = layout_match[1] + layout_match[2] + layout_match[3] + layout_match[2] + ',' + layout_match[4]
+            updated = updated[:layout_match.start()] + fixed + updated[layout_match.end():]
+            layout_match = setting.search(updated)
         newline = '\r\n' if '\r\n' in updated else '\n'
         indent = re.match(r'[ \t]*', layout_match[1]).group(0)
         updated = updated[:layout_match.end()] + newline + indent + 'kb_options = "grp:alt_shift_toggle",' + updated[layout_match.end():]

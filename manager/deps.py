@@ -57,7 +57,7 @@ DEPS = [
         "trackpad detection",
         {"pacman": "systemd", "dnf": "systemd-udev", "xbps": "eudev"}),
     Dep("systemd-user", "systemd user session", "systemd_user", "systemctl", True,
-        "AI Tokens collector and Wallpaper Engine service",
+        "AI Tokens collector",
         {"pacman": "systemd", "dnf": "systemd"},
         "this shell needs a systemd user session (log in through your display manager)"),
     Dep("networkmanager", "NetworkManager (nmcli)", "cmd", "nmcli", True,
@@ -83,12 +83,6 @@ DEPS = [
     Dep("ollama", "Ollama", "cmd", "ollama", False,
         "Capri running locally",
         {"pacman": "ollama", "xbps": "ollama"}, "see https://ollama.com/download"),
-    Dep("cmake", "CMake", "cmd", "cmake", False,
-        "building Wallpaper Engine backgrounds",
-        {"pacman": "cmake", "dnf": "cmake", "xbps": "cmake"}),
-    Dep("qt6-dev", "Qt 6 development files", "cmd", ("qmake6", "qmake-qt6"), False,
-        "building Wallpaper Engine backgrounds",
-        {"pacman": "qt6-base", "dnf": "qt6-qtbase-devel", "xbps": "qt6-base-devel"}),
 ]
 BY_ID = {d.id: d for d in DEPS}
 

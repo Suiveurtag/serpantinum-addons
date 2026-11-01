@@ -25,6 +25,11 @@ QtObject {
     readonly property bool world: Config.getSetting("addonsV2ClawdWorld", true) !== false
     // Talk to him in a terminal panel (node sidecar, ChatGPT through Codex).
     readonly property bool chat: Config.getSetting("addonsV2ClawdChat", true) !== false
+    // Where his answers come from: codex (ChatGPT subscription), api (OpenAI-compatible hosted API), local (Ollama, llama.cpp, LM Studio...).
+    // chatModel / chatUrl empty = the provider default; the API key lives in CLAWD_CHAT_API_KEY or ~/.config/serpantinum/clawd/api-key.
+    readonly property string chatProvider: ["codex", "api", "local"].indexOf(Config.getSetting("addonsV2ClawdChatProvider", "codex")) >= 0 ? Config.getSetting("addonsV2ClawdChatProvider", "codex") : "codex"
+    readonly property string chatModel: String(Config.getSetting("addonsV2ClawdChatModel", "") || "")
+    readonly property string chatUrl: String(Config.getSetting("addonsV2ClawdChatUrl", "") || "")
     readonly property bool follow: Config.getSetting("addonsV2ClawdFollow", true) !== false
     // His body and the spinner line take the lead session's effort colour while it works (js/effort.mjs, shaders/tint.frag).
     readonly property bool effortColors: Config.getSetting("addonsV2ClawdEffort", true) !== false
@@ -108,7 +113,7 @@ QtObject {
 
     function sessionChoice(key) { return sessionChoices.find(s => s.key === key) || null; }
 
-    // Claude Code and Codex tool names -> his working loop; anything else (MCP...) types.
+    // Claude Code, Codex, OpenCode and Hermes tool names -> his working loop; anything else (MCP...) types.
     function toolAnim(tool) {
         const t = String(tool || "");
         if (["Read", "NotebookRead", "view_image"].indexOf(t) >= 0) return "read";
@@ -189,7 +194,7 @@ QtObject {
     function ingest(line) {
         let e;
         try { e = JSON.parse(line); } catch (error) { return; }
-        if (!e || typeof e !== "object" || ["claude", "codex"].indexOf(e.agent) < 0 || typeof e.event !== "string") return;
+        if (!e || typeof e !== "object" || ["claude", "codex", "opencode", "hermes"].indexOf(e.agent) < 0 || typeof e.event !== "string") return;
         const key = e.agent + ":" + (typeof e.session_id === "string" && e.session_id ? e.session_id.slice(0, 80) : "default");
         const next = Object.assign({}, sessions);
         const was = next[key];

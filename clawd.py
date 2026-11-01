@@ -96,6 +96,6 @@ def uninstall_hooks():
     spec = importlib.util.spec_from_file_location('clawd_hooks', Path(__file__).resolve().parent/'scripts/clawd/hooks.py')
     hooks = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(hooks)
-    for agent in hooks.AGENTS:
+    for agent in hooks.HOOKS:
         hooks.configure(agent, install=False)
     hooks.statusline(install=False)

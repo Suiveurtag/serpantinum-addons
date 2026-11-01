@@ -16,25 +16,89 @@ Item {
     property real maxAspect: 5
 
     readonly property bool roomy: height > Scaler.s(120)
-    property real shown: Tokens.total
-    property real lastTotal: -1
+    // Same percentage the widget editor shows: width against the type's default width (360). opencode and llama.cpp appear from 120 % on.
+    readonly property bool large: Math.round(width / Scaler.s(360) * 100) >= 120
+    // Static model: a publish never rebuilds the cards (a rebuilt card would replay its spin).
+    readonly property var cards: [
+        { key: "codex", name: "Codex", tone: ThemeBackend.blue },
+        { key: "claude", name: "Claude", tone: ThemeBackend.peach },
+        { key: "opencode", name: "opencode", tone: ThemeBackend.green },
+        { key: "llamacpp", name: "llama.cpp", tone: ThemeBackend.yellow }
+    ]
+    // What is on screen. Everything is copied here together, in flush(), so the total and the sources move in the same tick.
+    property real shownTotal: Tokens.total
+    property real shownCodex: Tokens.codex
+    property real shownClaude: Tokens.claude
+    property real shownOpencode: Tokens.opencode
+    property real shownLlamacpp: Tokens.llamacpp
+    property string noteCodex: Tokens.codexNote
+    property string noteClaude: Tokens.claudeNote
+    property string noteOpencode: Tokens.opencodeNote
+    property string noteLlamacpp: Tokens.llamacppNote
+    // Per source: true while its digits roll. Set in flush(), cleared about a second later.
+    property bool rollCodex: false
+    property bool rollClaude: false
+    property bool rollOpencode: false
+    property bool rollLlamacpp: false
     property string bump: ""
     property bool primed: false
 
+    // Changes arriving in the same burst (same 140 ms window as the bar module) roll together; otherwise they roll at once.
+    Timer {
+        id: windowTimer
+        interval: 140
+        onTriggered: root.flush()
+    }
+    Timer {
+        id: rollClear
+        interval: 1100
+        onTriggered: { root.rollCodex = false; root.rollClaude = false; root.rollOpencode = false; root.rollLlamacpp = false; }
+    }
+
+    function applyNow() {
+        shownTotal = Tokens.total;
+        shownCodex = Tokens.codex;
+        shownClaude = Tokens.claude;
+        shownOpencode = Tokens.opencode;
+        shownLlamacpp = Tokens.llamacpp;
+        noteCodex = Tokens.codexNote;
+        noteClaude = Tokens.claudeNote;
+        noteOpencode = Tokens.opencodeNote;
+        noteLlamacpp = Tokens.llamacppNote;
+    }
+
+    function flush() {
+        const gain = Tokens.total - shownTotal;
+        const moved = Tokens.codex !== shownCodex || Tokens.claude !== shownClaude || Tokens.opencode !== shownOpencode || Tokens.llamacpp !== shownLlamacpp;
+        if (!primed) return;
+        if (gain > 0 && visible) {
+            bump = "+" + Tokens.compact(gain);
+            gainAnim.restart();
+            flash.restart();
+        }
+        // Flags first, then the values: the digits see animate already on when they change.
+        rollCodex = Tokens.codex !== shownCodex;
+        rollClaude = Tokens.claude !== shownClaude;
+        rollOpencode = Tokens.opencode !== shownOpencode;
+        rollLlamacpp = Tokens.llamacpp !== shownLlamacpp;
+        applyNow();
+        if (moved || gain > 0) rollClear.restart();
+    }
+
     Connections {
         target: Tokens
-        function onTotalChanged() {
-            const gain = Tokens.total - root.lastTotal;
-            if (root.primed && root.lastTotal > 0 && gain > 0 && root.visible) {
-                root.bump = "+" + Tokens.compact(gain);
-                gainAnim.restart();
-                flash.restart();
+        function onDataChanged() {
+            if (!Tokens.data) return;
+            if (!root.primed) {
+                // First load: show the numbers as they are, nothing rolls.
+                root.applyNow();
+                root.primed = true;
+                return;
             }
-            root.lastTotal = Tokens.total;
+            if (!windowTimer.running) windowTimer.start();
         }
-        function onDataChanged() { if (Tokens.data) root.primed = true; }
     }
-    Component.onCompleted: { lastTotal = Tokens.total; primed = !!Tokens.data; }
+    Component.onCompleted: { applyNow(); primed = !!Tokens.data; }
 
     Rectangle {
         id: card
@@ -166,22 +230,22 @@ Item {
                     id: big
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.left: parent.left
-                    value: Tokens.total
+                    value: root.shownTotal
                     pixelSize: parent.fit
                     color: ThemeBackend.text
                     animate: root.visible && root.primed
                 }
             }
 
-            RowLayout {
+            // Codex and Claude; from 120 % also opencode and llama.cpp. Four side by side when wide enough, otherwise a 2 x 2 grid.
+            GridLayout {
                 visible: root.roomy
                 Layout.fillWidth: true
-                spacing: Scaler.s(14)
+                columns: root.width > Scaler.s(520) ? 4 : 2
+                columnSpacing: Scaler.s(14)
+                rowSpacing: Scaler.s(6)
                 Repeater {
-                    model: [
-                        { name: "Codex", tone: ThemeBackend.blue, value: Tokens.codex, note: Tokens.codexNote },
-                        { name: "Claude", tone: ThemeBackend.peach, value: Tokens.claude, note: Tokens.claudeNote }
-                    ]
+                    model: root.large ? root.cards : root.cards.slice(0, 2)
                     delegate: ColumnLayout {
                         id: part
                         required property var modelData
@@ -201,16 +265,25 @@ Item {
                         }
                         TokensDigits {
                             Layout.preferredWidth: implicitWidth
-                            value: part.modelData.value
+                            value: part.modelData.key === "codex" ? root.shownCodex
+                                 : part.modelData.key === "claude" ? root.shownClaude
+                                 : part.modelData.key === "opencode" ? root.shownOpencode : root.shownLlamacpp
                             pixelSize: Math.min(Scaler.s(14), root.width / 24)
                             weight: Font.Bold
                             color: ThemeBackend.text
+                            // Only the source that received tokens rolls; the others stay still.
                             animate: root.visible && root.primed
+                                 && (part.modelData.key === "codex" ? root.rollCodex
+                                   : part.modelData.key === "claude" ? root.rollClaude
+                                   : part.modelData.key === "opencode" ? root.rollOpencode : root.rollLlamacpp)
+                            spinIn: false
                             duration: 700
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: part.modelData.note
+                            text: part.modelData.key === "codex" ? root.noteCodex
+                                : part.modelData.key === "claude" ? root.noteClaude
+                                : part.modelData.key === "opencode" ? root.noteOpencode : root.noteLlamacpp
                             elide: Text.ElideRight
                             color: Qt.alpha(ThemeBackend.subtext0, 0.8)
                             font.family: ThemeBackend.fontFamily

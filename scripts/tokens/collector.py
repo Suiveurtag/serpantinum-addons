@@ -36,8 +36,8 @@ PERIODS = (('today', 0), ('week', 6), ('month', 29))   # recent windows, in UTC 
 SETTINGS = Path(os.environ.get('QS_SETTINGS') or HOME/'.config/serpantinum/settings.json')
 OPENCODE_DB = Path(os.environ.get('TOKENS_OPENCODE_DB') or HOME/'.local/share/opencode/opencode.db')
 LLAMA_URL = os.environ.get('TOKENS_LLAMACPP_URL') or 'http://127.0.0.1:8080'
-OPENCODE_EVERY = 60   # seconds between reads of opencode's session table
-LLAMA_EVERY = 10      # seconds between llama.cpp /metrics reads
+OPENCODE_EVERY = 3    # seconds between reads of opencode's session table
+LLAMA_EVERY = 3       # seconds between llama.cpp /metrics reads
 # source -> (shell setting that enables it, default). Codex and Claude were always on; the new sources are opt-in.
 OPTIONS = {'codex': ('addonsV2TokensCodex', True), 'claude': ('addonsV2TokensClaude', True),
            'opencode': ('addonsV2TokensOpencode', False), 'llamacpp': ('addonsV2TokensLlamaCpp', False)}
@@ -63,14 +63,30 @@ def option_enabled(source):
         return default
 
 
+def llama_url():
+    """Where llama-server answers: the URL set in the Addons settings, else TOKENS_LLAMACPP_URL, else 127.0.0.1:8080."""
+    try:
+        value = json.loads(SETTINGS.read_text()).get('addonsV2TokensLlamaCppUrl')
+    except (OSError, ValueError, AttributeError):
+        value = None
+    return value.strip() if isinstance(value, str) and value.strip() else LLAMA_URL
+
+
 def opencode_totals():
-    """Running token totals per opencode session, read-only: its session table already holds the counters."""
+    """Running token totals per OpenCode session, read-only, across database generations."""
     db = sqlite3.connect(OPENCODE_DB.as_uri() + '?mode=ro', uri=True, timeout=2)
     try:
-        rows = db.execute('SELECT id, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write FROM session').fetchall()
+        tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        totals = {}
+        for table in ('session_v2', 'session'):
+            if table not in tables:
+                continue
+            rows = db.execute(f'SELECT id, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write FROM {table}').fetchall()
+            for sid, *values in rows:
+                totals.setdefault(sid, sum(num(value) for value in values))
     finally:
         db.close()
-    return {sid: sum(num(v) for v in values) for sid, *values in rows}
+    return totals
 
 
 def llama_counters(url):
@@ -277,7 +293,7 @@ class Collector:
         if self.enabled.get('llamacpp') and now - self.llama_at >= LLAMA_EVERY:
             self.llama_at = now
             try:
-                prompt, predicted = llama_counters(LLAMA_URL)
+                prompt, predicted = llama_counters(llama_url())
             except (OSError, ValueError) as error:
                 self.llama_error = 'not running'        # server not running: nothing is added until it answers again (no URL in state.json)
                 return

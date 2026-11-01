@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- Clawd chat provider: choose Codex (default), an OpenAI-compatible API, or a local server (Ollama, llama.cpp, LM Studio) from the Clawd card.
+- Clawd session watch: connect OpenCode and Hermes alongside Claude Code and Codex.
+
+### Removed
+- Wallpaper Engine scene backgrounds (scenes, `we-layerd` bridge, installer, docs and tests). The feature will return later.
+
 ## [2.0.1] - 2026-11-01
 
 ### Added

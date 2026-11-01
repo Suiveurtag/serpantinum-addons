@@ -207,6 +207,51 @@ function session(env = {}) {
     assert.equal(alive(cliPid), false, 'no orphan CLI after SIGKILL of the sidecar');
     ok('brain: no orphan CLI after SIGKILL');
 
+    // api / local providers: OpenAI-compatible server, streamed
+    const http = require('node:http');
+    const seen = [];
+    const server = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', c => { body += c; });
+      req.on('end', () => {
+        if (req.url === '/v1/models') { res.end('{"data":[]}'); return; }
+        seen.push({ url: req.url, auth: req.headers.authorization, body: JSON.parse(body) });
+        if (req.headers.authorization === 'Bearer bad') { res.statusCode = 401; res.end('nope'); return; }
+        res.setHeader('content-type', 'text/event-stream');
+        for (const t of ['Hel', 'lo']) res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: t } }] })}\n\n`);
+        res.end('data: [DONE]\n\n');
+      });
+    });
+    await new Promise(r => server.listen(0, '127.0.0.1', r));
+    const url = `http://127.0.0.1:${server.address().port}/v1`;
+    const apiMod = require(path.join(ROOT, 'api.js'));
+    const pieces = [];
+    process.env.CLAWD_CHAT_API_KEY = 'k1';
+    assert.equal(await apiMod.chat({ persona, prompt: 'Hi', images: ['QQ=='], provider: 'api', config: { url, model: 'm1' } }, p => pieces.push(p), new AbortController().signal), 'Hello');
+    assert.deepEqual(pieces, ['Hel', 'lo']);
+    assert.equal(seen[0].url, '/v1/chat/completions');
+    assert.equal(seen[0].auth, 'Bearer k1');
+    assert.equal(seen[0].body.model, 'm1');
+    assert.equal(seen[0].body.messages[1].content[1].image_url.url, 'data:image/jpeg;base64,QQ==');
+    process.env.CLAWD_CHAT_API_KEY = 'bad';
+    await assert.rejects(apiMod.chat({ persona, prompt: 'Hi', provider: 'api', config: { url } }, () => {}, new AbortController().signal), e => e.code === 'signin');
+    delete process.env.CLAWD_CHAT_API_KEY;
+    process.env.XDG_CONFIG_HOME = path.join(dir, 'nocfg');
+    await assert.rejects(apiMod.chat({ persona, prompt: 'Hi', provider: 'api', config: { url } }, () => {}, new AbortController().signal), e => e.code === 'signin');
+    assert.equal(await apiMod.chat({ persona, prompt: 'Hi', provider: 'local', config: { url } }, () => {}, new AbortController().signal), 'Hello', 'local needs no key');
+    assert.equal(seen.at(-1).auth, undefined);
+    const sApi = session();
+    sessions.push(sApi);
+    assert.deepEqual(await sApi.call('send', { text: 'Yo', context: '', provider: 'local', url }), { ok: true, text: 'Hello' });
+    assert.deepEqual(await sApi.call('status', { provider: 'local', url }), { ok: true, signedIn: true, provider: 'local', note: 'llama3.2' });
+    const badServer = http.createServer((req, res) => { res.statusCode = 500; res.end('boom'); });
+    await new Promise(r => badServer.listen(0, '127.0.0.1', r));
+    const badUrl = `http://127.0.0.1:${badServer.address().port}/v1`;
+    assert.deepEqual(await apiMod.status('local', { url: badUrl }), { ready: false, note: 'HTTP 500' });
+    badServer.close();
+    server.close();
+    ok('providers: api key + stream + vision, 401 maps to signin, HTTP 500 is not ready, local without key, brain routes provider');
+
     console.log('CLAWD_CHAT_PASS status, codex flags, protocol, history, busy, stop, look, orphan control');
   } finally {
     for (const s of sessions) if (s.child.exitCode === null) s.child.kill('SIGKILL');

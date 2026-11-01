@@ -12,6 +12,8 @@ QtObject {
     readonly property bool stale: !data || now - (data.updated || 0) > 150
     readonly property real codex: data && data.codex.total !== null ? data.codex.total : 0
     readonly property real claude: data ? data.claude.total : 0
+    readonly property real opencode: data && data.sources && data.sources.opencode ? data.sources.opencode.total : 0
+    readonly property real llamacpp: data && data.sources && data.sources.llamacpp ? data.sources.llamacpp.total : 0
     readonly property real total: data ? data.combined.total : 0
     readonly property bool active: !stale && !!data && data.active
     readonly property bool complete: !stale && !!data && data.combined.complete
@@ -34,6 +36,20 @@ QtObject {
         return qsTr("synced %1").arg(ago(c.synced));
     }
     readonly property string claudeNote: !data ? "" : data.claude.since ? qsTr("local since %1").arg(data.claude.since) : qsTr("no transcripts found")
+    readonly property string opencodeNote: {
+        if (!data) return qsTr("collector not running");
+        const s = data.sources ? data.sources.opencode : null;
+        if (!s) return qsTr("off");
+        if (s.status === "error") return qsTr("unreadable");
+        return qsTr("%1 sessions").arg(s.sessions);
+    }
+    readonly property string llamacppNote: {
+        if (!data) return qsTr("collector not running");
+        const s = data.sources ? data.sources.llamacpp : null;
+        if (!s) return qsTr("off");
+        if (s.status === "error") return qsTr("not running");
+        return qsTr("live");
+    }
     readonly property string status: stale ? qsTr("collector stopped") : !data.combined.complete ? qsTr("partial") : data.importing ? qsTr("importing") : ""
 
     property FileView file: FileView {

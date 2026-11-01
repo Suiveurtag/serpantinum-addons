@@ -26,7 +26,6 @@ import release_ui
 import seasonal
 import tokens
 import seasonal_surfaces
-import wallpaper_engine
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -947,6 +946,7 @@ def patch_theme(text):
             Matugen._hasGeneratedSuccessfully = false;
         }
 '''
+    if text.count(anchor) != 1: raise InstallError('Theme card selection anchor changed')
     text = text.replace(anchor, block + anchor, 1)
     # Give the addon cards the exact existing wallpaper tile, selection, dots and motion.
     return text
@@ -1347,6 +1347,7 @@ PAYLOAD_FILES = {
 }
 # Upstream files that the payload replaces outright (they exist upstream, so uninstall restores rather than deletes them).
 OVERWRITES = ('calendar/CalendarPopup.qml',)
+# Legacy: shell files patched by the retired scene bridge; uninstall still restores them.
 WALLPAPER_FILES = ('singletons/theme/Wallpaper.qml', 'wallpaper/WallpaperEngine.qml', 'reusables/display/WallpaperBlur.qml')
 BANNER_TAB = 'guide/AddonsBannersTab.qml'
 
@@ -1493,14 +1494,6 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
             if not removing:
                 plan.created.add(path)
     plan.shader_dirs = [(QS/'seasonal/shaders', 'atmosphere', shader_name), (QS/'capri/shaders', 'sprite', sprite_name)]
-    bridge = HOME/'.local/lib/qt6/qml/Serpantinum/Wallpaper/libSerpantinumWallpaperplugin.so'
-    if bridge.is_file():
-        try:
-            wallpaper_engine.prepare(pending, QS, DEPLOY, HOME/'.local')
-        except InstallError:
-            raise
-        except Exception as error:
-            raise InstallError(str(error) or type(error).__name__, 'wallpaper bridge', 'wallpaper_engine.prepare', default_hint(str(error), 'the wallpaper files')) from error
     plan.options = options
     return plan
 
@@ -1603,6 +1596,17 @@ def save_backup(path, backup, keybinds):
         saved = backup/backup_name(path, keybinds)
         saved.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, saved, follow_symlinks=False)
+
+
+def restore_backup(path, backup, keybinds):
+    """Put a shell file back the way save_backup() found it."""
+    saved = backup/backup_name(path, keybinds)
+    if saved.exists() or saved.is_symlink():
+        if path.exists() or path.is_symlink(): remove_path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(saved, path, follow_symlinks=False)
+    else:
+        remove_path(path)
 
 
 def remove_path(path):
@@ -1708,21 +1712,33 @@ def _install_locked(report, state, check, without_halloween, without_capri, with
     if without_clawd:
         clawd.uninstall_hooks()
     backup = DEPLOY/'backups'/datetime.now().strftime('%Y%m%d-%H%M%S-%f')
-    for op in ops:
-        path = op[1]
-        if not backup.exists(): backup.mkdir(parents=True)
-        save_backup(path, backup, plan.keybinds)
-        if op[0] == 'write': write_atomic(path, op[2], op[3])
-        else: path.unlink()
-    if ops: report['backup'] = str(backup)
-    for op in extra:
-        if op[0] == 'remove':
-            remove_path(op[1])
-        else:
-            op[2].parent.mkdir(parents=True, exist_ok=True)
-            if os.path.lexists(op[2]) and not op[2].is_file(): remove_path(op[2])
-            shutil.copy2(op[1], op[2])
-    record_install(plan, release.serpantinum_state())
+    done = []
+    try:
+        for op in ops:
+            path = op[1]
+            existed = path.exists() or path.is_symlink()
+            if not backup.exists(): backup.mkdir(parents=True)
+            save_backup(path, backup, plan.keybinds)
+            if op[0] == 'write': write_atomic(path, op[2], op[3])
+            else: path.unlink()
+            done.append((path, existed))
+        if ops: report['backup'] = str(backup)
+        for op in extra:
+            if op[0] == 'remove':
+                remove_path(op[1])
+            else:
+                op[2].parent.mkdir(parents=True, exist_ok=True)
+                if os.path.lexists(op[2]) and not op[2].is_file(): remove_path(op[2])
+                shutil.copy2(op[1], op[2])
+        record_install(plan, release.serpantinum_state())
+    except BaseException:
+        for path, existed in reversed(done):
+            try:
+                if existed: restore_backup(path, backup, plan.keybinds)
+                else: remove_path(path)
+            except OSError:
+                pass
+        raise
     say(report, f"v2 installed: {len(ops)} shell files changed; backups: {backup}")
     message = tokens.service(DEPLOY, HOME, remove=without_tokens)
     say(report, message)
@@ -1835,6 +1851,7 @@ def sweep_shaders():
     return found
 
 
+# Legacy: removes the we-layerd unit left by the retired scene bridge.
 def stop_wallpaper_unit(report):
     unit = HOME/'.config/systemd/user/we-layerd.service'
     if not unit.is_file(): return

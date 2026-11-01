@@ -114,6 +114,20 @@ class TokenTests(unittest.TestCase):
         self.c.llama_at = 0
         self.assertEqual(self.run_once(sync=False)['sources']['llamacpp']['total'], 30 + 5 + 2)   # restart: counters begin again at zero
 
+    def test_llama_cpp_url_comes_from_settings(self):
+        seen = []
+        original = collector.llama_counters
+        collector.llama_counters = lambda url: (seen.append(url), (1, 1))[1]
+        self.addCleanup(setattr, collector, 'llama_counters', original)
+        self.write_settings(addonsV2TokensLlamaCpp=True)
+        self.c.llama_at = 0
+        self.run_once(sync=False)
+        self.assertEqual(seen[-1], 'http://127.0.0.1:8080')                 # default
+        self.write_settings(addonsV2TokensLlamaCpp=True, addonsV2TokensLlamaCppUrl=' http://127.0.0.1:8082 ')
+        self.c.llama_at = 0
+        self.run_once(sync=False)
+        self.assertEqual(seen[-1], 'http://127.0.0.1:8082')                 # the URL the user set, trimmed
+
     def test_disabled_sources_are_left_out_of_the_total(self):
         (self.codex/'rollout-a.jsonl').write_text(codex_event(300))
         self.write_settings(addonsV2TokensCodex=False)

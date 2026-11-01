@@ -59,12 +59,17 @@ class SeasonalIntegrationTests(unittest.TestCase):
         # Model the upstream storage/assignment contract, including a custom hue.
         source = '    id: root\n' + '\n'.join(f'    property color {key}: "#123456"' for key in colors)
         source += '\nif (root[propName].toString() !== nextColor.toString()) { root[propName] = nextColor; }'
+        source += '\nroot[names[i]]; root[item.name]; root[slot];'
         result = seasonal.patch_palette(source)
         for key in colors:
             self.assertIn(f'property color _normal{key}: "#123456"', result)
             self.assertIn(f'Halloween.presentColor("{key}", _normal{key})', result)
+        self.assertIn('root["_normal" + names[i]]', result)
+        self.assertIn('root["_normal" + item.name]', result)
+        self.assertIn('root["_normal" + slot]', result)
         self.assertNotIn('root[propName] =', result)
         self.assertEqual(result, seasonal.patch_palette(result))
+        self.assertEqual(seasonal.remove(result), source)
 
     def test_changed_upstream_palette_fails_before_installation(self):
         with self.assertRaises(ValueError):
@@ -78,6 +83,7 @@ class SeasonalIntegrationTests(unittest.TestCase):
                 self.assertNotIn('sourceComponent: NightPanel', result)
                 self.assertNotIn('sourceComponent: BatBurst', result)
                 self.assertNotIn('property color _normal', result)
+                self.assertNotIn('root["_normal"', result)
                 self.assertEqual(result, seasonal.remove(result))
 
     def test_both_clock_renderers_keep_the_normal_orbit(self):

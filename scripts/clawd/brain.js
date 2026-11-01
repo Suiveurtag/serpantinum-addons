@@ -11,6 +11,7 @@ const path = require('node:path');
 const readline = require('node:readline');
 const { execFile } = require('node:child_process');
 const codex = require('./codex');
+const api = require('./api');
 
 const PERSONA = [
   "You are Clawd, the small orange pixel mascot of Claude Code living on the user's Serpantinum (Hyprland) desktop.",
@@ -27,6 +28,7 @@ const MAX_CONTEXT = 4000;
 const BUSY_RETRY_MS = 1500;
 const BUDGET_MS = Number(process.env.CLAWD_CHAT_BUDGET_MS) || 85000; // whole answer, retry included; the desktop gives up at 95 s
 const MIN_RETRY_MS = 5000;
+const PROVIDERS = ['codex', 'api', 'local'];
 const CODES = ['signin', 'busy', 'stopped', 'failed', 'running'];
 
 let history = [];
@@ -94,6 +96,14 @@ function signedIn() {
   }));
 }
 
+async function providerStatus(provider, config = {}) {
+  if (provider === 'api' || provider === 'local') {
+    const r = await api.status(provider, config);
+    return { signedIn: r.ready, provider, note: r.note };
+  }
+  return { signedIn: await signedIn(), provider: 'codex', note: '' };
+}
+
 function pause(ms, signal) {
   return new Promise(resolve => {
     const t = setTimeout(resolve, ms);
@@ -111,13 +121,16 @@ async function send(id, args) {
   if (typeof text !== 'string' || !text.trim() || text.length > MAX_TEXT) throw fail('Message too long or empty');
   if (typeof context !== 'string' || context.length > MAX_CONTEXT) throw fail('Context too long');
   const ctrl = new AbortController();
+  const provider = PROVIDERS.includes(args.provider) ? args.provider : 'codex';
   const gen = generation, deadline = Date.now() + BUDGET_MS;
   current = { id, ctrl };
   try {
     const images = args.look === true ? [await snapshot(args.output)] : [];
     const question = prompt(text, context);
     let streamed = false;
-    const ask = () => codex.chat({ persona: PERSONA, prompt: question, images, timeoutMs: Math.max(1000, deadline - Date.now()) }, piece => {
+    const config = { url: typeof args.url === 'string' ? args.url : '', model: typeof args.model === 'string' ? args.model : '' };
+    const engine = provider === 'codex' ? codex : api;
+    const ask = () => engine.chat({ persona: PERSONA, prompt: question, images, provider, config, timeoutMs: Math.max(1000, deadline - Date.now()) }, piece => {
       if (!ctrl.signal.aborted) {
         streamed = true;
         emit({ t: 'chat.delta', id, text: piece });
@@ -144,7 +157,7 @@ async function send(id, args) {
   } catch (e) {
     if (ctrl.signal.aborted) return { ok: false, error: 'stopped', code: 'stopped' };
     let code = e.code;
-    if (!CODES.includes(code)) code = (await signedIn()) ? 'failed' : 'signin';
+    if (!CODES.includes(code)) code = provider !== 'codex' || (await signedIn()) ? 'failed' : 'signin';
     return { ok: false, error: String(e.message || e).slice(0, 300), code };
   } finally {
     current = null;
@@ -171,7 +184,10 @@ async function run(id, method, args) {
       if (current && current.id === args.id) current.ctrl.abort();
       return { ok: true };
     case 'status':
-      return { ok: true, signedIn: await signedIn() };
+      {
+      const d = await providerStatus(args.provider, args);
+      return d.provider === 'codex' ? { ok: true, signedIn: d.signedIn } : { ok: true, ...d };
+    }
     default:
       throw fail('Unknown method');
   }
@@ -210,7 +226,9 @@ function serve() {
 }
 
 if (process.argv[2] === 'status') {
-  signedIn().then(value => process.stdout.write(JSON.stringify({ ok: true, data: { signedIn: value } }) + '\n'));
+  // node brain.js status [provider] [url] [model]
+  const [, , , provider, url, model] = process.argv;
+  providerStatus(provider, { url, model }).then(d => process.stdout.write(JSON.stringify({ ok: true, data: provider && provider !== 'codex' ? d : { signedIn: d.signedIn } }) + '\n'));
 } else {
   serve();
 }

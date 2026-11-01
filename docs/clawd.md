@@ -1,8 +1,8 @@
-# Clawd, Claude Code desktop pet
+# Clawd, coding agent desktop pet
 
-Clawd is the Claude Code pixel mascot: a flat `#D97757` block with two black
-eyes, arm stubs and four short legs, drawn from PNG strips at an integer scale
-with no smoothing. He lives in Settings → Addons → General, in a terminal-style
+Clawd is a pixel companion for Claude Code, Codex, OpenCode and Hermes: a flat
+`#D97757` block with two black eyes, arm stubs and four short legs, drawn from
+PNG strips at an integer scale with no smoothing. He lives in Settings → Addons → General, in a terminal-style
 card. Off by default; OFF unloads every window, timer and Hyprland socket. Only
 the hook socket stays, so he knows what your agents are doing when he comes back.
 
@@ -85,28 +85,31 @@ off he is back to the floor of his screen only.
 (the window rect he peeks from behind) and `world` (`wins`: windows on screen, `ledges`,
 `refreshes`: window snapshots taken).
 
-## Claude Code and Codex
+## Claude Code, Codex, OpenCode and Hermes
 
-The card's `hooks` row connects each agent (`[ ] claude · [ ] codex · [ ] stats`, the last one is
-Claude's status line relay, below). Nothing touches
-`~/.claude/settings.json` or `~/.codex/hooks.json` before you click; Codex then asks
-you to trust the new hooks. The same thing from a terminal:
+The card's `hooks` row connects each agent; `stats` is Claude's status line relay, below. Nothing
+changes an agent's config until you click its toggle. Codex then asks you to trust the new hooks.
+The same thing from a terminal:
 
 ```sh
-python3 ~/.local/share/serpantinum-addons-v2/scripts/clawd/hooks.py <status|install|uninstall> <claude|codex|statusline>
+python3 ~/.local/share/serpantinum-addons-v2/scripts/clawd/hooks.py <status|install|uninstall> <claude|codex|opencode|hermes|statusline>
 ```
 
-It adds one group per event next to the existing ones (Capri's included), writes a
-`<file>.clawd-backup-<date>` before every change, and removes only commands running
-`clawd-hook.js`. The hook (`scripts/clawd/hooks/clawd-hook.js`, node) sends one JSON line
+Claude Code and Codex use their native hooks files, adding one group per event next to existing
+ones (Capri's included). OpenCode installs one global plugin at
+`~/.config/opencode/plugins/clawd-session-watch.js`; Hermes installs and enables the
+`~/.hermes/plugins/clawd-session-watch` plugin without tool overrides. The connectors are backed
+up before updates or removal. Start OpenCode and Hermes again after connecting or disconnecting.
+
+Claude Code and Codex run `scripts/clawd/hooks/clawd-hook.js` (node), which sends one JSON line
 `{agent, event, session_id, tool_name, notification_type, dir, pids, target, model}` (`pids`: the hook's
 ancestor processes, used to find the terminal window). An event fired inside a sub-agent also carries
 `agent_id`, `agent_type`, and `sub_model` / `sub_tokens`: the model and the input tokens of its last reply,
 read from its own transcript (`<session>/subagents/agent-<id>.jsonl`); nothing else of it leaves the hook. The line goes to
-`$XDG_RUNTIME_DIR/serpantinum/clawd.sock`. It always exits 0 within 500 ms and does nothing
-when the shell is not running.
+`$XDG_RUNTIME_DIR/serpantinum/clawd.sock`. OpenCode and Hermes plugins send the same activity fields
+directly to that socket. All connectors stop quietly when the shell is not running.
 
-Privacy: no prompts, replies or full tool inputs ever leave the hook. `target` is a short
+Privacy: no prompts, replies or full tool inputs ever leave a connector. `target` is a short
 label of the action (24 characters at most, control and bidi characters stripped, `PreToolUse` only):
 a file's base name for reads and edits, only the program name of a shell command (leading
 `VAR=value` assignments skipped, quoted values included; anything but a plain name such as `$(…)` gives
@@ -146,10 +149,11 @@ the tool family changes, and switching variant every 8–12 s:
 Hooks fired inside a sub-agent do not override the lead thread's tool while it is busy; once the lead thread
 has been quiet for 5 s (typically waiting on the sub-agent), Clawd plays the sub-agent's tool instead. A
 sub-agent still running after `Stop` (background) keeps him working until its `SubagentStop`.
-The session journal lists each tracked Claude Code and Codex sub-agent separately. Click its circle to follow it:
+The session journal lists each tracked sub-agent separately. Click its circle to follow it:
 its effort colour, tool loop and thought line then use that agent's state. `follow: auto` restores automatic selection.
-Click the rest of a row to raise the parent terminal. The `SubagentStart` / `SubagentStop` hooks now cover both agents;
-Claude already has these events; reconnect Codex in the card once to add them and trust its updated hooks.
+Click the rest of a row to raise the parent terminal. The `SubagentStart` / `SubagentStop` hooks cover all four agents;
+Claude Code and Codex provide their native sub-agent events; OpenCode child sessions and Hermes delegated agents
+use their plugin lifecycle hooks.
 
 When the lead session is strained (context ≥ 80 % or 5-hour limit ≥ 90 %), each variant switch
 has a 1 in 3 chance to be a `sweat` break instead. The lead's reasoning effort sets his typing
@@ -162,8 +166,8 @@ beside his head.
 
 ### Stats (Claude status line)
 
-The third toggle of the `hooks` row, `[ ] stats`, makes Claude Code's status line run
-`scripts/clawd/hooks/clawd-status.js` (`hooks.py <status|install|uninstall> statusline`).
+The `stats` toggle in the `hooks` row makes Claude Code's status line run
+`scripts/clawd/hooks/clawd-status.js` (`python3 scripts/clawd/hooks.py <status|install|uninstall> statusline`).
 It relays one `Status` line per status refresh:
 `{agent: "claude", event: "Status", session_id, dir, pids, model, effort, ctx, ctx_size, cost, five_hour, seven_day, five_hour_resets}`
 (model display name, effort level, context used %, context window size in tokens, session cost in USD, 5-hour / 7-day usage %; numbers
@@ -216,8 +220,9 @@ It never takes clicks, and hides while a bubble, the menu or the journal is open
 Clicking a bubble raises that session's terminal (`hyprctl dispatch focuswindow pid:…`,
 the first of the hook's ancestors owning a window) and closes it. Left click on Clawd opens
 the sessions journal, newest first: `●/○ ⚠/✻/✓ id dir role/tool elapsed ctx%` (context only with stats connected;
-`Cl` = Claude Code, `Co` = Codex, `↳` = sub-agent). Click the circle to follow or the rest of a row to raise that terminal.
+`Cl` = Claude Code, `Co` = Codex, `OC` = OpenCode, `He` = Hermes, `↳` = sub-agent). Click the circle to follow or the rest of a row to raise that terminal.
 Terminals behind tmux/screen cannot be found (the multiplexer server is not an ancestor): nothing happens.
+Hermes sessions served by a detached gateway are still tracked, though that gateway may have no terminal ancestor to focus.
 
 ## The shell (lot 5c)
 
@@ -259,10 +264,16 @@ read-only sandbox, hooks, memories, plugins, apps, shell, exec, browser and comp
 whitelist, temporary dir removed after each run. The read-only sandbox alone does not prevent reads, hence the rest.
 History: `~/.local/state/serpantinum/clawd/chat.json` (dir 0700, file 0600), 60 kept, the last 20 sent with each message.
 An answer gets an 85 s budget (one retry after 1.5 s when Codex is busy); the desktop gives up at 95 s.
-Setup: sign in once with `codex login`. The card's `chat` row (`addonsV2ClawdChat`, default on) shows
+Provider: the card's `provider` row (`addonsV2ClawdChatProvider`) picks where answers come from: `codex` (default, above),
+`api` (any OpenAI-compatible hosted API, default `https://api.openai.com/v1`, model `gpt-4o-mini`) or `local` (Ollama,
+llama.cpp, LM Studio; default `http://127.0.0.1:11434/v1`, model `llama3.2`, no key). The card's `model` and `url` fields
+(`addonsV2ClawdChatModel`, `addonsV2ClawdChatUrl`, empty = default) override them; Enter or leaving the field saves. The `api key`
+field (api only) writes the first line of `~/.config/serpantinum/clawd/api-key` (0600), never `settings.json`; `CLAWD_CHAT_API_KEY` wins when set.
+`api` and `local` send the persona, history, context and (for `[look]`) the screenshot to that endpoint; they stream the answer.
+Setup for codex: sign in once with `codex login`. The card's `chat` row (`addonsV2ClawdChat`, default on) shows
 `ChatGPT via Codex · signed in` or `run codex login`.
 While he waits he thinks (`think`); while the answer shows he talks (`talk`, pet mode `chat`).
-Files: `scripts/clawd/{brain.js,codex.js,cli-runner.py}`, `payload/clawd/{ClawdChat,ClawdBrain}.qml`.
+Files: `scripts/clawd/{brain.js,codex.js,api.js,cli-runner.py}`, `payload/clawd/{ClawdChat,ClawdBrain}.qml`.
 
 ## Sleep and dreams (lot 7)
 
@@ -308,11 +319,11 @@ Storyboard: `animations/DREAMS.md` in the Clawd project.
 | Sleep after | `addonsV2ClawdSleep`, 1–60 minutes, default 5 |
 | Summon on this screen | Respawns him on the focused monitor (disabled while off) |
 | Shortcut | Opens Keybinds; search `clawd` there to change it |
-| Hooks | Connect / disconnect Claude Code and Codex hooks, and the Claude status line relay (`stats`) |
+| Hooks | Connect / disconnect Claude Code, Codex, OpenCode and Hermes session hooks, and Claude's status relay (`stats`) |
 | Thoughts | `addonsV2ClawdThoughts`: full (default), verbs, off |
 | World | `addonsV2ClawdWorld` (`windows`: perching, peeking, exploring, window reactions) and `addonsV2ClawdFollow` (`follow` the cursor to other screens), both default on |
 | Reacts | `addonsV2ClawdReactions`: all (default), quiet (urgent events, bubbles, moods), off (urgent only) |
-| Chat | `addonsV2ClawdChat`, default on; the `chat` row shows the Codex sign-in status (`codex login`) |
+| Chat | `addonsV2ClawdChat`, default on; the `chat` row shows the provider status; `provider` row: `codex` / `api` / `local` (`addonsV2ClawdChatProvider`, see Chat) |
 
 Settings are shared with the separate Settings process through `settings.json`,
 so the card works in the Settings app and in the integrated `Super+Shift+P` panel.
@@ -399,7 +410,7 @@ at runtime. `hand.png` (the petpet hand, 7 frames frame-locked to `petpet*`) is 
 `python3 install.py` installs `payload/clawd/` to `quickshell/clawd/`, registers
 the types in the root `qmldir`, hosts `AddonClawd` in `Shell.qml` and adds the
 `Super+Shift+L` bind to `keybinds.lua`. `python3 install.py --without-clawd`
-removes only Clawd's files, blocks, bind, hooks (both agents) and status line relay, with dated backups;
+removes only Clawd's files, blocks, bind, hooks (all four agents) and status line relay, with dated backups;
 other addons are untouched.
 
 ## Validation
@@ -484,7 +495,7 @@ the dream surfer's).
 After either scene Clawd is dead: grey, on his back with his legs in the air, crosses for eyes, smoke rising from him
 (`smoke`, 15×16, 12 frames). He no longer reacts to anything (agents, petting, dragging, the journal, the windows);
 his thought line and `[n]` are hidden, bubbles still show. Death is kept in Config (`addonsV2ClawdDead`, when he
-died) so a reload finds his corpse. He comes back with `> revive` in his menu, when a new Claude Code / Codex session
+died) so a reload finds his corpse. He comes back with `> revive` in his menu, when a new Claude Code / Codex / OpenCode / Hermes session
 starts (`SessionStart`, not a compaction), or when the shell starts (or Clawd is turned on) 3 hours or more after he
 died. The revival (about 9 s, `ClawdRevive.qml` + `shaders/revive.frag`, drawn by his overlay, click-through): the
 screen dims, a spotlight comes down on him, holy powder falls on the corpse, which floats up glowing and turns white,
