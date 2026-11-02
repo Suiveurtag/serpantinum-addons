@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.1.1] - 2026-11-02
+
+### Fixed
+- Wallpaper colours: apply vibrant and vivid palette surfaces correctly.
+- Matugen palette generation and the wallpaper accent preview.
+
 ## [2.1.0] - 2026-11-02
 
 ### Added
