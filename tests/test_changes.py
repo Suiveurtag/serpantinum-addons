@@ -1,3 +1,4 @@
+import hashlib
 import importlib.util
 import json
 import tempfile
@@ -28,6 +29,22 @@ class ChangeTests(unittest.TestCase):
         patched = installer.patch_keybinds(keys)
         self.assertEqual(patched, installer.patch_keybinds(patched))
         self.assertIn('addonColorPicker toggle', patched)
+        for variant in ('hl.bind("SUPER + SHIFT + S", hl.dsp.exec_cmd("grim -g x"))\n', 'hl.bind("SUPER + SHIFT + Q", hl.dsp.exec_cmd("x"))\n',
+                        keys + keys, keys.rstrip('\n'),
+                        'hl.bind("SUPER + SHIFT + S", hl.dsp.exec_cmd("grim")\n  , { locked = true })\n',
+                        '--[[\n' + keys + ']]\n', 'if x then\n  ' + keys + 'end\n'):
+            result = installer.patch_keybinds(variant)
+            self.assertEqual(result.count('SUPER + SHIFT + C'), 1)
+            self.assertEqual(result, installer.patch_keybinds(result))
+            self.assertIn('window switching', installer.patch_window_keybinds(result))
+            self.assertTrue(result.endswith('\n'))
+        inline = installer.patch_keybinds(keys + 'x = 1\n')
+        self.assertLess(inline.index('SHIFT + S'), inline.index('SHIFT + C'))
+        self.assertLess(inline.index('SHIFT + C'), inline.index('x = 1'))
+        for bad in ('--[[\n' + keys + ']]\n', 'hl.bind("SUPER + SHIFT + S", hl.dsp.exec_cmd("grim")\n  , {})\n'):
+            r = installer.patch_keybinds(bad)
+            self.assertGreater(r.index('SHIFT + C'), r.rindex('\n', 0, r.index('-- BEGIN')) - 1)
+            self.assertTrue(r.index('-- BEGIN') > bad.rstrip('\n').__len__() - 1)
 
     def test_guide_idempotence_and_about_order(self):
         text = (installer.QS/'guide/GuidePopup.qml').read_text()
@@ -41,16 +58,25 @@ class ChangeTests(unittest.TestCase):
             self.assertIn('tabAddonAddons, tabAddonMonitors, tabAddonKeybinds, tabAbout', patched)
 
     def test_addons_options_and_weather_patch_preserve_each_other(self):
-        addons = (ROOT/'payload/AddonsTab.qml').read_text()
-        for option in ('HalloweenCard', 'addons_trackpad_speed', 'addons_trackpad_typing',
-                       'addons_trackpad_clicks_typing', 'addonsV2ObfuscateWeatherCity'):
+        general = (ROOT/'payload/AddonsTab.qml').read_text()
+        banners = (ROOT/'payload/AddonsBannersTab.qml').read_text()
+        mouse = (ROOT/'payload/AddonsMouseTab.qml').read_text()
+        for option in ('addons_mullvad_dns', 'addonsV2ObfuscateWeatherCity'):
             with self.subTest(option=option):
-                self.assertIn(option, addons)
-        self.assertIn('SettingsGroup {', addons)
-        self.assertIn('spacing: rootObj.s(8)', addons)
-        self.assertIn('Layout.bottomMargin: rootObj.s(6)', addons)
-        self.assertIn('opacity: root.noTrackpadDetected ? 0.38 : 1.0', addons)
-        self.assertEqual(addons.count('settingId: "addons_trackpad_'), 3)
+                self.assertIn(option, general)
+        for option in ('HalloweenCard', 'CapriSettings', 'ClawdSettings'):
+            with self.subTest(option=option):
+                self.assertIn(option, banners)
+        for option in ('addons_mouse_spotlight', 'addons_mouse_acceleration', 'addons_trackpad_speed',
+                       'addons_trackpad_typing', 'addons_trackpad_clicks_typing'):
+            with self.subTest(option=option):
+                self.assertIn(option, mouse)
+        self.assertIn('addons_legacy_clock', general)
+        self.assertIn('SettingsGroup {', mouse)
+        self.assertIn('spacing: rootObj.s(8)', mouse)
+        self.assertIn('Layout.bottomMargin: rootObj.s(6)', banners)
+        self.assertIn('opacity: root.noTrackpadDetected ? 0.38 : 1.0', mouse)
+        self.assertEqual(mouse.count('settingId: "addons_trackpad_'), 3)
 
         weather_path = installer.QS/'widgets/faces/weather/WeatherFaceFull.qml'
         weather = installer.patch_weather_face(weather_path.read_text())
@@ -58,12 +84,70 @@ class ChangeTests(unittest.TestCase):
         self.assertIn('interval: 90', weather)
         self.assertEqual(weather, installer.patch_weather_face(weather))
 
+    def test_palette_overrides_sample_chosen_point(self):
+        from PIL import Image
+        colors = load('colors', ROOT/'scripts/colors.py')
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory)/'wall.png'
+            wall = Image.new('RGB', (200, 100), (20, 60, 220))
+            wall.paste((230, 20, 20), (100, 0, 200, 100))
+            wall.save(image)
+            auto, points = colors.palette(image, 'vibrant')
+            self.assertEqual(auto['blue'], '#143cdc')
+            self.assertFalse(points['blue']['manual'])
+            moved, points = colors.palette(image, 'vibrant', {'blue': [0.9, 0.5]})
+            self.assertEqual(moved['blue'], '#e61414')
+            self.assertEqual((points['blue']['x'], points['blue']['manual']), (0.9, True))
+            state = Path(directory)
+            (state/colors.OVERRIDES).write_text(json.dumps({str(image): {'blue': [0.9, 0.5], 'bogus': [0, 0]}, 'other': {}}))
+            self.assertEqual(colors.read_overrides(state, str(image)), {'blue': [0.9, 0.5]})
+            (state/colors.OVERRIDES).write_text('{broken')
+            self.assertEqual(colors.read_overrides(state, str(image)), {})
+
+    def test_palette_editor_hook_is_idempotent(self):
+        text = installer.patch_theme_view((installer.QS/'guide/theme/ThemeTab.qml').read_text())
+        self.assertEqual(text, installer.patch_theme_view(text))
+        self.assertEqual(text.count('AddonPaletteEditor { tab: themeTabRoot }'), 1)
+
     def test_theme_uses_original_tile_delegate(self):
-        text = (installer.QS/'guide/theme/ThemeTab.qml').read_text()
+        theme = installer.QS/'guide/theme/ThemeTabState.qml'
+        text = (theme if theme.exists() else installer.QS/'guide/theme/ThemeTab.qml').read_text()
+        text = installer.patch_theme(text)
         self.assertEqual(text, installer.patch_theme(text))
         self.assertNotIn('options: ["Matugen", "Vibrant", "Vivid"]', text)
         self.assertIn('{name: "Vibrant", isMatugen: true', text)
         self.assertIn('systemPresets = sys.slice()', text)
+
+    def test_matugen_dedupe_includes_color_mode(self):
+        original = (installer.QS/'singletons/theme/Matugen.qml').read_text()
+        patched = installer.patch_matugen(original)
+        self.assertEqual(patched, installer.patch_matugen(patched))
+        self.assertEqual(patched.count('Config.getSetting("addonsV2ColorMode", "matugen")'), 4)
+
+    def test_settings_sidebar_resolves_addon_titles(self):
+        text = (installer.QS/'guide/GuideSidebar.qml').read_text()
+        patched = installer.patch_guide_sidebar(text)
+        self.assertEqual(patched, installer.patch_guide_sidebar(patched))
+        self.assertIn('text: popup.resolveTabTitle(', patched)
+        self.assertIn('text: popup.resolveSubtabTitle(', patched)
+
+    def test_remove_obsolete_inline_settings(self):
+        for prefix in ('//', '--'):
+            original = f'before\n{prefix} BEGIN serpantinum-addons-v2 inline settings\nold\n{prefix} END serpantinum-addons-v2 inline settings\nafter\n'
+            cleaned = installer.remove_inline_settings(original, prefix)
+            self.assertEqual(cleaned, 'before\nafter\n')
+            self.assertEqual(cleaned, installer.remove_inline_settings(cleaned, prefix))
+
+    def test_native_patches_do_not_change_on_reinstall(self):
+        patches = {
+            'guide/IdleTab.qml': installer.patch_idle_tab,
+            'guide/theme/ThemeTabState.qml': installer.patch_theme,
+            'widgets/faces/weather/WeatherFaceFull.qml': installer.patch_weather_face,
+        }
+        for path, patch in patches.items():
+            with self.subTest(path=path):
+                patched = patch((installer.QS/path).read_text())
+                self.assertEqual(patched, patch(patched))
 
     def test_key_edits_preserve_action_flags_and_generated_bindings(self):
         old_config, old_state, old_run = control.CONFIG, control.STATE, control.run
@@ -88,6 +172,48 @@ class ChangeTests(unittest.TestCase):
                 with self.assertRaises(ValueError): control.save_keys(data)
         finally:
             control.CONFIG, control.STATE, control.run = old_config, old_state, old_run
+
+    def test_restore_backup_puts_files_back(self):
+        old_qs = installer.QS
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                installer.QS = Path(directory)/'quickshell'
+                installer.QS.mkdir()
+                backup = Path(directory)/'backup'
+                path = installer.QS/'file.qml'
+                path.write_text('before')
+                installer.save_backup(path, backup, None)
+                path.write_text('after')
+                installer.restore_backup(path, backup, None)
+                self.assertEqual(path.read_text(), 'before')
+                new = installer.QS/'new.qml'
+                installer.save_backup(new, backup, None)
+                new.write_text('created')
+                installer.restore_backup(new, backup, None)
+                self.assertFalse(new.exists())
+        finally:
+            installer.QS = old_qs
+
+    def test_adding_a_layout_adds_the_missing_comma(self):
+        old_config, old_state, old_run, old_layouts = control.CONFIG, control.STATE, control.run, control.keyboard_layouts
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                control.CONFIG = Path(directory)
+                control.STATE = Path(directory)/'backups'
+                control.run = lambda *args: 'ok' if args[-1] == 'configerrors' else ''
+                control.keyboard_layouts = lambda: {'selected': ['us', 'de'], 'layouts': [
+                    {'code': 'us', 'name': 'English'}, {'code': 'de', 'name': 'German'}]}
+                path = control.CONFIG/'hypr/config/settings.lua'
+                path.parent.mkdir(parents=True)
+                original = 'hl.config({\n    kb_layout = "us"\n})\n'
+                path.write_text(original)
+                revision = hashlib.sha256(original.encode()).hexdigest()
+                control.save_keyboard_layout({'revision': revision, 'layouts': ['us', 'de']})
+                updated = path.read_text()
+                self.assertIn('kb_layout = "us,de",', updated)
+                self.assertIn('kb_options = "grp:alt_shift_toggle",', updated)
+        finally:
+            control.CONFIG, control.STATE, control.run, control.keyboard_layouts = old_config, old_state, old_run, old_layouts
 
 
 if __name__ == '__main__':

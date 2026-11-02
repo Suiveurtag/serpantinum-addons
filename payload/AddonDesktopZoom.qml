@@ -16,19 +16,25 @@ Scope {
     function open() {
         if (worker.running) return;
         ready = false;
-        targetFactor = Math.max(1, Math.min(6, Config.getSetting("addonsV2ZoomFactor", 2)));
+        targetFactor = Math.max(1.15, Math.min(6, Config.getSetting("addonsV2ZoomFactor", 2)));
         active = true;
         worker.running = true;
     }
     function close() {
         active = false;
+        if (ready) Config.setSetting("addonsV2ZoomFactor", targetFactor);
         if (ready && worker.running) worker.write(JSON.stringify({close: true}) + "\n");
         else if (worker.running) worker.running = false;
     }
     function adjust(steps) {
         if (!active || !ready) return;
         targetFactor = Math.max(1, Math.min(6, targetFactor * Math.pow(1.15, steps)));
-        Config.setSetting("addonsV2ZoomFactor", targetFactor);
+        // Fully zoomed out: close, and reopen next time at a small level instead of ×1.
+        if (targetFactor <= 1) {
+            targetFactor = 1.5;
+            close();
+            return;
+        }
         worker.write(JSON.stringify({factor: targetFactor}) + "\n");
     }
     Component.onDestruction: if (worker.running) worker.running = false
@@ -80,7 +86,7 @@ Scope {
             exclusionMode: ExclusionMode.Ignore
             anchors { top: true; bottom: true; left: true; right: true }
             focusable: root.active && pointerScreen
-            mask: Region { item: root.active ? input : null }
+            mask: Region { item: input; intersection: Intersection.Xor }
             WlrLayershell.namespace: "qs-addon-desktop-zoom"
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: root.active && pointerScreen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
@@ -90,18 +96,9 @@ Scope {
             readonly property real pointerY: root.pointerY - (monitor ? monitor.y : 0)
 
             Shortcut { sequence: "Escape"; enabled: root.active; onActivated: root.close() }
-            MouseArea {
+            Item {
                 id: input
                 anchors.fill: parent
-                hoverEnabled: true
-                enabled: root.active
-                acceptedButtons: Qt.AllButtons
-                onPositionChanged: mouse => { root.pointerX = mouse.x + (overlay.monitor ? overlay.monitor.x : 0); root.pointerY = mouse.y + (overlay.monitor ? overlay.monitor.y : 0); }
-                onPressed: mouse => { mouse.accepted = true; root.close(); }
-                onWheel: wheel => {
-                    root.adjust(wheel.angleDelta.y !== 0 ? wheel.angleDelta.y / 120 : wheel.pixelDelta.y / 40);
-                    wheel.accepted = true;
-                }
             }
 
         }

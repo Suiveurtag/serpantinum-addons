@@ -30,9 +30,15 @@ class ZoomTests(unittest.TestCase):
         text = installer.patch_zoom_keybind('')
         custom = text.replace('SUPER + SHIFT + Z', 'CTRL + ALT + F9')
         self.assertEqual(installer.patch_zoom_keybind(custom), custom)
+        old = text.split('-- BEGIN serpantinum-addons-v2 desktop zoom scroll')[0] + (
+            '-- BEGIN serpantinum-addons-v2 desktop zoom scroll\n'
+            'hl.bind("mouse_up", hl.dsp.exec_cmd(' + json.dumps(text.split('"')[3].replace('toggle', 'zoomIn')) + '), { non_consuming = true })\n'
+            'hl.bind("mouse_down", hl.dsp.exec_cmd(' + json.dumps(text.split('"')[3].replace('toggle', 'zoomOut')) + '), { non_consuming = true })\n'
+            '-- END serpantinum-addons-v2 desktop zoom scroll\n')
+        self.assertEqual(installer.patch_zoom_keybind(old), text)
         with self.assertRaises(ValueError):
             installer.patch_zoom_keybind('hl.bind("SUPER + SHIFT + Z", action)')
-        shell = installer.patch_shell('    ScreenshotOverlay {}\n')
+        shell = installer.patch_shell('ShellRoot {\n    Main {}\n}\n')
         self.assertEqual(installer.patch_shell(shell), shell)
         self.assertEqual(shell.count('AddonDesktopZoom {}'), 1)
 
@@ -46,7 +52,7 @@ class ZoomTests(unittest.TestCase):
                 server.listen()
                 server.settimeout(.1)
                 done = threading.Event()
-                original = {'zoom_factor': 1.25, 'zoom_rigid': False, 'zoom_detached_camera': True}
+                original = {'zoom_factor': 1.25, 'zoom_rigid': False, 'zoom_detached_camera': True, 'scroll_event_delay': 300}
                 commands = []
 
                 def serve():
@@ -60,7 +66,8 @@ class ZoomTests(unittest.TestCase):
                             commands.append(command)
                             if command.startswith('j/getoption'):
                                 key = command.split(':')[-1]
-                                response = json.dumps({'float' if key == 'zoom_factor' else 'bool': original[key]})
+                                kind = {'zoom_factor': 'float', 'scroll_event_delay': 'int'}.get(key, 'bool')
+                                response = json.dumps({kind: original[key]})
                             elif command == 'j/cursorpos':
                                 response = '{"x":-240,"y":300}'
                             else:
@@ -89,9 +96,13 @@ class ZoomTests(unittest.TestCase):
                         process.stdin.write('{"factor":"nan"}\n'); process.stdin.flush()
                     process.communicate(timeout=4)
                     self.assertEqual(process.returncode, 1 if action == 'invalid' else 0)
+                    self.assertIn('set_enabled(true)', ''.join(commands))
+                    self.assertIn('set_enabled(false)', commands[-2])
                     self.assertIn('zoom_factor=1.25000', commands[-1])
                     self.assertIn('zoom_rigid=false', commands[-1])
                     self.assertIn('zoom_detached_camera=true', commands[-1])
+                    self.assertIn('scroll_event_delay=300', commands[-1])
+                    self.assertIn('scroll_event_delay=0', ''.join(commands))
                 finally:
                     if process.poll() is None:
                         process.kill(); process.communicate()

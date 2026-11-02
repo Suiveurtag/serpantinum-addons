@@ -140,11 +140,120 @@ def save_monitors(rows):
     return monitors()
 
 
+def keyboard_layouts():
+    path = CONFIG / 'hypr/config/settings.lua'
+    text = path.read_text()
+    setting = re.compile(r'(?m)^([ \t]*kb_layout[ \t]*=[ \t]*)(["\'])([^"\'\r\n]*)\2([ \t]*,?[ \t]*(?:--.*)?)$')
+    matches = list(setting.finditer(text))
+    if len(matches) != 1:
+        raise ValueError('Could not find exactly one kb_layout setting in settings.lua')
+
+    layouts_path = Path('/usr/share/X11/xkb/rules/base.lst')
+    if not layouts_path.is_file():
+        layouts_path = Path('/usr/share/X11/xkb/rules/evdev.lst')
+    if not layouts_path.is_file():
+        raise ValueError('XKB layout list is unavailable')
+
+    layouts = []
+    in_layouts = False
+    for line in layouts_path.read_text().splitlines():
+        if line.startswith('!'):
+            in_layouts = line[1:].strip() == 'layout'
+        elif in_layouts:
+            match = re.match(r'^\s*([a-zA-Z0-9_+-]+)\s+(.+?)\s*$', line)
+            if match:
+                layouts.append({'code': match[1], 'name': match[2]})
+
+    if not layouts:
+        raise ValueError('No XKB layouts were found')
+    layouts.sort(key=lambda item: (item['name'].casefold(), item['code']))
+    selected = list(dict.fromkeys(code.strip() for code in matches[0][3].split(',') if code.strip()))
+    if not selected:
+        raise ValueError('At least one keyboard layout must be selected')
+    available = {layout['code'] for layout in layouts}
+    for code in selected:
+        if code not in available:
+            layouts.insert(0, {'code': code, 'name': 'Current layout'})
+    return {
+        'selected': selected,
+        'layouts': layouts,
+        'revision': hashlib.sha256(text.encode()).hexdigest(),
+    }
+
+
+def save_keyboard_layout(payload):
+    path = CONFIG / 'hypr/config/settings.lua'
+    old = path.read_text()
+    revision = hashlib.sha256(old.encode()).hexdigest()
+    if revision != payload['revision']:
+        raise ValueError('Keyboard settings changed outside this editor. Reload before applying.')
+
+    setting = re.compile(r'(?m)^([ \t]*kb_layout[ \t]*=[ \t]*)(["\'])([^"\'\r\n]*)\2([ \t]*,?[ \t]*(?:--.*)?)$')
+    matches = list(setting.finditer(old))
+    if len(matches) != 1:
+        raise ValueError('Could not find exactly one kb_layout setting in settings.lua')
+    match = matches[0]
+    selected = payload.get('layouts')
+    if not isinstance(selected, list) or not selected or any(not isinstance(code, str) or not code or code != code.strip() or ',' in code for code in selected):
+        raise ValueError('Select at least one valid keyboard layout')
+    if len(selected) != len(set(selected)):
+        raise ValueError('A keyboard layout can only be added once')
+    available = {item['code'] for item in keyboard_layouts()['layouts']}
+    if any(code not in available for code in selected):
+        raise ValueError('Unsupported keyboard layout')
+
+    layout_line = match[1] + match[2] + ','.join(selected) + match[2] + match[4]
+    updated = old[:match.start()] + layout_line + old[match.end():]
+    option_setting = re.compile(r'(?m)^([ \t]*kb_options[ \t]*=[ \t]*)(["\'])([^"\'\r\n]*)\2([ \t]*,?[ \t]*(?:--.*)?)$')
+    option_matches = list(option_setting.finditer(updated))
+    if len(option_matches) > 1:
+        raise ValueError('Could not find exactly one kb_options setting in settings.lua')
+    needs_toggle = len(selected) > 1
+    if option_matches:
+        option = option_matches[0]
+        options = [value.strip() for value in option[3].split(',') if value.strip() and value.strip() != 'grp:alt_shift_toggle']
+        if needs_toggle:
+            options.append('grp:alt_shift_toggle')
+        option_line = option[1] + option[2] + ','.join(options) + option[2] + option[4]
+        updated = updated[:option.start()] + option_line + updated[option.end():]
+    elif needs_toggle:
+        if re.search(r'(?m)^[ \t]*kb_options[ \t]*=', updated):
+            raise ValueError('Unsupported kb_options setting in settings.lua')
+        layout_match = setting.search(updated)
+        if ',' not in layout_match[4]:
+            # The layout line was the last table field. Adding a field after it needs a comma.
+            fixed = layout_match[1] + layout_match[2] + layout_match[3] + layout_match[2] + ',' + layout_match[4]
+            updated = updated[:layout_match.start()] + fixed + updated[layout_match.end():]
+            layout_match = setting.search(updated)
+        newline = '\r\n' if '\r\n' in updated else '\n'
+        indent = re.match(r'[ \t]*', layout_match[1]).group(0)
+        updated = updated[:layout_match.end()] + newline + indent + 'kb_options = "grp:alt_shift_toggle",' + updated[layout_match.end():]
+
+    write(path, updated)
+    try:
+        run('hyprctl', 'reload')
+        errors = run('hyprctl', 'configerrors').strip()
+        if errors and errors != 'ok':
+            raise ValueError(errors)
+    except Exception:
+        write(path, old)
+        run('hyprctl', 'reload')
+        raise
+    return keyboard_layouts()
+
+
 if __name__ == '__main__':
     try:
         action = sys.argv[1]
         payload = json.loads(sys.argv[2]) if len(sys.argv) > 2 else None
-        result = {'keys': keybinds, 'save-keys': lambda: save_keys(payload), 'monitors': monitors, 'save-monitors': lambda: save_monitors(payload)}[action]()
+        result = {
+            'keys': keybinds,
+            'save-keys': lambda: save_keys(payload),
+            'monitors': monitors,
+            'save-monitors': lambda: save_monitors(payload),
+            'keyboard-layout': keyboard_layouts,
+            'set-keyboard-layout': lambda: save_keyboard_layout(payload),
+        }[action]()
         print(json.dumps({'ok': True, 'data': result}))
     except Exception as error:
         print(json.dumps({'ok': False, 'error': str(error)}))

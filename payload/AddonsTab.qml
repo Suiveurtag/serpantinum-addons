@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Io
 import "../"
@@ -10,170 +11,50 @@ Item {
     id: root
     required property var rootObj
     required property int tabIndex
+    property int subTabIndex: 0
     anchors.fill: parent
-    visible: rootObj.currentTab === tabIndex
+    visible: rootObj.currentTab === tabIndex && rootObj.currentSubTab === subTabIndex
     opacity: visible ? 1 : 0
     property real slideY: visible ? 0 : rootObj.s(10)
     Behavior on slideY { NumberAnimation { duration: 250; easing.type: Easing.OutQuart } }
     transform: Translate { y: root.slideY }
     Behavior on opacity { NumberAnimation { duration: 250 } }
-    readonly property string trackpadBackend: Quickshell.env("HOME") + "/.local/share/serpantinum-addons-v2/scripts/trackpad.py"
-    readonly property string mouseAccelerationBackend: Quickshell.env("HOME") + "/.local/share/serpantinum-addons-v2/scripts/mouse_acceleration.py"
-    property var trackpadSettings: ({speed: 0, disableWhileTyping: false, disableClicksWhileTyping: false})
-    property var trackpadDevices: []
-    property string trackpadRevision: ""
-    property string trackpadError: ""
-    property bool trackpadAvailable: false
-    readonly property bool noTrackpadDetected: trackpadRevision !== "" && !trackpadAvailable
-    readonly property bool trackpadEnabled: trackpadAvailable && !trackpadStatus.running && !trackpadApply.running
-    property bool mouseAccelerationEnabled: false
-    property string mouseAccelerationRevision: ""
-    property string mouseAccelerationError: ""
-    readonly property bool mouseAccelerationBusy: mouseAccelerationStatus.running || mouseAccelerationApply.running
-    function acceptTrackpad(raw, applying) {
-        try {
-            let result = JSON.parse(raw);
-            if (!result.ok) throw new Error(result.error);
-            trackpadSettings = result.data.settings;
-            trackpadDevices = result.data.devices;
-            trackpadRevision = result.data.revision;
-            trackpadAvailable = result.data.available;
-            if (applying) trackpadError = "";
-        } catch (e) { trackpadError = String(e); }
-    }
-    function refreshTrackpad() {
-        if (!trackpadStatus.running && !trackpadApply.running && !trackpadSpeed.isDragging && !trackpadDebounce.running)
-            trackpadStatus.running = true;
-    }
-    function changeTrackpad(key, value) {
-        let settings = Object.assign({}, trackpadSettings);
-        settings[key] = value;
-        trackpadSettings = settings;
-    }
-    function saveTrackpad() {
-        if (!trackpadEnabled) return;
-        trackpadApply.command = ["python3", trackpadBackend, "save", JSON.stringify({
-            settings: trackpadSettings, devices: trackpadDevices, revision: trackpadRevision
-        })];
-        trackpadApply.running = true;
-    }
-    function acceptMouseAcceleration(raw, applying) {
-        try {
-            let result = JSON.parse(raw);
-            if (!result.ok) throw new Error(result.error);
-            mouseAccelerationEnabled = result.data.enabled;
-            mouseAccelerationRevision = result.data.revision;
-            if (applying) mouseAccelerationError = "";
-        } catch (e) { mouseAccelerationError = String(e); }
-    }
-    function refreshMouseAcceleration() {
-        if (!mouseAccelerationBusy) mouseAccelerationStatus.running = true;
-    }
-    function saveMouseAcceleration(enabled) {
-        if (mouseAccelerationBusy || !mouseAccelerationRevision) return;
-        mouseAccelerationApply.command = ["python3", mouseAccelerationBackend, "save", JSON.stringify({
-            enabled: enabled, revision: mouseAccelerationRevision
-        })];
-        mouseAccelerationApply.running = true;
-    }
-    Process {
-        id: trackpadStatus
-        command: ["python3", root.trackpadBackend, "status"]
-        stdout: StdioCollector { onStreamFinished: root.acceptTrackpad(text, false) }
-    }
-    Process {
-        id: trackpadApply
-        stdout: StdioCollector { onStreamFinished: root.acceptTrackpad(text, true) }
-        onExited: (exitCode, exitStatus) => { if (exitCode !== 0) root.refreshTrackpad(); }
-    }
-    Process {
-        id: mouseAccelerationStatus
-        command: ["python3", root.mouseAccelerationBackend, "status"]
-        stdout: StdioCollector { onStreamFinished: root.acceptMouseAcceleration(text, false) }
-    }
-    Process {
-        id: mouseAccelerationApply
-        stdout: StdioCollector { onStreamFinished: root.acceptMouseAcceleration(text, true) }
-        onExited: (exitCode, exitStatus) => { if (exitCode !== 0) root.refreshMouseAcceleration(); }
-    }
-    Timer { id: trackpadDebounce; interval: 350; onTriggered: root.saveTrackpad() }
-    onVisibleChanged: {
-        if (visible) {
-            refreshTrackpad();
-            refreshMouseAcceleration();
+    // Platform logo for a sub-setting row: white source SVG tinted with the given theme colour, in the 32px icon slot.
+    component PlatformLogo: Item {
+        id: logoRoot
+        required property string logo
+        required property color tint
+        width: root.rootObj.s(32); height: width
+        Image {
+            anchors.centerIn: parent
+            width: root.rootObj.s(18); height: width
+            source: Qt.resolvedUrl("../tokens/assets/logos/" + logoRoot.logo)
+            sourceSize: Qt.size(width, height)
+            smooth: true; mipmap: true
+            layer.enabled: true
+            layer.effect: MultiEffect { colorization: 1; colorizationColor: logoRoot.tint }
         }
     }
-    Component.onCompleted: { refreshTrackpad(); refreshMouseAcceleration(); }
     Flickable {
+        id: addonsViewport
         anchors.fill: parent; anchors.margins: rootObj.s(24); contentWidth: width; contentHeight: settings.implicitHeight; clip: true
         ColumnLayout {
             id: settings; width: parent.width; spacing: rootObj.s(8)
-            // BEGIN serpantinum-night-v2 option
-            HalloweenCard { rootObj: root.rootObj; Layout.bottomMargin: rootObj.s(6) }
-            // END serpantinum-night-v2 option
-            SettingsGroup {
-                rootObj: root.rootObj; title: "Mouse spotlight"; icon: "󰍽"
-                description: "Animated pointer highlight"
-                subSettings: [
-                    SettingsRow {
-                        rootObj: root.rootObj; settingId: "addons_mouse_spotlight"; searchTab: "addons"
-                        searchKeywords: "mouse spotlight pointer cursor souris curseur powertoys raccourci"
-                        title: "Mouse spotlight"; icon: "󰍽"; wrapText: true
-                        description: "Highlight the pointer with an animated spotlight. Search addonMouseSpotlight in Keybinds to edit or record its shortcut. Click, press Escape or use the shortcut again to dismiss. Scroll to resize the circle."
-                        ClickButton {
-                            buttonText: "Shortcut"; accentColor: ThemeBackend.surface1; textColor: ThemeBackend.text
-                            visible: typeof root.rootObj.gotoTab === "function"
-                            onClicked: root.rootObj.gotoTab("addon_keybinds")
-                        }
-                        ClickButton {
-                            buttonText: "Try spotlight"; accentColor: ThemeBackend.mauve; textColor: ThemeBackend.crust
-                            onClicked: Quickshell.execDetached(["quickshell", "-p", Caching.mainQml, "ipc", "call", "addonMouseSpotlight", "toggle"])
-                        }
-                    },
-                    SettingsRow {
-                        rootObj: root.rootObj; settingId: "addons_spotlight_radius"; searchTab: "addons"
-                        searchKeywords: "mouse spotlight souris cercle luminosité animation"
-                        title: "Circle size"; description: "Radius of the spotlight. The mouse wheel also adjusts and saves this size."; icon: "󰍽"; wrapText: true
-                        Draggable {
-                            implicitWidth: root.rootObj.s(180); implicitHeight: root.rootObj.s(18)
-                            from: 35; to: 350; stepSize: 5
-                            value: Config.getSetting("addonsV2SpotlightRadius", 95)
-                            showValueBubble: true
-                            valueFormatter: function(v) { return Math.round(v) + " px"; }
-                            backgroundColor: ThemeBackend.surface0; accentColor: ThemeBackend.mauve
-                            handleColor: ThemeBackend.text; handleBorderColor: ThemeBackend.mantle
-                            onMoved: function(val) { Config.setSetting("addonsV2SpotlightRadius", Math.round(val)); }
-                        }
-                    },
-                    SettingsRow {
-                        rootObj: root.rootObj; settingId: "addons_spotlight_brightness"; searchTab: "addons"
-                        searchKeywords: "mouse spotlight souris cercle luminosité animation"
-                        title: "Background brightness"; description: "Brightness outside the spotlight: 0% is black, 100% leaves the desktop unchanged."; icon: "󰍽"; wrapText: true
-                        Draggable {
-                            implicitWidth: root.rootObj.s(180); implicitHeight: root.rootObj.s(18)
-                            from: 0; to: 100; stepSize: 1
-                            value: (1 - Config.getSetting("addonsV2SpotlightDimming", 0.65)) * 100
-                            showValueBubble: true
-                            valueFormatter: function(v) { return Math.round(v) + "%"; }
-                            backgroundColor: ThemeBackend.surface0; accentColor: ThemeBackend.mauve
-                            handleColor: ThemeBackend.text; handleBorderColor: ThemeBackend.mantle
-                            onMoved: function(val) { Config.setSetting("addonsV2SpotlightDimming", 1 - val / 100); }
-                        }
-                    }
-                ]
-            }
             SettingsRow {
-                rootObj: root.rootObj; settingId: "addons_legacy_clock"; searchTab: "addons"; searchKeywords: "calendar clock legacy horloge calendrier"
-                title: "Legacy clock design"; description: "Restore the v1 calendar and clock panel."; icon: "󰥔"
+                rootObj: root.rootObj; settingId: "addons_window_outline"; searchTab: "addons"; searchKeywords: "window outline border theme fenêtre contour bordure thème"
+                title: "Themed window outline"; description: "Add a fine outline to windows using the current shell palette."; icon: "󰖯"
                 Toggle {
-                    checked: Config.getSetting("addonsV2LegacyClock", false)
+                    checked: Config.getSetting("addonsV2WindowOutline", false)
                     accentColor: ThemeBackend.mauve
-                    onToggled: { Config.setSetting("addonsV2LegacyClock", checked); }
+                    onToggled: {
+                        Config.setSetting("addonsV2WindowOutline", checked);
+                        checked = Qt.binding(function() { return Config.getSetting("addonsV2WindowOutline", false); });
+                    }
                 }
             }
             SettingsRow {
                 rootObj: root.rootObj; settingId: "addons_weather_city_obfuscation"; searchTab: "addons"; searchKeywords: "weather city location privacy obfuscated météo ville localisation"
-                title: "Obfuscate weather location"; description: "Scramble the city name in the weather widget."; icon: "󰖟"
+                title: "Obfuscate weather location"; description: "Scramble the city name in the weather widget."; icon: "󰍑"
                 Toggle {
                     checked: Config.getSetting("addonsV2ObfuscateWeatherCity", false)
                     accentColor: ThemeBackend.mauve
@@ -188,197 +69,345 @@ Item {
                 DnsControl { id: dns; Layout.preferredWidth: root.rootObj.s(170); pollEnabled: root.visible }
             }
             SettingsRow {
-                rootObj: root.rootObj; settingId: "addons_mouse_acceleration"; searchTab: "addons"
-                searchKeywords: "mouse pointer acceleration speed souris accélération pointeur"
-                title: "Mouse acceleration"; icon: "󰍽"; wrapText: true
-                description: root.mouseAccelerationError || (root.mouseAccelerationRevision ?
-                    (root.mouseAccelerationEnabled ? "Adaptive acceleration is enabled." : "Acceleration is disabled.") :
-                    "Loading mouse settings…")
+                rootObj: root.rootObj; settingId: "addons_legacy_clock"; searchTab: "addons"; searchKeywords: "calendar clock legacy horloge calendrier"
+                title: "Legacy clock design"; description: "Restore the v1 calendar and clock panel."; icon: "󰥔"
                 Toggle {
-                    enabled: !!root.mouseAccelerationRevision && !root.mouseAccelerationBusy
-                    checked: root.mouseAccelerationEnabled
+                    checked: Config.getSetting("addonsV2LegacyClock", false)
                     accentColor: ThemeBackend.mauve
-                    onToggled: function(checkedValue) {
-                        root.saveMouseAcceleration(checkedValue);
-                        checked = Qt.binding(function() { return root.mouseAccelerationEnabled; });
-                    }
+                    onToggled: { Config.setSetting("addonsV2LegacyClock", checked); }
                 }
             }
-            SettingsGroup {
-                rootObj: root.rootObj
-                icon: "󰟸"
-                title: "Trackpad"
-                description: root.trackpadError || (!root.trackpadRevision ? "Loading trackpad settings…" :
-                    !root.trackpadAvailable ? "No trackpad detected." : "Adjust trackpad speed and typing protection.")
-                opacity: root.noTrackpadDetected ? 0.38 : 1.0
-                subSettings: [
-                    SettingsRow {
-                        rootObj: root.rootObj; settingId: "addons_trackpad_speed"; searchTab: "addons"
-                        searchKeywords: "trackpad touchpad speed sensitivity vitesse pavé tactile"
-                        title: "Trackpad speed"; icon: "󰟸"; wrapText: true
-                        description: "Adjust pointer speed for the trackpad."
-                        Draggable {
-                            id: trackpadSpeed
-                            Layout.rightMargin: root.rootObj.s(8)
-                            implicitWidth: root.rootObj.s(180); implicitHeight: root.rootObj.s(18)
-                            enabled: root.trackpadEnabled
-                            from: -1; to: 1; stepSize: 0.05; defaultValue: 0
-                            value: root.trackpadSettings.speed
-                            showValueBubble: true
-                            valueFormatter: function(v) { return (v > 0 ? "+" : "") + v.toFixed(2); }
-                            backgroundColor: ThemeBackend.surface0; accentColor: ThemeBackend.mauve
-                            handleColor: ThemeBackend.text; handleBorderColor: ThemeBackend.mantle
-                            onDragStarted: trackpadDebounce.stop()
-                            onMoved: function(val) {
-                                root.changeTrackpad("speed", Math.round(val * 100) / 100);
-                                if (!isDragging) trackpadDebounce.restart();
-                            }
-                            onDragFinished: { trackpadDebounce.stop(); root.saveTrackpad(); }
-                        }
-                    },
-                    SettingsRow {
-                        rootObj: root.rootObj; settingId: "addons_trackpad_typing"; searchTab: "addons"
-                        searchKeywords: "trackpad touchpad typing keyboard disable saisie frappe clavier pavé tactile"
-                        title: "Disable trackpad while typing"; icon: "󰌌"; wrapText: true
-                        description: "Use the trackpad's native protection against accidental movement and taps while typing."
-                        Toggle {
-                            enabled: root.trackpadEnabled
-                            checked: root.trackpadSettings.disableWhileTyping
-                            accentColor: ThemeBackend.mauve
-                            onToggled: function(c) {
-                                trackpadDebounce.stop();
-                                root.changeTrackpad("disableWhileTyping", c);
-                                checked = Qt.binding(function() { return root.trackpadSettings.disableWhileTyping; });
-                                root.saveTrackpad();
-                            }
-                        }
-                    },
-                    SettingsRow {
-                        rootObj: root.rootObj; settingId: "addons_trackpad_clicks_typing"; searchTab: "addons"
-                        searchKeywords: "trackpad touchpad clicks tap typing disable saisie frappe clics pavé tactile"
-                        title: "Disable trackpad clicks while typing"; icon: "󰟸"; wrapText: true
-                        description: "Block trackpad clicks during text entry and for 600 ms afterwards. Pointer movement stays available."
-                        Toggle {
-                            enabled: root.trackpadEnabled
-                            checked: root.trackpadSettings.disableClicksWhileTyping
-                            accentColor: ThemeBackend.mauve
-                            onToggled: function(c) {
-                                trackpadDebounce.stop();
-                                root.changeTrackpad("disableClicksWhileTyping", c);
-                                checked = Qt.binding(function() { return root.trackpadSettings.disableClicksWhileTyping; });
-                                root.saveTrackpad();
-                            }
-                        }
-                    }
-                ]
+            SettingsRow {
+                rootObj: root.rootObj; settingId: "addons_bar_outlines"; searchTab: "addons"; searchKeywords: "bar outline panel open contour barre panneau animation effects"
+                title: "Animated bar outlines"; description: "Outline the bar button (or its whole group) while its panel is open, and the AI tokens item on hover."; icon: "󱓼"
+                Toggle {
+                    checked: Config.getSetting("addonsV2BarOutlines", false)
+                    accentColor: ThemeBackend.mauve
+                    onToggled: { Config.setSetting("addonsV2BarOutlines", checked); }
+                }
             }
-            Rectangle {
-                id: passiveAddonsCard
+            // AI tokens counter: a header that folds the sources open and shut. Closed by default.
+            ColumnLayout {
+                id: tokensSources
+                property bool expanded: false
+                readonly property bool isOpen: expanded
+                property real progress: isOpen ? 1 : 0
+                // Opening: a soft decelerate. Closing: shorter, ease-in-out so it tucks away without a bounce.
+                Behavior on progress { NumberAnimation { duration: tokensSources.isOpen ? 420 : 280; easing.type: tokensSources.isOpen ? Easing.OutCubic : Easing.InOutQuad } }
+                // Each row starts a little after the one above it, so the list unfolds instead of sliding as one block.
+                function stagger(i) { return Math.max(0, Math.min(1, (progress - Math.min(i * 0.07, 0.35)) / 0.65)); }
                 Layout.fillWidth: true
-                Layout.topMargin: rootObj.s(18)
-                radius: ThemeBackend.borderRadius
-                color: Qt.alpha(ThemeBackend.surface0, 0.72)
-                border.width: rootObj.s(1)
-                border.color: Qt.alpha(ThemeBackend.surface2, 0.55)
-                implicitHeight: passiveContent.implicitHeight + rootObj.s(28)
-
-                ColumnLayout {
-                    id: passiveContent
-                    anchors.fill: parent
-                    anchors.margins: rootObj.s(14)
-                    spacing: rootObj.s(8)
-
+                spacing: 0
+                SettingsRow {
+                    rootObj: root.rootObj
+                    // The whole header toggles the list, like the wallpaper accents.
+                    clickable: true
+                    onClicked: tokensSources.expanded = !tokensSources.expanded
+                    settingId: "addons_tokens_sources"; searchTab: "addons"
+                    searchKeywords: "tokens counter sources codex claude opencode llama.cpp ollama lmstudio compteur jetons sources"
+                    icon: "󰞷"
+                    title: "AI tokens counter"
+                    description: "Tools whose usage the counter adds up"
+                    Text {
+                        text: "󰅀"
+                        font.family: ThemeBackend.iconFont
+                        font.pixelSize: rootObj.s(14)
+                        color: tokensSources.expanded ? ThemeBackend.text : ThemeBackend.overlay2
+                        rotation: tokensSources.expanded ? 180 : 0
+                        // Plain ease, no overshoot: a chevron that bounces reads as a glitch.
+                        Behavior on rotation { NumberAnimation { duration: 340; easing.type: Easing.OutCubic } }
+                    }
+                }
+                Item {
+                    id: tokensBody
+                    Layout.fillWidth: true
+                    clip: true
+                    visible: tokensSources.progress > 0.001
+                    implicitHeight: (tokensRows.implicitHeight + rootObj.s(4)) * tokensSources.progress
+                    opacity: Math.min(1.0, tokensSources.progress * 2.5)
                     RowLayout {
-                        Layout.fillWidth: true
-                        spacing: rootObj.s(10)
-                        Rectangle {
-                            Layout.preferredWidth: rootObj.s(34)
-                            Layout.preferredHeight: rootObj.s(34)
-                            radius: ThemeBackend.borderRadius
-                            color: ThemeBackend.surface1
-                            Text {
-                                anchors.centerIn: parent
-                                text: "󰐱"
-                                color: ThemeBackend.text
-                                font.family: "Iosevka Nerd Font"
-                                font.pixelSize: rootObj.s(17)
+                        id: tokensRows
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                        anchors.topMargin: rootObj.s(4)
+                        spacing: rootObj.s(6)
+                        Item {
+                            Layout.preferredWidth: rootObj.s(20)
+                            Layout.fillHeight: true
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.top: parent.top; anchors.bottom: parent.bottom
+                                anchors.topMargin: rootObj.s(2); anchors.bottomMargin: rootObj.s(2)
+                                width: Math.max(1, rootObj.s(2))
+                                radius: rootObj.s(1)
+                                color: Qt.rgba(ThemeBackend.surface2.r, ThemeBackend.surface2.g, ThemeBackend.surface2.b, 0.7)
                             }
                         }
                         ColumnLayout {
                             Layout.fillWidth: true
-                            spacing: rootObj.s(2)
-                            Text {
-                                text: "Passive addons"
-                                color: ThemeBackend.text
-                                font.family: ThemeBackend.fontFamily
-                                font.pixelSize: rootObj.s(13)
-                                font.weight: Font.DemiBold
+                            spacing: rootObj.s(6)
+                            SettingsRow {
+                                rootObj: root.rootObj; settingId: "addons_tokens_codex"; searchTab: "addons"; searchKeywords: "codex openai tokens"
+                                title: "Codex"; customLeftContent: Component { PlatformLogo { logo: "codex.svg"; tint: ThemeBackend.text } }
+                                description: "Codex sessions and the account total."; wrapText: true
+                                opacity: tokensSources.stagger(0)
+                                transform: Translate { y: rootObj.s(-8) * (1 - tokensSources.stagger(0)) }
+                                Toggle {
+                                    checked: Config.getSetting("addonsV2TokensCodex", true)
+                                    accentColor: ThemeBackend.mauve
+                                    onToggled: { Config.setSetting("addonsV2TokensCodex", checked); }
+                                }
                             }
-                            Text {
-                                text: "Shell tools enabled without individual switches"
-                                color: ThemeBackend.subtext0
-                                font.family: ThemeBackend.fontFamily
-                                font.pixelSize: rootObj.s(10)
-                                elide: Text.ElideRight
+                            SettingsRow {
+                                rootObj: root.rootObj; settingId: "addons_tokens_claude"; searchTab: "addons"; searchKeywords: "claude anthropic tokens"
+                                title: "Claude Code"; customLeftContent: Component { PlatformLogo { logo: "claudecode.svg"; tint: ThemeBackend.peach } }
+                                description: "Claude Code transcripts, subagents included."; wrapText: true
+                                opacity: tokensSources.stagger(1)
+                                transform: Translate { y: rootObj.s(-8) * (1 - tokensSources.stagger(1)) }
+                                Toggle {
+                                    checked: Config.getSetting("addonsV2TokensClaude", true)
+                                    accentColor: ThemeBackend.mauve
+                                    onToggled: { Config.setSetting("addonsV2TokensClaude", checked); }
+                                }
+                            }
+                            SettingsRow {
+                                rootObj: root.rootObj; settingId: "addons_tokens_opencode"; searchTab: "addons"; searchKeywords: "opencode sessions tokens"
+                                title: "opencode"; customLeftContent: Component { PlatformLogo { logo: "opencode.svg"; tint: ThemeBackend.green } }
+                                description: "Totals of opencode sessions, read from its local database."; wrapText: true
+                                opacity: tokensSources.stagger(2)
+                                transform: Translate { y: rootObj.s(-8) * (1 - tokensSources.stagger(2)) }
+                                Toggle {
+                                    checked: Config.getSetting("addonsV2TokensOpencode", false)
+                                    accentColor: ThemeBackend.mauve
+                                    onToggled: { Config.setSetting("addonsV2TokensOpencode", checked); }
+                                }
+                            }
+                            SettingsRow {
+                                id: llamaSettingsRow
+                                rootObj: root.rootObj; settingId: "addons_tokens_llamacpp"; searchTab: "addons"; searchKeywords: "llama.cpp llama-server metrics tokens"
+                                // The logo sits centred in the space left of the controls. The field and the dot take extra room on the right, so shift the logo back by half of it.
+                                title: "llama.cpp"; customLeftContent: Component {
+                                    PlatformLogo {
+                                        logo: "llamacpp.svg"; tint: ThemeBackend.yellow
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        anchors.horizontalCenterOffset: (pingIndicator.width + urlField.width + 2 * llamaSettingsRow.controlSpacing) / 2
+                                    }
+                                }
+                                wrapText: true
+                                description: "Reads the /metrics of llama-server (start it with --metrics). Counts from when it is first seen."
+                                opacity: tokensSources.stagger(3)
+                                transform: Translate { y: rootObj.s(-8) * (1 - tokensSources.stagger(3)) }
+                                // Ping state: idle | pinging | ok | fail. The probe is a curl on the server's /metrics.
+                                QtObject {
+                                    id: llamaProbe
+                                    property string pingState: "idle"
+                                    property string target: ""
+                                    function ping() {
+                                        const url = urlField.text.trim();
+                                        pingState = "pinging";
+                                        target = url !== "" ? url : "http://127.0.0.1:8080";
+                                        llamaCurl.running = false;
+                                        llamaCurl.running = true;
+                                    }
+                                    Component.onCompleted: if (Config.getSetting("addonsV2TokensLlamaCpp", false)) ping()
+                                }
+                                Process {
+                                    id: llamaCurl
+                                    command: ["curl", "-sf", "-m", "3", "-o", "/dev/null", llamaProbe.target + "/metrics"]
+                                    onExited: (exitCode, exitStatus) => {
+                                        if (exitCode === 0) {
+                                            llamaProbe.pingState = "ok";
+                                            successRing.restart();
+                                        } else {
+                                            llamaProbe.pingState = "fail";
+                                            urlField.triggerShake();
+                                        }
+                                    }
+                                }
+                                Item {
+                                    id: pingIndicator
+                                    Layout.preferredWidth: rootObj.s(16)
+                                    Layout.preferredHeight: rootObj.s(16)
+                                    Layout.alignment: Qt.AlignVCenter
+                                    Rectangle {
+                                        id: pingRing
+                                        anchors.centerIn: parent
+                                        width: rootObj.s(8); height: width; radius: width / 2
+                                        color: "transparent"; border.width: 1; border.color: ThemeBackend.green
+                                        opacity: 0
+                                        visible: llamaProbe.pingState === "pinging" || successRing.running
+                                    }
+                                    Rectangle {
+                                        id: pingDot
+                                        anchors.centerIn: parent
+                                        width: rootObj.s(8); height: width; radius: width / 2
+                                        color: llamaProbe.pingState === "ok" ? ThemeBackend.green
+                                             : llamaProbe.pingState === "fail" ? ThemeBackend.red
+                                             : llamaProbe.pingState === "pinging" ? ThemeBackend.yellow : ThemeBackend.surface2
+                                        Behavior on color { ColorAnimation { duration: 200 } }
+                                    }
+                                    Text {
+                                        id: pingCheck
+                                        anchors.centerIn: parent
+                                        text: "✓"
+                                        color: ThemeBackend.green
+                                        font.family: ThemeBackend.fontFamily; font.bold: true
+                                        font.pixelSize: rootObj.s(11)
+                                        opacity: llamaProbe.pingState === "ok" ? 1 : 0
+                                        scale: llamaProbe.pingState === "ok" ? 1 : 0.4
+                                        Behavior on opacity { NumberAnimation { duration: 300 } }
+                                        Behavior on scale { NumberAnimation { duration: 450; easing.type: Easing.OutBack } }
+                                    }
+                                    ParallelAnimation {
+                                        running: llamaProbe.pingState === "pinging"
+                                        loops: Animation.Infinite
+                                        ScaleAnimator { target: pingRing; from: 1; to: 2.4; duration: 1000; easing.type: Easing.OutCubic }
+                                        OpacityAnimator { target: pingRing; from: 0.9; to: 0; duration: 1000; easing.type: Easing.OutCubic }
+                                    }
+                                    ParallelAnimation {
+                                        id: successRing
+                                        ScaleAnimator { target: pingRing; from: 1; to: 3; duration: 700; easing.type: Easing.OutCubic }
+                                        OpacityAnimator { target: pingRing; from: 1; to: 0; duration: 700; easing.type: Easing.OutCubic }
+                                    }
+                                }
+                                Input {
+                                    id: urlField
+                                    Layout.preferredWidth: rootObj.s(170)
+                                    Layout.alignment: Qt.AlignVCenter
+                                    text: Config.getSetting("addonsV2TokensLlamaCppUrl", "")
+                                    placeholderText: "http://127.0.0.1:8080"
+                                    isBusy: llamaProbe.pingState === "pinging"
+                                    hasError: llamaProbe.pingState === "fail"
+                                    accentColor: llamaProbe.pingState === "ok" ? ThemeBackend.green : ThemeBackend.yellow
+                                    baseColor: ThemeBackend.surface0
+                                    textColor: ThemeBackend.text
+                                    borderColor: ThemeBackend.surface2
+                                    onAccepted: finalText => {
+                                        Config.setSetting("addonsV2TokensLlamaCppUrl", finalText.trim());
+                                        llamaProbe.ping();
+                                    }
+                                }
+                                Toggle {
+                                    checked: Config.getSetting("addonsV2TokensLlamaCpp", false)
+                                    accentColor: ThemeBackend.mauve
+                                    onToggled: { Config.setSetting("addonsV2TokensLlamaCpp", checked); }
+                                }
                             }
                         }
                     }
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.topMargin: rootObj.s(2)
-                        Layout.bottomMargin: rootObj.s(2)
-                        height: rootObj.s(1)
-                        color: Qt.alpha(ThemeBackend.surface2, 0.65)
+                }
+            }
+            // Passive addons: same fold as the tokens header, but open by default.
+            ColumnLayout {
+                id: passiveSection
+                property bool expanded: true
+                // Search and the highlight call holdOpen/releaseOpen on the owner group (same contract as SettingsGroup).
+                property int openHolds: 0
+                readonly property bool isOpen: expanded || openHolds > 0
+                function holdOpen() { openHolds++; }
+                function releaseOpen() { if (openHolds > 0) openHolds--; }
+                property real progress: isOpen ? 1 : 0
+                Behavior on progress { NumberAnimation { duration: passiveSection.isOpen ? 420 : 280; easing.type: passiveSection.isOpen ? Easing.OutCubic : Easing.InOutQuad } }
+                function stagger(i) { return Math.max(0, Math.min(1, (progress - Math.min(i * 0.05, 0.35)) / 0.65)); }
+                Layout.fillWidth: true
+                spacing: 0
+                SettingsRow {
+                    rootObj: root.rootObj
+                    clickable: true
+                    onClicked: passiveSection.expanded = !passiveSection.expanded
+                    settingId: "addons_passive_group"; searchable: false
+                    icon: "󰐱"
+                    title: "Passive addons"
+                    description: "Shell tools enabled without individual switches"
+                    Text {
+                        text: "󰅀"
+                        font.family: ThemeBackend.iconFont
+                        font.pixelSize: rootObj.s(14)
+                        color: passiveSection.expanded ? ThemeBackend.text : ThemeBackend.overlay2
+                        rotation: passiveSection.expanded ? 180 : 0
+                        Behavior on rotation { NumberAnimation { duration: 340; easing.type: Easing.OutCubic } }
                     }
-
-                    Repeater {
-                        model: [
-                            { id: "addons_passive_desktop_draw", title: "Desktop drawing", icon: "󰏫", keywords: "desktop draw drawing annotation pen circle rectangle dessiner entourer dessin addonDesktopDraw", detail: "Super+Shift+D · Draw, circle or box · Esc to close" },
-                            { id: "addons_passive_desktop_zoom", title: "Desktop zoom", icon: "󰍉", keywords: "desktop zoom magnifier loupe souris curseur raccourci addonDesktopZoom", detail: "Super+Shift+Z · Scroll to zoom · Esc to close" },
-                            { id: "addons_passive_color_picker", title: "Color picker", icon: "󰈊", keywords: "color picker pipette palette couleur", detail: "Super+Shift+C" },
-                            { id: "addons_passive_screenshot", title: "Screenshot tools", icon: "󰹑", keywords: "screenshot capture freeze screenshot tool capture écran image", detail: "Frozen capture fixed · Super+Shift+S" },
-                            { id: "addons_passive_monitors", title: "Monitor tools", icon: "󰍹", keywords: "monitor display screen monitors écran", detail: "" },
-                            { id: "addons_passive_keybinds", title: "Keybind editor", icon: "󰌌", keywords: "keybind shortcut keyboard raccourci clavier", detail: "" },
-                            { id: "addons_passive_theme_modes", title: "Vibrant and Vivid theme modes", icon: "󰏘", keywords: "theme matugen vibrant vivid color mode thème", detail: "" }
-                        ]
-                        delegate: SettingsRow {
-                            required property var modelData
-                            rootObj: root.rootObj
-                            settingId: modelData.id; searchTab: "addons"; searchKeywords: modelData.keywords
-                            title: modelData.title; icon: modelData.icon; description: modelData.detail
-                            iconSize: 24; iconFontSize: 12
-                            horizontalPadding: rootObj.s(8); verticalPadding: rootObj.s(6)
-                            spacing: rootObj.s(10); innerSpacing: rootObj.s(4); textSpacing: rootObj.s(1)
-                            titlePixelSize: 12; descriptionPixelSize: 10
-                            baseColor: "transparent"; hoverColor: "transparent"
-
+                }
+                Item {
+                    id: passiveBody
+                    readonly property bool isGroupSubWrapper: true
+                    readonly property var ownerGroup: passiveSection
+                    Layout.fillWidth: true
+                    clip: true
+                    visible: passiveSection.progress > 0.001
+                    implicitHeight: (passiveRows.implicitHeight + rootObj.s(4)) * passiveSection.progress
+                    opacity: Math.min(1.0, passiveSection.progress * 2.5)
+                    RowLayout {
+                        id: passiveRows
+                        layoutDirection: I18n.layoutDirection
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                        anchors.topMargin: rootObj.s(4)
+                        spacing: rootObj.s(6)
+                        Item {
+                            Layout.preferredWidth: rootObj.s(20)
+                            Layout.fillHeight: true
                             Rectangle {
-                                Layout.preferredWidth: enabledLabel.implicitWidth + rootObj.s(18)
-                                Layout.preferredHeight: rootObj.s(24)
-                                radius: ThemeBackend.borderRadius
-                                color: Qt.alpha(ThemeBackend.green, 0.13)
-                                RowLayout {
-                                    anchors.centerIn: parent
-                                    spacing: rootObj.s(5)
-                                    Rectangle {
-                                        Layout.preferredWidth: rootObj.s(6)
-                                        Layout.preferredHeight: rootObj.s(6)
-                                        radius: width / 2
-                                        color: ThemeBackend.green
-                                    }
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.top: parent.top; anchors.bottom: parent.bottom
+                                anchors.topMargin: rootObj.s(2); anchors.bottomMargin: rootObj.s(2)
+                                width: Math.max(1, rootObj.s(2))
+                                radius: rootObj.s(1)
+                                color: Qt.rgba(ThemeBackend.surface2.r, ThemeBackend.surface2.g, ThemeBackend.surface2.b, 0.7)
+                            }
+                        }
+                        ColumnLayout {
+                            id: passiveList
+                            Layout.fillWidth: true
+                            spacing: rootObj.s(2)
+                            Repeater {
+                                model: [
+                                    { id: "addons_passive_desktop_draw", title: "Desktop drawing", icon: "󰏫", keywords: "desktop draw drawing annotation pen circle rectangle dessiner entourer dessin addonDesktopDraw", detail: "Super+Shift+D · Draw, circle or box · Esc to close" },
+                                    { id: "addons_passive_desktop_zoom", title: "Desktop zoom", icon: "󰍉", keywords: "desktop zoom magnifier loupe souris curseur raccourci addonDesktopZoom", detail: "Super+Shift+Z · Scroll to zoom · Esc to close" },
+                                    { id: "addons_passive_color_picker", title: "Color picker", icon: "󰈊", keywords: "color picker pipette palette couleur", detail: "Super+Shift+C" },
+                                    { id: "addons_passive_screenshot", title: "Screenshot tools", icon: "󰹑", keywords: "screenshot capture freeze screenshot tool capture écran image", detail: "Frozen capture fixed · Super+Shift+S" },
+                                    { id: "addons_passive_tokens", title: "AI Tokens counter", icon: "󰞷", keywords: "AI tokens counter Codex Claude usage compteur jetons", detail: "Widget and bar module · Codex + Claude usage" },
+                                    { id: "addons_passive_monitors", title: "Monitor tools", icon: "󰍹", keywords: "monitor display screen monitors écran", detail: "Display tools for connected monitors" },
+                                    { id: "addons_passive_screen_switch", title: "Next screen", icon: "󰆽", keywords: "screen monitor next switch Super Tab écran moniteur", detail: "Super+Tab · Move pointer to the screen centre" },
+                                    { id: "addons_passive_window_switch", title: "Next window", icon: "󰖯", keywords: "window next switch Alt Tab fenêtre", detail: "Alt+Tab · Next window on this screen and workspace" },
+                                    { id: "addons_passive_keybinds", title: "Keybind editor", icon: "󰌌", keywords: "keybind shortcut keyboard raccourci clavier", detail: "Edit and record shell shortcuts" },
+                                    { id: "addons_passive_beamer", title: "Beamer (KVM)", icon: Qt.resolvedUrl("../tokens/assets/logos/beamer.svg"), keywords: "beamer kvm mouse keyboard clipboard share pc souris clavier presse-papier", detail: "Crossing effects and shared clipboard between the two PCs" },
+                                    { id: "addons_passive_theme_modes", title: "Vibrant and Vivid theme modes", icon: "󰏘", keywords: "theme matugen vibrant vivid color mode thème", detail: "Colour modes for the shell palette" }
+                                ]
+                                delegate: SettingsRow {
+                                    required property var modelData
+                                    required property int index
+                                    rootObj: root.rootObj
+                                    settingId: modelData.id; searchTab: "addons"; searchKeywords: modelData.keywords
+                                    title: modelData.title; icon: modelData.icon; description: modelData.detail
+                                    wrapText: true
+                                    iconSize: 24; iconFontSize: 12
+                                    verticalPadding: rootObj.s(6)
+                                    titlePixelSize: 12; descriptionPixelSize: 10
+                                    readonly property real reveal: passiveSection.stagger(index)
+                                    opacity: reveal
+                                    transform: Translate { y: rootObj.s(-8) * (1 - reveal) }
+
                                     Text {
-                                        id: enabledLabel
-                                        text: "Enabled"
+                                        text: modelData.status || "Enabled"
                                         color: ThemeBackend.green
                                         font.family: ThemeBackend.fontFamily
-                                        font.pixelSize: rootObj.s(10)
+                                        font.pixelSize: rootObj.s(11)
                                     }
                                 }
                             }
                         }
                     }
                 }
+            }
+            SettingsGroup {
+                rootObj: root.rootObj
+                settingId: "addons_maintenance"; searchTab: "addons"; searchable: true
+                searchKeywords: "addons version update upgrade reinstall uninstall remove changelog release mise à jour désinstaller supprimer"
+                icon: "󰏗"
+                title: "Addons maintenance"
+                description: "Version, updates and removal"
+                subSettings: [
+                    AddonsReleaseCard { rootObj: root.rootObj; showUninstall: true }
+                ]
             }
         }
     }

@@ -25,19 +25,19 @@ def patch_palette(text):
     # Theme changes while ON still update the normal values, so OFF is exact.
     pattern = r'    property color (\w+): ("#[0-9a-fA-F]+")'
     colors = re.findall(pattern, text)
-    modern_slots = text.count('root[slot]') == 1 and text.count('root[item.name]') == 1
-    legacy_slots = text.count('root[propName]') == 2
-    if len(colors) != 22 or not (modern_slots or legacy_slots):
+    legacy_access = text.count('root[propName]') == 2
+    current_access = text.count('root[names[i]]') == 1 and text.count('root[item.name]') == 1
+    queued_access = text.count('root[slot]') == 1 and text.count('root[item.name]') == 1
+    if len(colors) != 22 or not (legacy_access or current_access or queued_access):
         raise ValueError('ThemeBackend palette storage changed')
     text = re.sub(pattern, lambda m: (
         f'    property color _normal{m[1]}: {m[2]}\n'
         f'    property color {m[1]}: Halloween.presentColor("{m[1]}", _normal{m[1]})'
     ), text)
-    if modern_slots:
-        text = text.replace('root[slot]', 'root["_normal" + (slot.startsWith("_") ? slot.slice(1) : slot)]')
-        text = text.replace('root[item.name]', 'root["_normal" + (item.name.startsWith("_") ? item.name.slice(1) : item.name)]')
-    else:
-        text = text.replace('root[propName]', 'root["_normal" + propName]')
+    text = text.replace('root[propName]', 'root["_normal" + propName]')
+    text = text.replace('root[names[i]]', 'root["_normal" + names[i]]')
+    text = text.replace('root[item.name]', 'root["_normal" + item.name]')
+    text = text.replace('root[slot]', 'root["_normal" + slot]')
     return text.replace('    id: root\n', f'    id: root\n    // BEGIN {MARK} palette\n    // Normal preset values are never overwritten by the seasonal palette.\n    // END {MARK} palette\n', 1)
 
 
@@ -185,11 +185,24 @@ def patch_network(text):
                     }
                 }
 '''))
-    else:
+    elif '            NetworkCoreLayer {\n' in text:
         # Newer Serpantinum builds split the core and card repeaters into
         # NetworkCoreLayer and NetworkCardLayer. Keep the seasonal layer in
         # their shared parent so it can map both sets of item coordinates.
         text = insert(text, '            NetworkCoreLayer {\n', ('network weave', '''            Loader {
+                anchors.fill: parent
+                active: Halloween.activeSeason && window.visible && window.currentPower
+                sourceComponent: NetworkWeave {
+                    cores: coreLayer.repeater; nodes: cardLayer.repeater
+                    connected: window.currentConn; transport: window.activeMode
+                }
+            }
+'''))
+    else:
+        # Some deployed layouts expose the split repeaters through the
+        # NetworkControls layer instead of NetworkCoreLayer.
+        text = insert(text, '            NetworkControls {\n', ('network weave', '''            Loader {
+                enabled: false
                 anchors.fill: parent
                 active: Halloween.activeSeason && window.visible && window.currentPower
                 sourceComponent: NetworkWeave {
@@ -208,57 +221,33 @@ def patch_network(text):
 
 
 def patch_music(text):
-    if '                        id: coverHost\n' not in text:
-        # Recent upstream releases moved the cover into MusicCover.qml. Keep
-        # the remaining popup effect here; the cover-specific layers belong
-        # to the extracted component and must not be injected into its parent.
-        return insert(text, '            id: innerBg\n', ('music vapor', '''            Loader {
-                enabled: false
-                anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter
-                width: parent.width * 0.88; height: parent.height * 0.18
-                active: Halloween.activeSeason && root.active
-                sourceComponent: HearthGlow {
-                    intensity: 0.36 + root.bassLevel * 0.25
-                    engaged: !!(root.targetPlayer && root.targetPlayer.isPlaying)
-                }
-            }
+    if 'id: coverHost' in text:
+        return text
+    text = insert(text, '    id: coverHost\n', ('album reflection', '''    Loader {
+        id: seasonalReflection
+        enabled: false
+        anchors.centerIn: discAndVisGroup
+        width: coverHost.artRadius * 2; height: width
+        z: 7
+        active: Halloween.activeSeason && root.active
+        sourceComponent: GlassReflection {}
+    }
+    Connections {
+        target: root
+        function onActiveArtUrlChanged() {
+            if (seasonalReflection.item) seasonalReflection.item.sweep();
+        }
+    }
 '''))
-    text = insert(text, '                        id: coverHost\n', ('album reflection', '''                        Loader {
-                            id: seasonalReflection
-                            enabled: false
-                            anchors.centerIn: parent
-                            width: coverHost.artRadius * 2; height: width
-                            z: 7
-                            active: Halloween.activeSeason && root.active
-                            sourceComponent: GlassReflection {}
-                        }
-                        Connections {
-                            target: root
-                            function onActiveArtUrlChanged() {
-                                if (seasonalReflection.item) seasonalReflection.item.sweep();
-                            }
-                        }
-'''))
-    text = insert(text, '                        id: coverHost\n', ('album corona', '''                        Loader {
-                            enabled: false
-                            anchors.fill: parent; z: 8
-                            active: Halloween.activeSeason && root.active
-                            sourceComponent: MusicAura {
-                                playing: !!(root.targetPlayer && root.targetPlayer.isPlaying)
-                                energy: root.bassLevel
-                            }
-                        }
-'''))
-    return insert(text, '            id: innerBg\n', ('music vapor', '''            Loader {
-                enabled: false
-                anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter
-                width: parent.width * 0.88; height: parent.height * 0.18
-                active: Halloween.activeSeason && root.active
-                sourceComponent: HearthGlow {
-                    intensity: 0.36 + root.bassLevel * 0.25
-                    engaged: !!(root.targetPlayer && root.targetPlayer.isPlaying)
-                }
-            }
+    return insert(text, '    id: coverHost\n', ('album corona', '''    Loader {
+        enabled: false
+        anchors.fill: parent; z: 8
+        active: Halloween.activeSeason && root.active
+        sourceComponent: MusicAura {
+            playing: !!(root.targetPlayer && root.targetPlayer.isPlaying)
+            energy: root.bassLevel
+        }
+    }
 '''))
 
 
@@ -285,6 +274,17 @@ def patch_system(text):
                                 Behavior on energy { NumberAnimation { duration: 500; easing.type: Easing.OutCubic } }
                                 Behavior on warmth { NumberAnimation { duration: 500; easing.type: Easing.OutCubic } }
                             }
+                        }
+'''))
+
+
+def patch_user_face(text):
+    return insert(text, '                        id: actionCapsule\n', ('power control', '''                        property Item seasonalEnergy: ControlEffects {
+                            parent: actionCapsule
+                            anchors.fill: parent; z: 6
+                            cornerRadius: actionCapsule.radius
+                            engaged: actionMa.containsMouse
+                            charge: actionCapsule.fillLevel
                         }
 '''))
 
@@ -327,12 +327,18 @@ def patch_widgets(text):
 
 def remove(text):
     """Remove our presentation hooks, retaining normal palette values and addons."""
+    # The palette marker sits directly after `id: root`, with no blank line. Remove it
+    # without eating the newline that keeps the next property on its own line.
+    text = re.sub(r'    // BEGIN serpantinum-night-v2 palette\n.*?    // END serpantinum-night-v2 palette\n', '', text, flags=re.S)
     text = re.sub(r'\n    // BEGIN serpantinum-night-v2 [^\n]*\n.*?    // END serpantinum-night-v2 [^\n]*\n', '', text, flags=re.S)
     text = re.sub(
         r'    property color _normal(\w+): ("#[0-9a-fA-F]+")\n'
         r'    property color \1: [^\n]*\n(?:    Behavior on \1 \{[^\n]*\}\n)?',
         lambda m: f'    property color {m[1]}: {m[2]}\n', text)
     text = text.replace('root["_normal" + propName]', 'root[propName]')
+    text = text.replace('root["_normal" + names[i]]', 'root[names[i]]')
+    text = text.replace('root["_normal" + item.name]', 'root[item.name]')
+    text = text.replace('root["_normal" + slot]', 'root[slot]')
     text = text.replace('                    visible: !Halloween.activeSeason\n', '')
     text = text.replace('visible: window.visible && opacity > 0.01 && !Halloween.activeSeason',
                         'visible: window.visible && opacity > 0.01')
@@ -358,8 +364,9 @@ def transformations(qs):
             qs/'launcher/Launcher.qml': patch_launcher,
             qs/'network/NetworkPopup.qml': patch_network,
             qs/'syspanel/SystemPanelPowerActions.qml': patch_power_actions,
-            qs/'media/MusicPopup.qml': patch_music,
+            qs/'media/MusicCover.qml': patch_music,
             qs/'syspanel/SystemPanel.qml': patch_system,
+            qs/'widgets/faces/user/UserFace.qml': patch_user_face,
             qs/'widgets/Widget.qml': patch_widgets,
             qs/'reusables/buttons/IconButton.qml': patch_control,
             qs/'reusables/buttons/ClickButton.qml': patch_control}

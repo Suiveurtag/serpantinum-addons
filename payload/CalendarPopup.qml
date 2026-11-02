@@ -5,7 +5,7 @@ Item {
     id: root
     anchors.fill: parent
     readonly property bool legacy: Config.getSetting("addonsV2LegacyClock", false)
-    function resetAndPlayIntro() { if (panel.item && panel.item.resetAndPlayIntro) panel.item.resetAndPlayIntro(); }
+    function resetAndPlayIntro() { if (panel.status === Loader.Ready && panel.item && panel.item.resetAndPlayIntro) panel.item.resetAndPlayIntro(); }
     Loader {
         id: panel; anchors.fill: parent
         source: root.legacy ? "LegacyCalendar.qml" : "NativeCalendar.qml"

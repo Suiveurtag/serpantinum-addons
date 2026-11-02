@@ -1,15 +1,16 @@
 import QtQuick
+import "../reusables"
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtCore
 import Quickshell
 import Quickshell.Io
-import QtQuick.Window
 import "../"
 
 Item {
     id: window
     focus: true
+    readonly property Item glassBackdropItem: legacyBackdrop
     readonly property string scriptsDir: Caching.qsDir + "/calendar"
 
     // Serpantinum V2 keeps scaling in the shared singleton.
@@ -224,7 +225,7 @@ Item {
 
     property real globalOrbitAngle: 0
     NumberAnimation on globalOrbitAngle {
-        from: 0; to: Math.PI * 2; duration: 90000; loops: Animation.Infinite; running: true
+        from: 0; to: Math.PI * 2; duration: 90000; loops: Animation.Infinite; running: window.visible
     }
 
     // -------------------------------------------------------------------------
@@ -255,7 +256,7 @@ Item {
     }
 
     Timer {
-        interval: 1000; running: true; repeat: true
+        interval: 1000; running: window.visible; repeat: true
         onTriggered: {
             window.currentTime = new Date();
             window.secondPulse = 1.06; // Gentle pulse
@@ -536,10 +537,18 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: Math.round(20 * window.sf)
-            color: window.base
+            color: legacyBackdrop.active ? (ThemeBackend.liquidGlass ? "transparent" : Qt.alpha(window.base, ThemeBackend.elementOpacity)) : window.base
             border.color: window.surface0
-            border.width: 1
+            border.width: ThemeBackend.liquidGlass ? 0 : 1
             clip: true
+
+            WallpaperBlur {
+                id: legacyBackdrop
+                surfaceEnabled: ThemeBackend.glassActive
+                anchors.fill: parent
+                radius: parent.radius
+                z: -1
+            }
 
             // =======================================================
             // AMBIENT WIDGET COLOR BLOBS (Spread Out)
@@ -625,7 +634,7 @@ Item {
                 property real orbitBreath: 1.0
                 SequentialAnimation on orbitBreath {
                     loops: Animation.Infinite
-                    running: true
+                    running: window.visible
                     NumberAnimation { to: 1.035; duration: 3500; easing.type: Easing.InOutSine }
                     NumberAnimation { to: 1.0; duration: 3500; easing.type: Easing.InOutSine }
                 }
@@ -633,21 +642,21 @@ Item {
                 // 3D Perspective Wobble (Pitch, Yaw, Roll)
                 property real pitchBreath: 0
                 SequentialAnimation on pitchBreath {
-                    loops: Animation.Infinite; running: true
+                    loops: Animation.Infinite; running: window.visible
                     NumberAnimation { to: 3.5; duration: 4200; easing.type: Easing.InOutSine }
                     NumberAnimation { to: -3.5; duration: 4200; easing.type: Easing.InOutSine }
                 }
 
                 property real yawBreath: 0
                 SequentialAnimation on yawBreath {
-                    loops: Animation.Infinite; running: true
+                    loops: Animation.Infinite; running: window.visible
                     NumberAnimation { to: 2.5; duration: 5100; easing.type: Easing.InOutSine }
                     NumberAnimation { to: -2.5; duration: 5100; easing.type: Easing.InOutSine }
                 }
 
                 property real rollBreath: 0
                 SequentialAnimation on rollBreath {
-                    loops: Animation.Infinite; running: true
+                    loops: Animation.Infinite; running: window.visible
                     NumberAnimation { to: 1.5; duration: 5800; easing.type: Easing.InOutSine }
                     NumberAnimation { to: -1.5; duration: 5800; easing.type: Easing.InOutSine }
                 }
@@ -694,8 +703,21 @@ Item {
                     Behavior on opacity { NumberAnimation { duration: 1500 } }
                 }
 
+                AddonGlassSurface {
+                    anchors.centerIn: parent
+                    width: clockFace.width + window.s(40)
+                    height: clockFace.height + window.s(24)
+                    radius: window.s(32)
+                    surfaceColor: Qt.alpha(window.timeColor, 0.16)
+                    glassTint: window.timeColor
+                    glassPulse: Math.max(0, (window.secondPulse - 1) * 5)
+                    visible: window.visible && ThemeBackend.glassActive
+                    z: -1
+                }
+
                 // Core Clock
                 ColumnLayout {
+                    id: clockFace
                     anchors.centerIn: parent
                     spacing: 0
                     z: 0
@@ -778,14 +800,14 @@ Item {
 
                             width: Math.round(56 * window.sf); height: Math.round(95 * window.sf)
 
-                            Rectangle {
+                            AddonGlassSurface {
                                 anchors.fill: parent
                                 radius: Math.round(28 * window.sf)
-                                color: isHighlighted ? window.textAccent : (hrMa.containsMouse ? window.surface2 : window.surface0)
+                                surfaceColor: isHighlighted ? window.textAccent : (hrMa.containsMouse ? window.surface2 : window.surface0)
                                 border.color: isHighlighted ? "transparent" : (hrMa.containsMouse ? window.textAccent : window.surface1)
                                 border.width: 1
 
-                                Behavior on color { ColorAnimation { duration: 200 } }
+                                Behavior on surfaceColor { ColorAnimation { duration: 200 } }
 
                                 ColumnLayout {
                                     anchors.centerIn: parent
@@ -795,14 +817,14 @@ Item {
                                         Layout.alignment: Qt.AlignHCenter
                                         text: modelData.time
                                         font.family: ThemeBackend.fontFamily; font.weight: Font.Bold; font.pixelSize: Math.round(12 * window.sf)
-                                        color: isHighlighted ? window.base : (hrMa.containsMouse ? window.text : window.overlay1)
+                                        color: (isHighlighted && !ThemeBackend.liquidGlass) ? window.base : (hrMa.containsMouse ? window.text : window.overlay1)
                                     }
 
                                     Text {
                                         Layout.alignment: Qt.AlignHCenter
                                         text: modelData.icon || (window.weatherData && window.weatherData.forecast && window.weatherData.forecast[window.weatherView] ? window.weatherData.forecast[window.weatherView].icon : "")
                                         font.family: "Iosevka Nerd Font"; font.pixelSize: Math.round(18 * window.sf)
-                                        color: isHighlighted ? window.base : (modelData.hex || window.text)
+                                        color: (isHighlighted && !ThemeBackend.liquidGlass) ? window.base : (modelData.hex || window.text)
 
                                         transform: Translate { y: hrMa.containsMouse ? Math.round(-3 * window.sf) : 0 }
                                         Behavior on transform { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
@@ -811,7 +833,7 @@ Item {
                                     Text {
                                         Layout.alignment: Qt.AlignHCenter; text: modelData.temp + "°"
                                         font.family: ThemeBackend.fontFamily; font.weight: Font.Black; font.pixelSize: Math.round(14 * window.sf)
-                                        color: isHighlighted ? window.base : window.text
+                                        color: (isHighlighted && !ThemeBackend.liquidGlass) ? window.base : window.text
                                     }
                                 }
                             }
@@ -824,14 +846,14 @@ Item {
             // =======================================================
             // LEFT WING: FLOATING GLASS CALENDAR
             // =======================================================
-            Rectangle {
+            AddonGlassSurface {
                 id: calendarRect
                 anchors.left: parent.left
                 anchors.top: parent.top
                 anchors.margins: Math.round(40 * window.sf)
                 width: Math.round(320 * window.sf)
                 height: Math.round(420 * window.sf)
-                color: Qt.alpha(window.surface0, 0.2)
+                surfaceColor: Qt.alpha(window.surface0, 0.2)
                 radius: Math.round(14 * window.sf)
                 border.color: Qt.alpha(window.surface1, 0.4)
                 border.width: 1
@@ -851,9 +873,9 @@ Item {
                         Layout.fillWidth: true
 
                         // "Return to Today" Home Button
-                        Rectangle {
+                        AddonGlassSurface {
                             Layout.preferredWidth: Math.round(32 * window.sf); Layout.preferredHeight: Math.round(32 * window.sf); radius: Math.round(16 * window.sf)
-                            color: homeMa.containsMouse ? window.surface1 : "transparent"
+                            surfaceColor: homeMa.containsMouse ? window.surface1 : "transparent"
                             opacity: window.targetMonthOffset !== 0 ? 1.0 : 0.0
                             visible: opacity > 0
                             Behavior on opacity { NumberAnimation { duration: 200 } }
@@ -864,9 +886,9 @@ Item {
                             }
                         }
 
-                        Rectangle {
+                        AddonGlassSurface {
                             Layout.preferredWidth: Math.round(32 * window.sf); Layout.preferredHeight: Math.round(32 * window.sf); radius: Math.round(16 * window.sf)
-                            color: prevMa.containsMouse ? window.surface1 : "transparent"
+                            surfaceColor: prevMa.containsMouse ? window.surface1 : "transparent"
                             Text { anchors.centerIn: parent; text: ""; font.family: "Iosevka Nerd Font"; color: window.text; font.pixelSize: Math.round(16 * window.sf) }
                             MouseArea { id: prevMa; anchors.fill: parent; hoverEnabled: true; onClicked: window.setMonthOffset(window.targetMonthOffset - 1) }
                         }
@@ -886,22 +908,22 @@ Item {
                             transform: Translate { x: window.calendarContentOffset }
                         }
 
-                        Rectangle {
+                        AddonGlassSurface {
                             Layout.preferredWidth: Math.round(32 * window.sf); Layout.preferredHeight: Math.round(32 * window.sf); radius: Math.round(16 * window.sf)
-                            color: nextMa.containsMouse ? window.surface1 : "transparent"
+                            surfaceColor: nextMa.containsMouse ? window.surface1 : "transparent"
                             Text { anchors.centerIn: parent; text: ""; font.family: "Iosevka Nerd Font"; color: window.text; font.pixelSize: Math.round(16 * window.sf) }
                             MouseArea { id: nextMa; anchors.fill: parent; hoverEnabled: true; onClicked: window.setMonthOffset(window.targetMonthOffset + 1) }
                         }
 
-                        Rectangle {
+                        AddonGlassSurface {
                             Layout.preferredWidth: Math.round(32 * window.sf); Layout.preferredHeight: Math.round(32 * window.sf); radius: Math.round(16 * window.sf)
-                            color: diaryMa.containsMouse ? window.surface1 : "transparent"
+                            surfaceColor: diaryMa.containsMouse ? window.surface1 : "transparent"
                             Text { anchors.centerIn: parent; text: "+"; font.family: "Iosevka Nerd Font"; color: diaryMa.containsMouse ? window.mauve : window.text; font.pixelSize: Math.round(32 * window.sf) }
                             MouseArea {
                                 id: diaryMa; anchors.fill: parent; hoverEnabled: true;
                                 onClicked: Quickshell.execDetached(["bash", window.scriptsDir + "/diary_manager.sh"])
                             }
-                            Behavior on color { ColorAnimation { duration: 150 } }
+                            Behavior on surfaceColor { ColorAnimation { duration: 150 } }
                         }
                     }
 
@@ -933,17 +955,17 @@ Item {
 
                         Repeater {
                             model: calendarModel
-                            Rectangle {
+                            AddonGlassSurface {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
 
-                                color: isToday ? window.textAccent : (dayMa.containsMouse ? Qt.alpha(window.surface2, 0.4) : "transparent")
+                                surfaceColor: isToday ? window.textAccent : (dayMa.containsMouse ? Qt.alpha(window.surface2, 0.4) : "transparent")
                                 radius: Math.round(10 * window.sf)
                                 scale: dayMa.containsMouse ? 1.2 : 1.0
                                 border.color: isToday ? window.surface0 : (dayMa.containsMouse ? window.overlay0 : "transparent")
                                 border.width: isToday || dayMa.containsMouse ? 1 : 0
 
-                                Behavior on color { ColorAnimation { duration: 150 } }
+                                Behavior on surfaceColor { ColorAnimation { duration: 150 } }
                                 Behavior on scale { NumberAnimation { duration: 250; easing.type: Easing.OutBack } }
 
                                 Text {
@@ -952,7 +974,7 @@ Item {
                                     font.family: ThemeBackend.fontFamily
                                     font.weight: isToday ? Font.Black : Font.Bold
                                     font.pixelSize: Math.round(14 * window.sf)
-                                    color: isToday ? window.base : (isCurrentMonth ? window.text : window.surface0)
+                                    color: (isToday && !ThemeBackend.liquidGlass) ? window.base : (isCurrentMonth ? window.text : (ThemeBackend.liquidGlass ? window.subtext0 : window.surface0))
                                     Behavior on color { ColorAnimation { duration: 200 } }
                                 }
 
@@ -992,7 +1014,7 @@ Item {
 
                             property real pulseOffset: 0
                             SequentialAnimation on pulseOffset {
-                                loops: Animation.Infinite; running: true
+                                loops: Animation.Infinite; running: window.visible
                                 NumberAnimation { to: Math.round(-3 * window.sf); duration: 1000; easing.type: Easing.InOutSine }
                                 NumberAnimation { to: 0; duration: 1000; easing.type: Easing.InOutSine }
                             }
@@ -1023,7 +1045,7 @@ Item {
 
                             property real pulseOffset: 0
                             SequentialAnimation on pulseOffset {
-                                loops: Animation.Infinite; running: true
+                                loops: Animation.Infinite; running: window.visible
                                 NumberAnimation { to: Math.round(3 * window.sf); duration: 1000; easing.type: Easing.InOutSine }
                                 NumberAnimation { to: 0; duration: 1000; easing.type: Easing.InOutSine }
                             }
@@ -1331,8 +1353,8 @@ Item {
                         Layout.fillWidth: true
                         spacing: Math.round(15 * window.sf)
 
-                        Rectangle {
-                            Layout.preferredWidth: Math.round(40 * window.sf); Layout.preferredHeight: Math.round(40 * window.sf); radius: Math.round(20 * window.sf); color: window.surface0
+                        AddonGlassSurface {
+                            Layout.preferredWidth: Math.round(40 * window.sf); Layout.preferredHeight: Math.round(40 * window.sf); radius: Math.round(20 * window.sf); surfaceColor: window.surface0
                             Text { anchors.centerIn: parent; text: ""; font.family: "Iosevka Nerd Font"; font.pixelSize: Math.round(18 * window.sf); color: window.textAccent }
                         }
 
@@ -1348,17 +1370,17 @@ Item {
 
                         Item { Layout.fillWidth: true }
 
-                        Rectangle {
+                        AddonGlassSurface {
                             Layout.preferredWidth: Math.round(120 * window.sf); Layout.preferredHeight: Math.round(36 * window.sf); radius: Math.round(10 * window.sf)
-                            color: schLinkMa.containsMouse ? window.mauve : Qt.alpha(window.surface1, 0.5)
+                            surfaceColor: schLinkMa.containsMouse ? window.mauve : Qt.alpha(window.surface1, 0.5)
                             border.color: window.mauve; border.width: 1
-                            Behavior on color { ColorAnimation { duration: 150 } }
+                            Behavior on surfaceColor { ColorAnimation { duration: 150 } }
 
                             RowLayout {
                                 anchors.centerIn: parent
                                 spacing: Math.round(6 * window.sf)
-                                Text { text: "Open Web"; font.family: ThemeBackend.fontFamily; font.weight: Font.Bold; font.pixelSize: Math.round(14 * window.sf); color: schLinkMa.containsMouse ? window.base : window.text }
-                                Text { text: ""; font.family: "Iosevka Nerd Font"; font.pixelSize: Math.round(14 * window.sf); color: schLinkMa.containsMouse ? window.base : window.text }
+                                Text { text: "Open Web"; font.family: ThemeBackend.fontFamily; font.weight: Font.Bold; font.pixelSize: Math.round(14 * window.sf); color: (schLinkMa.containsMouse && !ThemeBackend.liquidGlass) ? window.base : window.text }
+                                Text { text: ""; font.family: "Iosevka Nerd Font"; font.pixelSize: Math.round(14 * window.sf); color: (schLinkMa.containsMouse && !ThemeBackend.liquidGlass) ? window.base : window.text }
                             }
 
                             MouseArea {
@@ -1382,12 +1404,12 @@ Item {
                             anchors.centerIn: parent
                         }
 
-                        Rectangle {
+                        AddonGlassSurface {
                             anchors.verticalCenter: parent.verticalCenter
                             anchors.left: parent.left
                             anchors.right: parent.right
                             height: Math.round(2 * window.sf)
-                            color: Qt.alpha(window.surface1, 0.4)
+                            surfaceColor: Qt.alpha(window.surface1, 0.4)
                             visible: window.scheduleData && window.scheduleData.lessons.length > 0
                         }
 
@@ -1462,16 +1484,16 @@ Item {
                                                 }
                                             }
 
-                                            Rectangle {
+                                            AddonGlassSurface {
                                                 id: accentLine
                                                 width: classNode.isActive || classMa.containsMouse ? Math.round(4 * window.sf) : Math.round(2 * window.sf)
                                                 anchors.left: parent.left
                                                 anchors.top: parent.top
                                                 anchors.bottom: parent.bottom
                                                 radius: Math.round(2 * window.sf)
-                                                color: classNode.isActive ? window.mauve : (classNode.isPast ? window.surface1 : window.surface2)
+                                                surfaceColor: classNode.isActive ? window.mauve : (classNode.isPast ? window.surface1 : window.surface2)
                                                 Behavior on width { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
-                                                Behavior on color { ColorAnimation { duration: 200 } }
+                                                Behavior on surfaceColor { ColorAnimation { duration: 200 } }
                                             }
 
                                             ColumnLayout {
@@ -1514,22 +1536,22 @@ Item {
                                             anchors.fill: parent
                                             visible: !parent.isClass
 
-                                            Rectangle {
+                                            AddonGlassSurface {
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 anchors.left: parent.left
                                                 anchors.right: parent.right
                                                 height: gapMa.containsMouse ? Math.round(4 * window.sf) : Math.round(2 * window.sf)
-                                                color: gapMa.containsMouse ? window.mauve : "transparent"
+                                                surfaceColor: gapMa.containsMouse ? window.mauve : "transparent"
                                                 Behavior on height { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
-                                                Behavior on color { ColorAnimation { duration: 150 } }
+                                                Behavior on surfaceColor { ColorAnimation { duration: 150 } }
                                             }
 
-                                            Rectangle {
+                                            AddonGlassSurface {
                                                 anchors.centerIn: parent
                                                 width: breakText.width + Math.round(16 * window.sf)
                                                 height: Math.round(24 * window.sf)
                                                 radius: Math.round(6 * window.sf)
-                                                color: window.mantle
+                                                surfaceColor: window.mantle
                                                 border.color: window.surface2
                                                 border.width: 1
                                                 opacity: gapMa.containsMouse ? 1.0 : 0.0

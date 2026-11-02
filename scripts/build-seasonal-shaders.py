@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile the seasonal shader and record the exact source/package pair."""
+"""Compile the seasonal and Capri shaders and record each exact source/package pair."""
 import hashlib
 import json
 import shutil
@@ -7,20 +7,20 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-FOLDER = ROOT/'payload/seasonal/shaders'
+SHADERS = [(ROOT/'payload/seasonal/shaders', 'atmosphere'), (ROOT/'payload/capri/shaders', 'sprite')]
 
 
-def build():
+def build(folder, stem):
     compiler = shutil.which('qsb') or '/usr/lib/qt6/bin/qsb'
-    source = FOLDER/'atmosphere.frag'
-    package = FOLDER/'atmosphere.frag.qsb'
+    source = folder/(stem + '.frag')
+    package = folder/(stem + '.frag.qsb')
     subprocess.run([compiler, '--qt6', '-o', str(package), str(source)], check=True)
     manifest = {
         'source_sha256': hashlib.sha256(source.read_bytes()).hexdigest(),
         'package_sha256': hashlib.sha256(package.read_bytes()).hexdigest(),
     }
-    (FOLDER/'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+    (folder/'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
 
 
 if __name__ == '__main__':
-    build()
+    for shader in SHADERS: build(*shader)

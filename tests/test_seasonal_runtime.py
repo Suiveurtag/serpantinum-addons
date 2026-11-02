@@ -20,11 +20,15 @@ class SeasonalRuntimeTests(unittest.TestCase):
     def test_directional_arrivals_bar_and_intro(self):
         self.run_fixture("seasonal_arrivals.qml")
 
-    def run_fixture(self, filename):
+    def test_settings_atmosphere_follows_content_and_unloads(self):
+        import seasonal_surfaces
+        self.run_fixture("settings_window.qml", seasonal_surfaces.guide)
+
+    def run_fixture(self, filename, transform=lambda source: source):
         with tempfile.TemporaryDirectory(prefix='serpantinum-motion-test-') as directory:
             fixture = Path(directory)
             shutil.copytree(ROOT/'payload/seasonal', fixture/'seasonal')
-            shutil.copy2(ROOT/'tests/qml'/filename, fixture/'Shell.qml')
+            (fixture/'Shell.qml').write_text(transform((ROOT/'tests/qml'/filename).read_text()))
             import seasonal
             (fixture/'qmldir').write_text(seasonal.patch_qmldir('singleton Config 1.0 Config.qml\nsingleton ThemeBackend 1.0 ThemeBackend.qml\n'))
             (fixture/'Config.qml').write_text('''pragma Singleton

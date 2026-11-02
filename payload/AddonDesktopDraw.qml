@@ -1,4 +1,5 @@
 import QtQuick
+import "reusables"
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -154,7 +155,7 @@ PanelWindow {
             wheel.accepted = true;
         }
     }
-    Rectangle {
+    AddonGlassSurface {
         id: toolbar
         width: tools.implicitWidth + root.s(24); height: root.s(66)
         anchors.horizontalCenter: parent.horizontalCenter
@@ -162,7 +163,16 @@ PanelWindow {
         opacity: root.reveal
         scale: 0.96 + root.reveal*0.04
         radius: root.s(18)
-        color: ThemeBackend.base
+        surfaceColor: ThemeBackend.base
+        glassSource: toolbarBackdrop
+        WallpaperBlur {
+            id: toolbarBackdrop
+            surfaceEnabled: ThemeBackend.glassActive
+            anchors.fill: parent
+            radius: parent.radius
+            visible: active && !ThemeBackend.liquidGlass
+            z: -1
+        }
         border.width: root.s(1); border.color: Qt.alpha(ThemeBackend.mauve,0.4)
         // Consume clicks in toolbar gaps so they cannot create stray marks.
         MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons; onWheel: wheel => { wheel.accepted = true; } }
@@ -175,11 +185,11 @@ PanelWindow {
                     {tool:"pen",label:"󰏫",hint:"Pen · P"}, {tool:"circle",label:"○",hint:"Circle · C"},
                     {tool:"rectangle",label:"□",hint:"Box · R"}, {tool:"eraser",label:"󰇾",hint:"Eraser · E"}
                 ]
-                delegate: Rectangle {
+                delegate: AddonGlassSurface {
                     required property var modelData
                     width: root.s(40); height: root.s(42); radius: root.s(10)
-                    color: root.tool === modelData.tool ? Qt.alpha(ThemeBackend.mauve,0.2) : toolMouse.containsMouse ? ThemeBackend.surface0 : "transparent"
-                    Behavior on color { ColorAnimation { duration: 160 } }
+                    surfaceColor: root.tool === modelData.tool ? Qt.alpha(ThemeBackend.mauve,0.2) : toolMouse.containsMouse ? ThemeBackend.surface0 : "transparent"
+                    Behavior on surfaceColor { ColorAnimation { duration: 160 } }
                     scale: toolMouse.pressed ? 0.94 : 1
                     Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
                     Text { anchors.centerIn: parent; text: modelData.label; color: root.tool === modelData.tool ? ThemeBackend.mauve : ThemeBackend.text; font.family:"Iosevka Nerd Font"; font.pixelSize:root.s(23) }
@@ -204,11 +214,11 @@ PanelWindow {
             Text { width:root.s(38);height:root.s(42);verticalAlignment:Text.AlignVCenter;horizontalAlignment:Text.AlignHCenter;text:Math.round(root.thickness)+"px";color:ThemeBackend.subtext0;font.family:ThemeBackend.fontFamily;font.pixelSize:root.s(11) }
             Repeater {
                 model: [{label:"↶",action:"undo"},{label:"󰆴",action:"clear"},{label:"×",action:"close"}]
-                delegate: Rectangle {
+                delegate: AddonGlassSurface {
                     required property var modelData
                     width:root.s(36);height:root.s(42);radius:root.s(10)
-                    color:actionMouse.containsMouse ? ThemeBackend.surface0 : "transparent"
-                    Behavior on color { ColorAnimation { duration:160 } }
+                    surfaceColor:actionMouse.containsMouse ? ThemeBackend.surface0 : "transparent"
+                    Behavior on surfaceColor { ColorAnimation { duration:160 } }
                     Text { anchors.centerIn:parent;text:modelData.label;color:ThemeBackend.text;font.family:"Iosevka Nerd Font";font.pixelSize:root.s(21) }
                     MouseArea { id:actionMouse;anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;enabled:root.active;onClicked:{ if(modelData.action==="undo")root.undo();else if(modelData.action==="clear")root.clear();else root.close(); } }
                 }

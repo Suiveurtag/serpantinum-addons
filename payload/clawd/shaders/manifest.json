@@ -1,0 +1,54 @@
+{
+  "aura": {
+    "source_sha256": "4d45bed00e2b73c2a22826be602b2952702df43fa36818f0cf64774ec364826c",
+    "package_sha256": "8b9caae7d0935ad1a4a81073f1aca6adabad15a6d2e9b7991d62fc1a4ba12349"
+  },
+  "bulge": {
+    "source_sha256": "33f3303dd8ac76fea237ef6d9630f39869b538c0918428ec2c9df49c5937aefc",
+    "package_sha256": "231a0ecfa49292a9b53fd60dc214fd212936808384c5661d9a54054cdb7e5ecc"
+  },
+  "clone": {
+    "source_sha256": "7073b9bbb8eddeaf5a1b1b4c30ba37aa0351fc40e302a545ea054528dcaa609d",
+    "package_sha256": "3bcd9e8de69b0b0d219785d6530bc70570418fac8a160b0ddceeec361fa2c13e"
+  },
+  "desk": {
+    "source_sha256": "c01a1e34072e08ccc93a74cfc29b26ebffbb925a6f20ba901cea765628dc60ea",
+    "package_sha256": "215c80c0c24166d11c00efe34a7b327f15c4e8bce3d2716ce5ed7341304a25b3"
+  },
+  "dream": {
+    "source_sha256": "6d7364a04147e569f6147a3399a174cef424dddb03f93fc4d307ec6c655fcf67",
+    "package_sha256": "69c912d18f470c81ceebd7dbe46f40cc23009948503950bcc19dbf271184e34a"
+  },
+  "evil": {
+    "source_sha256": "1c1232c221c00453b4458232569d5cc4608dfb584737d337a16cda0986ef5799",
+    "package_sha256": "1e49914cab573fc6842a00ddc943a340760c1df02d449eaec5d28c904c4d4059"
+  },
+  "fx": {
+    "source_sha256": "0362b15ecb126f5a5e87f3ff34de0ba9908d7e85fddf604746ea3f4dbeaf2677",
+    "package_sha256": "0fa2bea4fcf78ba252314366603df1472259c63ae4fe759819c049076cccec70"
+  },
+  "lens": {
+    "source_sha256": "c93172be8f56397ba8a2d62185c0bf91ff3be33651dc13bbf6a8ed7ee0f8b5d5",
+    "package_sha256": "0cd06b6b1161a0b2f23af03988db7b430286e4b0bca7d2d4cf17d1445f979e2d"
+  },
+  "nuke": {
+    "source_sha256": "9ae212fae89f413b8418d7b6b0d8a3fa55d74e238bdca4a2a74c32017656ac97",
+    "package_sha256": "4aa78c8ecb38d1fff7611287d2a3f2cb6040da3de1e1e84eae705ccb8c34f06e"
+  },
+  "revive": {
+    "source_sha256": "54cab9f557ade893b98c77b3e54da7bd753c9cf962496eeb4f9128dcc734b788",
+    "package_sha256": "82c13ef792295b00b86ccb34e953876a5c8f570f4a809e439e915df8e7993f8d"
+  },
+  "surge": {
+    "source_sha256": "01363618c3d2a51e5205c5023700fe15dd5ec0a5a93fc9da698fb4a1ba392570",
+    "package_sha256": "4cec84bea3355db711b6504ed3e9be17858209edb430b9feb5770e92dd4ad672"
+  },
+  "symphony": {
+    "source_sha256": "39522d7b98f570cbed067357eb6144d2428b956fa9b8e30b3d7df4b8f65225b6",
+    "package_sha256": "da88889f72bf98e2c04381d407035f8ba91473dd7792835b26120e824ddb1c4c"
+  },
+  "tint": {
+    "source_sha256": "a846a68cbd2b120abb43693c4c96dcf456ff99c8f30a6d45a2e0c7bdd6435434",
+    "package_sha256": "5f0789f1c583e5ffc736e19f18c18d9566f623693641a262726d3889c68e75e6"
+  }
+}

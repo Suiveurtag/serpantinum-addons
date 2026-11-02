@@ -228,17 +228,17 @@ Item {
                         scale: baseScale
                         Behavior on baseScale { NumberAnimation { duration: 500; easing.type: Easing.OutQuint } }
 
-                        Rectangle {
+                        AddonGlassSurface {
                             width: parent.width * 0.88
                             height: root.s(10)
                             radius: root.s(5)
                             anchors.top: monStandBase.bottom
                             anchors.horizontalCenter: parent.horizontalCenter
-                            color: root.mantle
+                            surfaceColor: root.mantle
                             border.color: root.surface0
                             border.width: 1
                         }
-                        Rectangle {
+                        AddonGlassSurface {
                             id: monStandBase
                             width: root.s(100)
                             height: root.s(7)
@@ -246,24 +246,24 @@ Item {
                             anchors.bottom: parent.bottom
                             anchors.bottomMargin: root.s(12)
                             anchors.horizontalCenter: parent.horizontalCenter
-                            color: root.surface1
+                            surfaceColor: root.surface1
                         }
-                        Rectangle {
+                        AddonGlassSurface {
                             id: monStandNeck
                             width: root.s(26)
                             height: root.s(52)
                             anchors.bottom: monStandBase.top
                             anchors.horizontalCenter: parent.horizontalCenter
-                            color: root.surface0
-                            Rectangle {
+                            surfaceColor: root.surface0
+                            AddonGlassSurface {
                                 width: root.s(8)
                                 height: root.s(20)
                                 radius: root.s(4)
                                 anchors.centerIn: parent
-                                color: root.base
+                                surfaceColor: root.base
                             }
                         }
-                        Rectangle {
+                        AddonGlassSurface {
                             id: monScreenBezel
                             width: root.s(270) * (root.monCurrentSimW / 1920.0)
                             height: root.s(270) * (root.monCurrentSimH / 1920.0)
@@ -271,23 +271,24 @@ Item {
                             anchors.bottomMargin: root.s(-8)
                             anchors.horizontalCenter: parent.horizontalCenter
                             radius: root.s(10)
-                            color: root.crust
+                            surfaceColor: root.crust
                             border.color: root.surface2
                             border.width: root.s(2)
                             Behavior on width { NumberAnimation { duration: 500; easing.type: Easing.OutQuint } }
                             Behavior on height { NumberAnimation { duration: 500; easing.type: Easing.OutQuint } }
 
-                            Rectangle {
+                            AddonGlassSurface {
                                 anchors.fill: parent
                                 anchors.margins: root.s(8)
                                 radius: root.s(5)
-                                color: root.surface0
+                                surfaceColor: root.surface0
                                 clip: true
 
                                 Rectangle {
                                     anchors.fill: parent
                                     color: "transparent"
-                                    gradient: Gradient {
+                                    gradient: ThemeBackend.liquidGlass ? null : monitorGradient
+                                    property Gradient monitorGradient: Gradient {
                                         orientation: Gradient.Vertical
                                         GradientStop { position: 0.0; color: Qt.tint(root.surface0, Qt.alpha(root.monSelectedResAccent, 0.18)); Behavior on color { ColorAnimation { duration: 400 } } }
                                         GradientStop { position: 1.0; color: Qt.tint(root.surface0, Qt.alpha(root.monSelectedRateAccent, 0.12)); Behavior on color { ColorAnimation { duration: 400 } } }
@@ -417,21 +418,21 @@ Item {
                                 property real cardH: (isPortrait ? model.resW : model.resH) / model.sysScale * modelState.monUiScale
 
                                 // Visible card
-                                Rectangle {
+                                AddonGlassSurface {
                                     id: monCard
                                     x: model.uiX
                                     y: model.uiY
                                     width: monDelegateItem.cardW
                                     height: monDelegateItem.cardH
                                     radius: root.s(8)
-                                    color: isActive ? root.surface1 : root.crust
+                                    surfaceColor: isActive ? root.surface1 : root.crust
                                     border.color: isActive ? root.monSelectedResAccent : root.surface2
                                     border.width: isActive ? root.s(2) : root.s(1)
                                     z: isActive ? 5 : 0
                                     Behavior on x { NumberAnimation { duration: 300; easing.type: Easing.OutQuint } }
                                     Behavior on y { NumberAnimation { duration: 300; easing.type: Easing.OutQuint } }
                                     Behavior on border.color { ColorAnimation { duration: 300 } }
-                                    Behavior on color { ColorAnimation { duration: 300 } }
+                                    Behavior on surfaceColor { ColorAnimation { duration: 300 } }
                                     Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutQuint } }
                                     Behavior on height { NumberAnimation { duration: 400; easing.type: Easing.OutQuint } }
 
@@ -549,7 +550,7 @@ Item {
 
                     Repeater {
                         model: root.monAvailableResolutions
-                        delegate: Rectangle {
+                        delegate: AddonGlassSurface {
                             property var md: root.monAvailableResolutions[index]
                             property string resLabel: md ? root.getResLabel(md.w, md.h) : ""
                             property color accent: root.monResAccentColors[index % root.monResAccentColors.length]
@@ -562,10 +563,10 @@ Item {
                                 let a = modelState.monitorsModel.get(modelState.monActiveEditIndex);
                                 return a.resW === md.w && a.resH === md.h;
                             }
-                            color: isSel ? Qt.alpha(accent, 0.15) : (rMa.containsMouse ? root.surface0 : root.mantle)
+                            surfaceColor: isSel ? Qt.alpha(accent, 0.15) : (rMa.containsMouse ? root.surface0 : root.mantle)
                             border.color: isSel ? accent : (rMa.containsMouse ? root.surface1 : "transparent")
                             border.width: isSel ? root.s(2) : root.s(1)
-                            Behavior on color { ColorAnimation { duration: 200 } }
+                            Behavior on surfaceColor { ColorAnimation { duration: 200 } }
                             Behavior on border.color { ColorAnimation { duration: 200 } }
                             scale: rMa.pressed ? 0.96 : 1.0
                             Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutSine } }
@@ -630,13 +631,13 @@ Item {
                     spacing: root.s(16)
 
                     // Rotation dial
-                    Rectangle {
+                    AddonGlassSurface {
                         id: monDial
                         Layout.preferredWidth: root.s(120)
                         Layout.preferredHeight: root.s(120)
                         Layout.alignment: Qt.AlignVCenter
                         radius: width / 2
-                        color: root.surface0
+                        surfaceColor: root.surface0
                         border.color: root.surface1
                         border.width: root.s(2)
 
@@ -675,9 +676,9 @@ Item {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 Behavior on color { ColorAnimation { duration: 300 } }
                             }
-                            Rectangle {
+                            AddonGlassSurface {
                                 width: root.s(18); height: root.s(18); radius: root.s(9)
-                                color: root.base
+                                surfaceColor: root.base
                                 border.color: root.monSelectedResAccent
                                 border.width: root.s(4)
                                 anchors.centerIn: parent
@@ -764,11 +765,11 @@ Item {
                             property real tW: Math.max(1, width - root.s(16))
                             property real knobX: numRates <= 1 ? tLeft : tLeft + (curIdx / (numRates - 1)) * tW
 
-                            Rectangle {
+                            AddonGlassSurface {
                                 id: rTrack
                                 x: rateSlider.tLeft; width: rateSlider.tW
                                 y: root.s(8); height: root.s(6); radius: root.s(3)
-                                color: root.mantle; border.color: root.surface1; border.width: 1
+                                surfaceColor: root.mantle; border.color: root.surface1; border.width: 1
 
                                 Rectangle {
                                     width: Math.max(0, rKnob.x - rateSlider.tLeft + rKnob.width / 2)
@@ -777,14 +778,14 @@ Item {
                                     Behavior on color { ColorAnimation { duration: 200 } }
                                 }
                             }
-                            Rectangle {
+                            AddonGlassSurface {
                                 id: rKnob
                                 width: root.s(16); height: root.s(16); radius: root.s(8)
-                                color: rateMa.containsPress ? root.monSelectedRateAccent : root.text
+                                surfaceColor: rateMa.containsPress ? root.monSelectedRateAccent : root.text
                                 y: rTrack.y + rTrack.height / 2 - height / 2
                                 x: rateSlider.knobX - width / 2
                                 Behavior on x { enabled: !rateMa.pressed; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-                                Behavior on color { ColorAnimation { duration: 150 } }
+                                Behavior on surfaceColor { ColorAnimation { duration: 150 } }
                             }
                             Repeater {
                                 model: rateSlider.numRates

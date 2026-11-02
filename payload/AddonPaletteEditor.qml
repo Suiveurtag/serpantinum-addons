@@ -279,11 +279,11 @@ SettingsBlob {
                         width: ratio >= 1 ? 192 : Math.max(1, Math.round(192 * ratio))
                         height: ratio >= 1 ? Math.max(1, Math.round(192 / ratio)) : 192
                         enabled: false
-                        onUrlChanged: { editor.thumbPixels = null; if (url) loadImage(url); }
-                        onImageLoaded: requestPaint()
                         onVisibleChanged: if (visible) requestPaint()
                         onWidthChanged: requestPaint()
                         onHeightChanged: requestPaint()
+                        onUrlChanged: { editor.thumbPixels = null; if (url) loadImage(url); }
+                        onImageLoaded: requestPaint()
                         onPaint: {
                             if (!url || !isImageLoaded(url)) return;
                             let ctx = getContext("2d");
