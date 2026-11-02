@@ -69,7 +69,7 @@ class RoundTripTests(unittest.TestCase):
         self.keybind_file.parent.mkdir(parents=True)
         self.keybind_file.write_text(self.keybinds)
         self.before = snapshot(self.shell/'src')
-        env = {'HOME': str(home), 'XDG_DATA_HOME': str(self.data), 'XDG_STATE_HOME': str(self.state), 'XDG_CONFIG_HOME': str(self.config),
+        env = {'HOME': str(home), 'XDG_DATA_HOME': str(self.data), 'XDG_STATE_HOME': str(self.state), 'XDG_CONFIG_HOME': str(self.config), 'XDG_CACHE_HOME': str(home/'.cache'),
                'SERPANTINUM_HOME': str(self.shell), 'SERPANTINUM_UPSTREAM_CACHE': str(CACHE), 'SERPANTINUM_ADDONS_NO_SERVICES': '1'}
         patcher = mock.patch.dict(os.environ, env)
         patcher.start()

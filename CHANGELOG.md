@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Beamer (KVM) integration for Hyprland: launcher, clipboard bridge, `Super+Shift+F12` emergency release, click-through crossing effects on two screens; optional (`--without-beamer`).
 - Clawd chat provider: choose Codex (default), an OpenAI-compatible API, or a local server (Ollama, llama.cpp, LM Studio) from the Clawd card.
 - Clawd session watch: connect OpenCode and Hermes alongside Claude Code and Codex.
 

@@ -14,7 +14,8 @@ from dataclasses import dataclass
 BEGIN = "-- BEGIN beamer-hyprland-compat include"
 END = "-- END beamer-hyprland-compat include"
 RULE = ('hl.window_rule({ name = "beamer-hyprland-compat-overlay", '
-        'match = { class = "^effect_overlay_x11[.]py$", xwayland = true }, no_blur = true })\n')
+        'match = { class = "^(effect_overlay_x11|effect_overlay_helper)[.]py$", xwayland = true }, '
+        'no_blur = true, pin = true, move = "0 0" })\n')
 BIND = ('hl.bind("SUPER + SHIFT + F12", hl.dsp.release_input_capture(), '
         '{ allow_input_capture = true, dont_inhibit = true, submap_universal = true })\n')
 

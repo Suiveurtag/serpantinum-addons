@@ -360,6 +360,7 @@ Item {
                                     { id: "addons_passive_screen_switch", title: "Next screen", icon: "󰍹", keywords: "screen monitor next switch Super Tab écran moniteur", detail: "Super+Tab · Move pointer to the screen centre" },
                                     { id: "addons_passive_window_switch", title: "Next window", icon: "󰖯", keywords: "window next switch Alt Tab fenêtre", detail: "Alt+Tab · Next window on this screen and workspace" },
                                     { id: "addons_passive_keybinds", title: "Keybind editor", icon: "󰌌", keywords: "keybind shortcut keyboard raccourci clavier", detail: "Edit and record shell shortcuts" },
+                                    { id: "addons_passive_beamer", title: "Beamer (KVM)", icon: "󰍹", keywords: "beamer kvm mouse keyboard clipboard share pc souris clavier presse-papier", detail: "Super+Shift+F12 · Release keyboard and pointer from the other PC" },
                                     { id: "addons_passive_theme_modes", title: "Vibrant and Vivid theme modes", icon: "󰏘", keywords: "theme matugen vibrant vivid color mode thème", detail: "Colour modes for the shell palette" }
                                 ]
                                 delegate: SettingsRow {

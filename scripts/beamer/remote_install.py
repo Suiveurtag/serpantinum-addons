@@ -16,7 +16,8 @@ import setup
 
 FILES = (
     "launcher.py", "setup.py", "hyprland_capture.py", "hyprland_inject.py",
-    "hyprland_clipboard.py", "input_bridge.py", "clipboard_offer.c", "build-clipboard.sh",
+    "hyprland_clipboard.py", "clipboard_bridge.py", "input_bridge.py", "effect_fix.py", "effect_overlay_helper.py", "overlay_place.py",
+    "clipboard_offer.c", "build-clipboard.sh",
     "REMOTE.md", "remote_install.py", "remote_hyprland.py",
 )
 

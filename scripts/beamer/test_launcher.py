@@ -15,7 +15,7 @@ def prepare(monkeypatch, tmp_path, version='1.5.18'):
     monkeypatch.setattr(launcher.sys, 'argv', ['launcher.py'])
     monkeypatch.setenv('XDG_RUNTIME_DIR', str(tmp_path))
     monkeypatch.setattr(launcher.subprocess, 'check_output', lambda *a, **k: f'{launcher.APP}\t{version}\n')
-    for name in ('hyprland_capture.py', 'hyprland_inject.py', 'hyprland_clipboard.py', 'input_bridge.py'):
+    for name in ('hyprland_capture.py', 'hyprland_inject.py', 'hyprland_clipboard.py', 'input_bridge.py', 'clipboard_bridge.py', 'effect_fix.py', 'effect_overlay_helper.py'):
         (tmp_path / name).touch()
     monkeypatch.setenv('XDG_CACHE_HOME', str(tmp_path))
     helpers = tmp_path / 'serpantinum-addons-v2/beamer'
@@ -48,12 +48,12 @@ def test_stops_owned_bridge_after_app_exit(monkeypatch, tmp_path):
     class Process:
         def __init__(self, cmd):
             calls.append(cmd)
-            self.bridge = len(calls) == 1
+            self.bridge = len(calls) <= 2
             self.returncode = None if self.bridge else 0
             self.terminated = False
             if self.bridge:
-                socket.parent.mkdir()
-                socket.touch()
+                socket.parent.mkdir(exist_ok=True)
+                (socket if len(calls) == 1 else socket.with_name('clipboard.sock')).touch()
         def poll(self):
             return self.returncode
         def terminate(self):
@@ -63,15 +63,16 @@ def test_stops_owned_bridge_after_app_exit(monkeypatch, tmp_path):
             return self.returncode
 
     processes = []
-    def popen(cmd):
+    def popen(cmd, **kwargs):
         proc = Process(cmd)
         processes.append(proc)
         return proc
     monkeypatch.setattr(launcher.subprocess, 'Popen', popen)
     assert launcher.main() == 0
     assert processes[0].terminated
-    assert calls[1][0:3] == ['flatpak', 'run', '--user']
-    assert f'--filesystem={tmp_path}:ro' in calls[1]
+    assert processes[1].terminated
+    assert calls[2][0:3] == ['flatpak', 'run', '--user']
+    assert f'--filesystem={tmp_path}:ro' in calls[2]
 
 
 def test_bridge_failure_prevents_app_launch(monkeypatch, tmp_path):
@@ -81,7 +82,7 @@ def test_bridge_failure_prevents_app_launch(monkeypatch, tmp_path):
         def poll(self):
             return 1
     calls = []
-    monkeypatch.setattr(launcher.subprocess, 'Popen', lambda cmd: calls.append(cmd) or Failed())
+    monkeypatch.setattr(launcher.subprocess, 'Popen', lambda cmd, **kwargs: calls.append(cmd) or Failed())
     with pytest.raises(SystemExit, match='bridge failed'):
         launcher.main()
     assert len(calls) == 1
@@ -110,6 +111,8 @@ def test_running_app_stops_if_bridge_dies(monkeypatch, tmp_path):
             if self.bridge:
                 socket.parent.mkdir()
                 socket.touch()
+            elif len(processes) == 1:
+                socket.with_name('clipboard.sock').touch()
             processes.append(self)
         def poll(self):
             self.polls += 1
@@ -121,7 +124,8 @@ def test_running_app_stops_if_bridge_dies(monkeypatch, tmp_path):
             self.returncode = -15
         def wait(self, timeout=None):
             return self.returncode
-    monkeypatch.setattr(launcher.subprocess, 'Popen', Process)
+    monkeypatch.setattr(launcher.subprocess, 'Popen', lambda cmd, **kwargs: Process(cmd))
     with pytest.raises(SystemExit, match='bridge stopped'):
         launcher.main()
     assert processes[1].terminated
+    assert processes[2].terminated

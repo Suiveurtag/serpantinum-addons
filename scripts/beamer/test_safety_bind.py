@@ -44,8 +44,10 @@ def test_user_owned_managed_block_is_preserved():
 def test_beamer_overlay_rule_is_targeted_reversible_and_idempotent():
     original = '-- user settings\nhl.bind("SUPER + A", custom)\n'
     patched = installer.patch_beamer_overlay_rule(original)
-    assert 'class = "^effect_overlay_x11[.]py$"' in patched
+    assert 'class = "^(effect_overlay_x11|effect_overlay_helper)[.]py$"' in patched
     assert 'xwayland = true' in patched
     assert 'no_blur = true' in patched
+    assert 'pin = true' in patched
+    assert 'move = "0 0"' in patched
     assert installer.patch_beamer_overlay_rule(patched) == patched
     assert installer.strip_keybind_blocks(patched).strip() == original.strip()

@@ -1,4 +1,5 @@
 import unittest
+from unittest import mock
 
 import input_bridge as bridge
 
@@ -15,6 +16,17 @@ class Device:
 
 
 class InputTest(unittest.TestCase):
+    def test_place_uses_hyprland_lua_dispatcher_and_checks_response(self):
+        session = bridge.Input(Device())
+        with mock.patch.object(bridge.subprocess, 'run') as run:
+            run.return_value.stdout = 'ok\n'
+            session.handle({'op': 'place', 'x': -20, 'y': 40})
+            self.assertEqual(run.call_args.args[0], [
+                'hyprctl', 'dispatch', 'hl.dsp.cursor.move({ x = -20, y = 40 })'])
+            run.return_value.stdout = 'error: invalid dispatcher\n'
+            with self.assertRaisesRegex(ValueError, 'cursor placement failed'):
+                session.handle({'op': 'place', 'x': 1, 'y': 2})
+
     def test_disconnect_releases_keys_and_buttons(self):
         device = Device()
         session = bridge.Input(device)

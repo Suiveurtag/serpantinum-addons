@@ -23,6 +23,7 @@ ADDONS = [
     ("capri", "Capri", "AI assistant"),
     ("halloween", "Halloween", "seasonal effects"),
     ("tokens", "AI Tokens", "usage collector"),
+    ("beamer", "Beamer", "KVM mouse/keyboard sharing"),
 ]
 REEXEC_ENV = "ADDONS_REEXEC"
 INSTALL_TIMEOUT = 900

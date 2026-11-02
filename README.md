@@ -30,6 +30,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-a
    10. [Network and idle](#10-network-and-idle)
    11. [Startup](#11-startup)
    12. [General settings (Addons → General)](#12-general-settings-addons--general)
+   13. [Beamer (KVM across two PCs)](#13-beamer-kvm-across-two-pcs-on-hyprland)
 7. [Keyboard shortcuts added](#keyboard-shortcuts-added)
 8. [IPC commands](#ipc-commands)
 9. [Tests and validation](#tests-and-validation)
@@ -115,6 +116,7 @@ python3 install.py --without-halloween   # seasonal effects
 python3 install.py --without-capri       # Capri
 python3 install.py --without-clawd       # Clawd (also removes its agent hooks and the status relay)
 python3 install.py --without-tokens      # AI Tokens widget and its service (the database stays)
+python3 install.py --without-beamer      # Beamer integration (launcher, Super+Shift+F12 release, overlay rule)
 serpantinum reload
 ```
 
@@ -553,10 +555,21 @@ Tab **Addons → Mouse** (sub-tab "Mouse").
 - **Hide weather location**: the city name in the weather widget is continuously scrambled (random characters), without changing the data.
 - **Mullvad DNS**: switch to Mullvad DNS-over-TLS on the active connection (see [Network and idle](#10-network-and-idle)).
 - **Legacy clock design**: restores the v1 calendar and clock.
-- **Passive addons**: list of tools without a switch, with their shortcut (Capri, Clawd, drawing, zoom, colour picker, capture, monitors, shortcuts, Vibrant/Vivid).
+- **Passive addons**: list of tools without a switch, with their shortcut (Capri, Clawd, drawing, zoom, colour picker, capture, monitors, shortcuts, Beamer, Vibrant/Vivid).
 - **Halloween**: switch for the seasonal effects (see [Halloween](#3-halloween-seasonal-effects)).
 - **Capri** and **Clawd**: cards with a switch and options (see above).
 - The lines are findable in the Settings search (including collapsed options).
+
+---
+
+### 13. Beamer (KVM across two PCs on Hyprland)
+
+Makes the Flatpak [Beamer](https://flathub.org/apps/uk.co.kalkman.beamer) 1.5.18 work with a Hyprland shell: the pointer and keyboard cross to the other PC and back, and the clipboard is shared. Optional: installed with the other addons unless you pass `--without-beamer`; skipped quietly when Flatpak or Beamer is missing.
+
+- **Launcher**: "Beamer (Serpantinum)" desktop entry (`scripts/beamer/setup.py install`), which patches Beamer at run time without touching its Flatpak files (Hyprland capture and injection, clipboard bridge, effect fix).
+- **Emergency release**: `Super+Shift+F12` gives the keyboard and pointer back if the other PC does not return them.
+- **Crossing effects with two screens**: the transparent overlay is click-through, drawn in the right coordinates and anchored to the leftmost monitor by a window rule (no blur, pinned).
+- **Second PC**: `scripts/beamer/REMOTE.md` (bundle built by `package_remote.py`). Clipboard details: `scripts/beamer/CLIPBOARD.md`.
 
 ---
 

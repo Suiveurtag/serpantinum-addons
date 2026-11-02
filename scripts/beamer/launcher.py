@@ -22,11 +22,13 @@ def main():
         sys.path.insert(0, str(addon_dir))
         import hyprland_capture
         import hyprland_inject
-        import hyprland_clipboard
+        import clipboard_bridge
+        import effect_fix
 
         hyprland_capture.install()
         hyprland_inject.install()
-        hyprland_clipboard.install()
+        clipboard_bridge.install()
+        effect_fix.install()
         sys.argv = [ENTRY, *sys.argv[2:]]
         runpy.run_path(ENTRY, run_name="__main__")
         return
@@ -42,7 +44,7 @@ def main():
                 if row.startswith(APP + "\t")]
     if versions != [VERSION]:
         raise SystemExit(f"Beamer addon requires user Flatpak {APP} version {VERSION}; found {versions or 'none'}")
-    for name in ("hyprland_capture.py", "hyprland_inject.py", "hyprland_clipboard.py", "input_bridge.py"):
+    for name in ("hyprland_capture.py", "hyprland_inject.py", "hyprland_clipboard.py", "input_bridge.py", "clipboard_bridge.py", "effect_fix.py", "effect_overlay_helper.py", "overlay_place.py"):
         if not (addon_dir / name).is_file():
             raise SystemExit(f"Missing Beamer addon module: {addon_dir / name}")
     helpers = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "serpantinum-addons-v2" / "beamer"
@@ -59,8 +61,10 @@ def main():
     except BlockingIOError:
         raise SystemExit("The Beamer addon is already running") from None
     socket_path = Path(runtime) / "beamer-addon" / "input.sock"
-    if socket_path.exists() or socket_path.is_symlink():
-        raise SystemExit(f"Beamer input bridge socket already exists: {socket_path}")
+    clipboard_socket = socket_path.with_name('clipboard.sock')
+    for path in (socket_path, clipboard_socket):
+        if path.exists() or path.is_symlink():
+            raise SystemExit(f"Beamer bridge socket already exists: {path}")
     command = [
         "flatpak", "run", "--user", "--die-with-parent", f"--filesystem={addon_dir}:ro",
         f"--filesystem={helpers}:ro", "--filesystem=xdg-run/beamer-addon",
@@ -71,7 +75,7 @@ def main():
     command.extend(["--command=python3", APP, str(addon_dir / "launcher.py"),
                     "--inside-flatpak", *sys.argv[1:]])
     bridge = subprocess.Popen([sys.executable, str(addon_dir / "input_bridge.py")])
-    app = None
+    app = clipboard = None
     old_term = signal.signal(signal.SIGTERM, lambda *_: sys.exit(128 + signal.SIGTERM))
     try:
         deadline = time.monotonic() + 12
@@ -83,14 +87,34 @@ def main():
             time.sleep(0.05)
         if bridge.poll() is not None:
             raise SystemExit(f"Beamer input bridge failed (exit {bridge.returncode})")
+        clipboard = subprocess.Popen([sys.executable, str(addon_dir / 'clipboard_bridge.py')],
+                                     env={**os.environ, 'BEAMER_HELPERS': str(helpers)})
+        deadline = time.monotonic() + 5
+        while not clipboard_socket.exists():
+            if clipboard.poll() is not None:
+                raise SystemExit(f"Beamer clipboard bridge failed (exit {clipboard.returncode})")
+            if bridge.poll() is not None or time.monotonic() >= deadline:
+                raise SystemExit("Beamer clipboard bridge did not start")
+            time.sleep(0.05)
+        if clipboard.poll() is not None:
+            raise SystemExit(f"Beamer clipboard bridge failed (exit {clipboard.returncode})")
+        import overlay_place
+        overlay_place.start()
         app = subprocess.Popen(command)
         while app.poll() is None:
             if bridge.poll() is not None:
                 raise SystemExit(f"Beamer input bridge stopped (exit {bridge.returncode})")
+            if clipboard.poll() is not None:
+                raise SystemExit(f"Beamer clipboard bridge stopped (exit {clipboard.returncode})")
             time.sleep(0.2)
         return app.returncode
     finally:
-        for process in (app, bridge):
+        try:
+            import overlay_place
+            overlay_place.clear()
+        except (ImportError, OSError):
+            pass
+        for process in (app, clipboard, bridge):
             if process is not None and process.poll() is None:
                 process.terminate()
                 try:

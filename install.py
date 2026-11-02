@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Install only v2 addons, preserving upstream files and unrelated v1 work.
 
-Usage: install.py [--without-halloween|--without-capri|--without-clawd|--without-tokens]
+Usage: install.py [--without-halloween|--without-capri|--without-clawd|--without-tokens|--without-beamer]
                   [--check] [--json] [--force] | --uninstall [--purge]
 Exit codes: 0 ok, 2 incompatible Serpantinum version or patch/anchor error, 3 another install is running.
 """
@@ -1331,15 +1331,81 @@ def patch_beamer_release_keybind(text):
             + '-- END serpantinum-addons-v2 beamer input release\n')
 
 
+EDGE_GUARD_BEGIN = '            // BEGIN serpantinum-addons-v2 beamer edge guard\n'
+EDGE_GUARD_END = '            // END serpantinum-addons-v2 beamer edge guard\n'
+
+
+def remove_beamer_edge_guard(text):
+    text = patch_floating(text)
+    while EDGE_GUARD_BEGIN in text:
+        start = text.index(EDGE_GUARD_BEGIN)
+        text = text[:start] + text[text.index(EDGE_GUARD_END, start) + len(EDGE_GUARD_END):]
+    return text.replace('                if (floatingWidget.beamerBlocks(edge)) return;\n', '')
+
+
+def patch_beamer_edge_guard(text):
+    """Quick actions ignore the monitor edges where a Beamer peer sits (the pointer is pinned there while crossing)."""
+    if EDGE_GUARD_BEGIN in text:
+        return text
+    entered = '            function handleEdgeEntered(edge, mousePos) {\n'
+    moved = '            function handleEdgePositionChanged(edge, mousePos) {\n'
+    if text.count(entered) != 1 or text.count(moved) != 1:
+        raise InstallError('Quickactions edge handler anchor changed')
+    guard = '                if (floatingWidget.beamerBlocks(edge)) return;\n'
+    block = (EDGE_GUARD_BEGIN
+             + '            FileView {\n                id: beamerEdges\n'
+             + '                path: Quickshell.env("XDG_RUNTIME_DIR") + "/beamer-addon/edges.json"\n'
+             + '                watchChanges: true\n                printErrors: false\n                onFileChanged: reload()\n            }\n'
+             + '            function beamerBlocks(edge) {\n                try {\n'
+             + '                    const list = JSON.parse(beamerEdges.text() || "[]");\n'
+             + '                    const name = floatingWidget.screen ? floatingWidget.screen.name : "";\n'
+             + '                    return list.some(item => item.edge === edge && item.monitor === name);\n'
+             + '                } catch (e) { return false; }\n            }\n'
+             + EDGE_GUARD_END)
+    return text.replace(entered, block + entered + guard).replace(moved, moved + guard)
+
+
+def leftmost_monitor():
+    """Name of the leftmost Hyprland monitor (the effect overlay is anchored there); None when unknown."""
+    try:
+        monitors = json.loads(subprocess.run(['hyprctl', 'monitors', '-j'], capture_output=True, text=True, timeout=5).stdout)
+        return min(monitors, key=lambda m: (m['x'], m['y']))['name'] or None
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+        return None
+
+
+def remove_beamer_blocks(text):
+    for name in ('input release', 'overlay'):
+        text = re.sub(r'\n*-- BEGIN serpantinum-addons-v2 beamer ' + name + r'\n.*?-- END serpantinum-addons-v2 beamer ' + name + r'\n?', '\n', text, flags=re.S)
+    return text.rstrip() + '\n'
+
+
 def patch_beamer_overlay_rule(text):
+    monitor = leftmost_monitor()
+    monitor_line = f'    monitor = "{monitor}",\n' if monitor else ''
     marker = '-- BEGIN serpantinum-addons-v2 beamer overlay'
     if marker in text:
-        return text
+        start = text.index(marker)
+        end = text.index('-- END serpantinum-addons-v2 beamer overlay', start)
+        block = text[start:end]
+        block = block.replace('class = "^effect_overlay_x11[.]py$"',
+                              'class = "^(effect_overlay_x11|effect_overlay_helper)[.]py$"')
+        if 'pin = true' not in block:
+            block = block.replace('    no_blur = true,\n', '    no_blur = true,\n    pin = true,\n')
+        if 'move = "0 0"' not in block:
+            block = block.replace('    pin = true,\n', '    pin = true,\n    move = "0 0",\n')
+        if monitor_line:
+            block = re.sub(r'    monitor = "[^"]*",\n', '', block)
+            block = block.replace('xwayland = true },\n', 'xwayland = true },\n' + monitor_line)
+        return text[:start] + block + text[end:]
     return (text.rstrip() + '\n\n' + marker + '\n'
             + 'hl.window_rule({\n'
             + '    name = "serpantinum-beamer-overlay-no-blur",\n'
-            + '    match = { class = "^effect_overlay_x11[.]py$", xwayland = true },\n'
+            + '    match = { class = "^(effect_overlay_x11|effect_overlay_helper)[.]py$", xwayland = true },\n'
+            + monitor_line
             + '    no_blur = true,\n'
+            + '    pin = true,\n'
+            + '    move = "0 0",\n'
             + '})\n'
             + '-- END serpantinum-addons-v2 beamer overlay\n')
 
@@ -1395,16 +1461,16 @@ class Plan:
         self.keybinds = keybinds_path()
 
 
-def build_plan(without_halloween=False, without_capri=False, without_clawd=False, without_tokens=False, restore_retired=True):
+def build_plan(without_halloween=False, without_capri=False, without_clawd=False, without_tokens=False, restore_retired=True, without_beamer=False):
     """Compute every change in memory. Fail closed: any unknown upstream shape raises InstallError, nothing is written."""
     options = {'without_halloween': without_halloween, 'without_capri': without_capri,
-               'without_clawd': without_clawd, 'without_tokens': without_tokens}
+               'without_clawd': without_clawd, 'without_tokens': without_tokens, 'without_beamer': without_beamer}
     plan = Plan()
     pending = plan.pending
     theme_state = QS/'guide/theme/ThemeTabState.qml'
     theme_view = QS/'guide/theme/ThemeTab.qml'
     patches = {QS/'Main.qml': lambda text: remove_inline_settings(patch_main(text), '//'), QS/'WindowRegistry.js': lambda text: remove_inline_settings(text, '//'),
-               QS/'Shell.qml': patch_shell, QS/'screenshot/ScreenshotOverlay.qml': patch_screenshot_overlay, QS/'quickactions/Floating.qml': patch_floating,
+               QS/'Shell.qml': patch_shell, QS/'screenshot/ScreenshotOverlay.qml': patch_screenshot_overlay, QS/'quickactions/Floating.qml': lambda text: remove_beamer_edge_guard(text) if without_beamer else patch_beamer_edge_guard(patch_floating(text)),
                QS/'guide/GuidePopup.qml': patch_guide, QS/'guide/GuideSidebar.qml': patch_guide_sidebar, QS/'guide/IdleTab.qml': patch_idle_tab,
                (theme_state if theme_state.exists() else theme_view): patch_theme,QS/'network/NetworkPopup.qml': patch_network,
                QS/'singletons/theme/Matugen.qml': patch_matugen, QS/'widgets/faces/weather/WeatherFaceFull.qml': patch_weather_face,
@@ -1434,7 +1500,9 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
 
     kb = plan.keybinds
     text = read(kb)
-    for transform in (patch_keybinds, patch_window_keybinds, patch_spotlight_keybind, patch_zoom_keybind, patch_draw_keybind, patch_beamer_release_keybind, patch_beamer_overlay_rule):
+    for transform in (patch_keybinds, patch_window_keybinds, patch_spotlight_keybind, patch_zoom_keybind, patch_draw_keybind):
+        text = patch_file(kb, transform, text)
+    for transform in ((remove_beamer_blocks,) if without_beamer else (patch_beamer_release_keybind, patch_beamer_overlay_rule)):
         text = patch_file(kb, transform, text)
     pending[kb] = patch_file(kb, lambda value: remove_inline_settings(value, '--'), text)
 
@@ -1713,7 +1781,7 @@ def record_install(plan, state):
     channel = 'release' if SOURCE == (DEPLOY/'source').resolve() else 'dev'
     try: version = (SOURCE/'VERSION').read_text().strip() or None
     except OSError: version = None
-    without = [c.name for c in COMPANIONS if plan.options[c.option]]
+    without = [c.name for c in COMPANIONS if plan.options[c.option]] + (['beamer'] if plan.options['without_beamer'] else [])
     release.write_install_state({
         'version': version, 'commit': git_commit(), 'channel': channel, 'source': str(SOURCE),
         'serpantinum_version': state['version'], 'serpantinum_commit': state['commit'],
@@ -1731,7 +1799,7 @@ def say(report, message):
 
 
 # --------------------------------------------------------------------------- install
-def install(without_halloween=False, without_capri=False, without_clawd=False, without_tokens=False, check=False, force=False, quiet=False):
+def install(without_halloween=False, without_capri=False, without_clawd=False, without_tokens=False, check=False, force=False, quiet=False, without_beamer=False):
     """Install (or, with check=True, only compute) the addons. Raises InstallError; returns a report dict."""
     report = {'quiet': quiet, 'changes': 0, 'changed_files': [], 'warnings': [], 'backup': None}
     configure_paths()
@@ -1739,14 +1807,14 @@ def install(without_halloween=False, without_capri=False, without_clawd=False, w
     for warning in report['warnings']:
         say(report, f'warning: {warning}')
     if check:
-        return _install_locked(report, state, check, without_halloween, without_capri, without_clawd, without_tokens)
+        return _install_locked(report, state, check, without_halloween, without_capri, without_clawd, without_tokens, without_beamer)
     with Lock():
-        return _install_locked(report, state, check, without_halloween, without_capri, without_clawd, without_tokens)
+        return _install_locked(report, state, check, without_halloween, without_capri, without_clawd, without_tokens, without_beamer)
 
 
-def _install_locked(report, state, check, without_halloween, without_capri, without_clawd, without_tokens):
+def _install_locked(report, state, check, without_halloween, without_capri, without_clawd, without_tokens, without_beamer):
     # Calculate all transformations first. Never partly apply an unknown upstream revision.
-    plan = build_plan(without_halloween, without_capri, without_clawd, without_tokens)
+    plan = build_plan(without_halloween, without_capri, without_clawd, without_tokens, without_beamer=without_beamer)
     ops = shell_ops(plan)
     extra = deploy_ops()
     report['changes'] = len(ops) + len(extra)
@@ -1788,7 +1856,87 @@ def _install_locked(report, state, check, without_halloween, without_capri, with
     say(report, f"v2 installed: {len(ops)} shell files changed; backups: {backup}")
     message = tokens.service(DEPLOY, HOME, remove=without_tokens)
     say(report, message)
+    say(report, beamer_launcher(without_beamer))
     return report
+
+
+# (probe, packages per package manager). Probe: a command, 'module:NAME', 'file:PATH' or 'pkgconfig:NAME'.
+# None = not packaged: the note tells the user what to install (Hyprland belongs to the desktop setup).
+BEAMER_TOOLS = (
+    ('flatpak', {'pacman': 'flatpak', 'dnf': 'flatpak', 'xbps': 'flatpak'}),
+    ('wl-paste', {'pacman': 'wl-clipboard', 'dnf': 'wl-clipboard', 'xbps': 'wl-clipboard'}),
+    ('wayland-scanner', {'pacman': 'wayland', 'dnf': 'wayland-devel', 'xbps': 'wayland-devel'}),
+    ('pkgconfig:wayland-client', {'pacman': 'wayland', 'dnf': 'wayland-devel', 'xbps': 'wayland-devel'}),
+    ('cc', {'pacman': 'gcc', 'dnf': 'gcc', 'xbps': 'gcc'}),
+    ('pkg-config', {'pacman': 'pkgconf', 'dnf': 'pkgconf-pkg-config', 'xbps': 'pkg-config'}),
+    ('module:evdev', {'pacman': 'python-evdev', 'dnf': 'python3-evdev', 'xbps': 'python3-evdev'}),
+    ('file:/usr/share/wayland-protocols/staging/ext-data-control/ext-data-control-v1.xml',
+     {'pacman': 'wayland-protocols', 'dnf': 'wayland-protocols-devel', 'xbps': 'wayland-protocols-devel'}),
+    ('hyprctl', None),
+)
+BEAMER_REMOTE = 'https://dl.flathub.org/repo/flathub.flatpakrepo'
+BEAMER_APP = 'uk.co.kalkman.beamer'
+
+
+def _beamer_missing(tool):
+    if tool.startswith('module:'):
+        return importlib.util.find_spec(tool[7:]) is None
+    if tool.startswith('file:'):
+        return not Path(tool[5:]).is_file()
+    if tool.startswith('pkgconfig:'):
+        return not shutil.which('pkg-config') or subprocess.run(['pkg-config', '--exists', tool[10:]], capture_output=True).returncode != 0
+    return shutil.which(tool) is None
+
+
+def ensure_beamer_dependencies():
+    """Install the missing Beamer tools with the system package manager, then the Beamer Flatpak. Raises RuntimeError."""
+    if not services_enabled():
+        return  # tests: never touch the real package manager or Flatpak remotes
+    missing = [(tool, packages) for tool, packages in BEAMER_TOOLS if _beamer_missing(tool)]
+    unpackaged = [tool for tool, packages in missing if packages is None]
+    if unpackaged:
+        raise RuntimeError('Hyprland is required (hyprctl not found): install it with the desktop setup')
+    if missing:
+        manager = next((m for m, cmd in (('pacman', 'pacman'), ('dnf', 'dnf'), ('xbps', 'xbps-install')) if shutil.which(cmd)), None)
+        if manager is None:
+            raise RuntimeError('no supported package manager (pacman, dnf, xbps-install) to install ' + ', '.join(t for t, _ in missing))
+        packages = list(dict.fromkeys(p[manager] for _, p in missing))
+        argv = {'pacman': ['sudo', 'pacman', '-S', '--needed'], 'dnf': ['sudo', 'dnf', 'install'],
+                'xbps': ['sudo', 'xbps-install', '-S']}[manager] + packages
+        print('Beamer: installing missing dependencies: ' + ' '.join(argv), file=sys.stderr)
+        if subprocess.run(argv).returncode != 0:
+            raise RuntimeError('installing ' + ' '.join(packages) + ' failed')
+        still = [tool for tool, _ in missing if _beamer_missing(tool)]
+        if still:
+            raise RuntimeError('still missing after install: ' + ', '.join(still))
+    if not shutil.which('flatpak'):
+        raise RuntimeError('Flatpak is not available')
+    from_list = subprocess.run(['flatpak', 'list', '--user', '--app', '--columns=application,version'], capture_output=True, text=True).stdout
+    if not any(row.startswith(BEAMER_APP + '\t') for row in from_list.splitlines()):
+        print(f'Beamer: installing the Flatpak {BEAMER_APP} from Flathub', file=sys.stderr)
+        subprocess.run(['flatpak', 'remote-add', '--user', '--if-not-exists', 'flathub', BEAMER_REMOTE], capture_output=True)
+        if subprocess.run(['flatpak', 'install', '--user', '-y', 'flathub', BEAMER_APP]).returncode != 0:
+            raise RuntimeError(f'installing the Flatpak {BEAMER_APP} from Flathub failed')
+
+
+def beamer_launcher(remove):
+    """Register (or remove) the Beamer launcher. Beamer is optional: a failure is a note, never an error."""
+    setup_path = DEPLOY/'scripts/beamer/setup.py'
+    if not setup_path.is_file():
+        return 'Beamer: addon files not deployed; launcher untouched'
+    try:
+        previous, sys.dont_write_bytecode = sys.dont_write_bytecode, True
+        try:
+            setup = _load('addons_beamer_setup', setup_path)
+        finally:
+            sys.dont_write_bytecode = previous
+        if remove:
+            preserved = setup.uninstall()
+            return 'Beamer launcher removed' + (f'; kept modified files: {", ".join(map(str, preserved))}' if preserved else '')
+        ensure_beamer_dependencies()
+        return f'Beamer launcher installed: {setup.install(setup_path.parent)}'
+    except Exception as error:
+        return f'Beamer: launcher not installed ({error}); optional, rerun later with scripts/beamer/setup.py install'
 
 
 # --------------------------------------------------------------------------- uninstall
@@ -2055,6 +2203,7 @@ def main(argv=None):
     parser.add_argument('--without-capri', action='store_true', help='Remove the Capri desktop pet while retaining other v2 addons')
     parser.add_argument('--without-clawd', action='store_true', help='Remove the Clawd desktop pet while retaining other v2 addons')
     parser.add_argument('--without-tokens', action='store_true', help='Remove the AI token widget and its collector service while retaining other v2 addons')
+    parser.add_argument('--without-beamer', action='store_true', help='Skip the Beamer (KVM) Hyprland integration: launcher, emergency release shortcut and overlay rule')
     parser.add_argument('--check', action='store_true', help='Compute everything but write nothing')
     parser.add_argument('--json', action='store_true', help='Print one JSON object instead of prose (with --check, install or --uninstall)')
     parser.add_argument('--uninstall', action='store_true', help='Restore Serpantinum from its upstream commit and remove the addons')
@@ -2070,7 +2219,7 @@ def main(argv=None):
             report = uninstall(purge=args.purge, check=args.check, quiet=args.json)
         else:
             report = install(without_halloween=args.without_halloween, without_capri=args.without_capri, without_clawd=args.without_clawd,
-                             without_tokens=args.without_tokens, check=args.check, force=args.force, quiet=args.json)
+                             without_tokens=args.without_tokens, without_beamer=args.without_beamer, check=args.check, force=args.force, quiet=args.json)
     except InstallError as error:
         errors, code = [error], error.code
         if not args.json: print_error(error)

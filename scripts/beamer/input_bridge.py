@@ -57,8 +57,12 @@ class Input:
             x, y = msg.get('x'), msg.get('y')
             if type(x) is not int or type(y) is not int or max(abs(x), abs(y)) > 100000:
                 raise ValueError('invalid position')
-            subprocess.run(['hyprctl', 'dispatch', 'movecursor', str(x), str(y)],
-                           check=True, stdout=subprocess.DEVNULL, timeout=2)
+            result = subprocess.run(
+                ['hyprctl', 'dispatch', f'hl.dsp.cursor.move({{ x = {x}, y = {y} }})'],
+                check=True, capture_output=True, text=True, timeout=2)
+            # hyprctl may report a dispatcher error on stdout while exiting successfully.
+            if result.stdout.strip() != 'ok':
+                raise ValueError(f'Hyprland cursor placement failed: {result.stdout.strip()}')
         elif op == 'release':
             self.release()
             return
