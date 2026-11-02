@@ -51,6 +51,7 @@ QtObject {
     readonly property string codexNote: {
         if (!data) return qsTr("collector not running");
         const c = data.codex;
+        if (c.status === "local") return qsTr("this PC only");
         if (c.status === "no-baseline") return qsTr("no account total");
         if (c.status === "partial") return qsTr("offline, synced %1").arg(ago(c.synced));
         return qsTr("synced %1").arg(ago(c.synced));

@@ -131,8 +131,13 @@ QtObject {
     }
     function roll() { return typeof dice === "number" ? dice : Math.random(); }
     function pick(list) { return list[Math.min(list.length - 1, Math.floor(roll() * list.length))]; }
-    // name or its "_2" variant when the manifest has one, at random.
-    function variant(name) { return manifest && manifest.animations[name + "_2"] && roll() < 0.5 ? name + "_2" : name; }
+    // name or one of its "_2", "_3"... variants (every one the manifest has), at random.
+    function variants(name) {
+        const all = [name];
+        if (manifest) for (let i = 2; manifest.animations[name + "_" + i]; i++) all.push(name + "_" + i);
+        return all;
+    }
+    function variant(name) { return pick(variants(name)); }
 
     // Thought line pieces, pure so they can be checked without waiting.
     function clip(text, n) { text = String(text); return text.length > n ? text.slice(0, Math.max(0, n - 1)) + "…" : text; }

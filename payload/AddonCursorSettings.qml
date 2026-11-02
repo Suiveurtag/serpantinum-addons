@@ -7,10 +7,17 @@ import "../"
 import "../reusables"
 import "../reusables/guide"
 
+// Cursor customisation.
+//
+// Model: every control edits a local *draft*. Nothing touches the desktop until
+// "Apply". Live previews of the draft are rendered by the backend (debounced), and
+// requests are queued instead of being dropped while the backend is busy.
 ColumnLayout {
     id: root
     required property var rootObj
     readonly property string backend: Quickshell.env("HOME") + "/.local/share/serpantinum-addons-v2/scripts/custom_cursor.py"
+
+    // ---- State -----------------------------------------------------------------
     property var draft: ({baseTheme: "", size: 32, roles: {}, normalOnly: false})
     property var saved: ({})
     property var themes: []
@@ -19,146 +26,179 @@ ColumnLayout {
     property string selectedRole: "left_ptr"
     property string error: ""
     property string notice: ""
-    property bool pendingPreview: false
-    property bool pendingApply: false
     property bool loaded: false
-    readonly property bool busy: worker.running || pendingApply
+    property bool conflict: false
+    readonly property bool applying: worker.running && worker.action === "apply"
+    readonly property bool working: worker.running || queued !== null
+    readonly property bool editable: loaded && !applying
     readonly property bool dirty: loaded && JSON.stringify(draft) !== JSON.stringify(saved)
-    readonly property int roleIndex: roleIds.indexOf(selectedRole)
-    readonly property var currentRole: roles.find(entry => entry.id === selectedRole) || ({preview: "", source: "", hotspot: [0, 0], width: 0, height: 0, frames: 0})
-    readonly property string selectedPath: draft.roles[selectedRole] ? (draft.roles[selectedRole].originalPath || draft.roles[selectedRole].source) : ""
+
+    // Single pending job; a newer request of the same kind replaces an older one.
+    property var queued: null
+
+    // ---- Static catalogue ------------------------------------------------------
     readonly property var roleIds: ["left_ptr", "help", "progress", "wait", "pointer", "text", "vertical-text", "crosshair", "cell", "move", "grab", "grabbing", "not-allowed", "copy", "alias", "ew-resize", "ns-resize", "nesw-resize", "nwse-resize", "n-resize", "s-resize", "e-resize", "w-resize", "ne-resize", "nw-resize", "se-resize", "sw-resize", "zoom-in", "zoom-out", "context-menu", "pencil"]
     readonly property var roleNames: [qsTr("Normal select"), qsTr("Help select"), qsTr("Working in background"), qsTr("Busy"), qsTr("Link select"), qsTr("Text select"), qsTr("Vertical text"), qsTr("Precision select"), qsTr("Cell select"), qsTr("Move"), qsTr("Grab"), qsTr("Grabbing"), qsTr("Unavailable"), qsTr("Copy"), qsTr("Create link"), qsTr("Horizontal resize"), qsTr("Vertical resize"), qsTr("Diagonal resize ↗"), qsTr("Diagonal resize ↖"), qsTr("Resize top"), qsTr("Resize bottom"), qsTr("Resize right"), qsTr("Resize left"), qsTr("Resize top right"), qsTr("Resize top left"), qsTr("Resize bottom right"), qsTr("Resize bottom left"), qsTr("Zoom in"), qsTr("Zoom out"), qsTr("Context menu"), qsTr("Handwriting")]
-    spacing: rootObj.s(8)
+    readonly property var groups: [
+        {title: qsTr("Everyday"), ids: ["left_ptr", "pointer", "text", "help", "wait", "progress", "not-allowed", "crosshair"]},
+        {title: qsTr("Move and drag"), ids: ["move", "grab", "grabbing", "copy", "alias", "cell", "context-menu", "pencil", "vertical-text", "zoom-in", "zoom-out"]},
+        {title: qsTr("Resize"), ids: ["ew-resize", "ns-resize", "nesw-resize", "nwse-resize", "n-resize", "s-resize", "e-resize", "w-resize", "ne-resize", "nw-resize", "se-resize", "sw-resize"]}
+    ]
+    readonly property int columns: Math.max(2, Math.floor((width - rootObj.s(48)) / rootObj.s(92)))
+    readonly property var currentRole: roleInfo(selectedRole)
+    readonly property var customRole: draft.roles ? draft.roles[selectedRole] : undefined
+    readonly property string selectedPath: customRole ? (customRole.originalPath || customRole.source) : ""
+    readonly property int customCount: draft.roles ? Object.keys(draft.roles).length : 0
+    readonly property string status: error ? error
+        : applying ? qsTr("Applying…")
+        : conflict ? qsTr("Settings changed elsewhere.")
+        : dirty ? qsTr("Unsaved changes — previewed below, press Apply to use them.")
+        : notice ? notice
+        : qsTr("Theme, size and the shape of every pointer.")
 
-    function execute(action, value) {
-        if (busy) return;
-        if (action === "import" || action === "install" || action === "apply") previewTimer.stop();
+    function roleName(id) {
+        let index = roleIds.indexOf(id);
+        return index >= 0 ? roleNames[index] : id;
+    }
+    function roleInfo(id) {
+        return roles.find(entry => entry.id === id) || ({id: id, preview: "", source: "", hotspot: [0, 0], width: 0, height: 0, frames: 0});
+    }
+    function clone(value) { return JSON.parse(JSON.stringify(value)); }
+
+    // ---- Backend job queue -----------------------------------------------------
+    function request(action, value, role) {
+        // A preview never replaces a queued apply/import/install.
+        if (queued && queued.action !== "preview" && action === "preview") return;
+        queued = {action: action, value: value, role: role || ""};
+        pump();
+    }
+    function pump() {
+        if (worker.running || !queued) return;
+        let job = queued;
+        queued = null;
         error = "";
-        worker.action = action;
+        worker.action = job.action;
         worker.requestSignature = JSON.stringify(draft);
-        worker.command = ["python3", backend, action];
-        if (value !== undefined) worker.command = worker.command.concat([typeof value === "string" ? value : JSON.stringify(value)]);
+        worker.role = job.role;
+        let args = ["python3", backend, job.action];
+        if (job.value !== undefined) args.push(typeof job.value === "string" ? job.value : JSON.stringify(job.value));
+        worker.command = args;
         worker.running = true;
     }
-    function change(key, value) {
-        let next = JSON.parse(JSON.stringify(draft));
-        next[key] = value;
+    function edit(mutator) {
+        if (!editable) return;
+        let next = clone(draft);
+        mutator(next);
         draft = next;
         previewTimer.restart();
     }
-    function resetRole() {
-        let next = Object.assign({}, draft.roles);
-        delete next[selectedRole];
-        change("roles", next);
-    }
-    function resetIcons() {
-        draft = Object.assign({}, draft, {roles: {}, normalOnly: false});
-        selectedRole = "left_ptr";
+    function apply() {
+        if (!loaded || applying || !dirty) return;
         previewTimer.stop();
-        execute("apply", {settings: draft, revision: revision});
+        queued = null;
+        notice = "";
+        request("apply", {settings: draft, revision: revision});
     }
-    function selectTheme(themeId) {
-        draft = Object.assign({}, draft, {baseTheme: themeId, roles: {}, normalOnly: false});
-        selectedRole = "left_ptr";
+    function discard() {
         previewTimer.stop();
-        execute("apply", {settings: draft, revision: revision});
+        queued = null;
+        conflict = false;
+        request("status");
     }
+
+    // ---- Edits (draft only) ----------------------------------------------------
+    function setSize(value) { edit(next => { next.size = Math.round(value); }); }
+    function setTheme(themeId) { edit(next => { next.baseTheme = themeId; }); }
     function setNormalOnly(enabled) {
+        edit(next => { next.normalOnly = enabled; });
         if (enabled) selectedRole = "left_ptr";
-        change("normalOnly", enabled);
-        previewTimer.stop();
-        pendingApply = true;
-        applyTimer.restart();
     }
     function setPoint(x, y) {
         if (!currentRole.source) return;
-        let next = JSON.parse(JSON.stringify(draft.roles));
-        let custom = next[selectedRole] || {source: currentRole.source, name: roleNames[roleIndex], originalPath: currentRole.source};
-        custom.hotspot = [x, y];
-        next[selectedRole] = custom;
-        change("roles", next);
-        let updated = Object.assign({}, currentRole, {hotspot: [x, y]});
-        roles = roles.map(entry => entry.id === selectedRole ? updated : entry);
+        let role = selectedRole;
+        let source = currentRole.source;
+        edit(next => {
+            let custom = next.roles[role] || {source: source, name: roleName(role), originalPath: source};
+            custom.hotspot = [x, y];
+            next.roles[role] = custom;
+        });
+        // Move the crosshair immediately; the real preview follows.
+        roles = roles.map(entry => entry.id === role ? Object.assign({}, entry, {hotspot: [x, y]}) : entry);
     }
-    function accept(raw) {
-        try {
-            let result = JSON.parse(raw);
-            if (!result.ok) throw new Error(result.error);
-            let data = result.data;
-            if (worker.action === "preview" && worker.requestSignature !== JSON.stringify(draft)) {
-                pendingPreview = true;
-                return;
-            }
-            if (worker.action === "export") {
-                notice = qsTr("Scheme exported to %1").arg(data.path);
-            } else if (worker.action === "import") {
-                let next = Object.assign({}, draft.roles);
-                next[selectedRole] = {source: data.source, name: data.name, originalPath: data.originalPath, hotspot: data.hotspot};
-                draft = Object.assign({}, draft, {roles: next});
-                pendingApply = true;
-            } else if (worker.action === "install") {
-                themes = data.themes;
-                if (!loaded) {
-                    saved = data.settings;
-                    revision = data.revision;
-                    loaded = true;
-                }
-                draft = Object.assign({}, draft, {baseTheme: data.installed[0], roles: {}, normalOnly: false});
-                pendingApply = true;
+    function resetRole() {
+        let role = selectedRole;
+        edit(next => { delete next.roles[role]; });
+    }
+    function resetAll() {
+        edit(next => { next.roles = {}; next.normalOnly = false; });
+        selectedRole = "left_ptr";
+    }
+
+    // ---- Backend responses -----------------------------------------------------
+    function accept(raw, action, role, signature) {
+        let result;
+        try { result = JSON.parse(raw); } catch (failure) { if (!error) error = qsTr("Unexpected reply from the cursor backend."); return; }
+        if (!result.ok) {
+            error = result.error || qsTr("Could not update cursor settings.");
+            conflict = /changed elsewhere/i.test(error);
+            return;
+        }
+        let data = result.data;
+        if (action === "export") {
+            notice = qsTr("Scheme exported to %1").arg(data.path);
+        } else if (action === "import") {
+            edit(next => { next.roles[role] = {source: data.source, name: data.name, originalPath: data.originalPath, hotspot: data.hotspot}; });
+            notice = qsTr("“%1” set for %2.").arg(data.name).arg(roleName(role));
+        } else if (action === "install") {
+            themes = data.themes;
+            if (data.installed && data.installed.length) edit(next => { next.baseTheme = data.installed[0]; });
+            notice = qsTr("Theme imported.");
+        } else {
+            themes = data.themes;
+            roles = data.roles;
+            if (action === "preview") {
+                // Stale preview: the draft moved on while rendering.
+                if (signature !== JSON.stringify(draft)) previewTimer.restart();
             } else {
-                themes = data.themes;
-                roles = data.roles;
-                if (worker.action !== "preview") {
-                    draft = data.settings;
-                    saved = JSON.parse(JSON.stringify(data.settings));
-                    revision = data.revision;
-                    loaded = true;
-                    notice = worker.action === "apply" ? qsTr("Applied. Restart applications that still show the previous cursor.") : "";
-                }
-                if (data.warnings.length) notice = data.warnings.join("\n");
+                draft = data.settings;
+                saved = clone(data.settings);
+                revision = data.revision;
+                loaded = true;
+                conflict = false;
+                notice = action === "apply" ? qsTr("Applied. Restart applications that still show the previous cursor.") : "";
             }
-        } catch (failure) { error = String(failure); }
+            if (data.warnings && data.warnings.length) notice = data.warnings.join("\n");
+        }
     }
+
     Process {
         id: worker
         property string action: ""
+        property string role: ""
         property string requestSignature: ""
-        stdout: StdioCollector { onStreamFinished: root.accept(text) }
-        stderr: StdioCollector { onStreamFinished: { if (text.trim()) root.error = text.trim(); } }
+        stdout: StdioCollector {
+            onStreamFinished: root.accept(text, worker.action, worker.role, worker.requestSignature)
+        }
+        stderr: StdioCollector { onStreamFinished: { if (text.trim() && !root.error) root.error = text.trim(); } }
         onExited: code => {
             if (code !== 0 && !root.error) root.error = qsTr("Could not update cursor settings.");
-            if (root.pendingApply) {
-                applyTimer.restart();
-            } else if (root.pendingPreview) {
-                root.pendingPreview = false;
-                previewTimer.restart();
-            }
-        }
-    }
-    Timer {
-        id: applyTimer
-        interval: 1
-        onTriggered: {
-            root.pendingApply = false;
-            root.execute("apply", {settings: root.draft, revision: root.revision});
+            root.pump();
         }
     }
     Timer {
         id: previewTimer
-        interval: 220
-        onTriggered: {
-            if (root.busy) restart();
-            else root.execute("preview", root.draft);
-        }
+        interval: 250
+        onTriggered: root.request("preview", root.draft)
     }
-    Component.onCompleted: execute("status")
+    Component.onCompleted: request("status")
+
     ImagePicker {
         id: cursorPicker
         rootObj: root.rootObj
         titleText: qsTr("Choose cursor image or animation")
         nameFilters: ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif", "*.bmp", "*.cur", "*.ani", "*.ico", "*.xcursor", "*.cursor"]
-        onImageSelected: (path, name) => root.execute("import", path)
+        // Remember the role at request time: the selection may change while importing.
+        onImageSelected: (path, name) => root.request("import", path, root.selectedRole)
     }
     ImagePicker {
         id: themePicker
@@ -166,101 +206,84 @@ ColumnLayout {
         titleText: qsTr("Import cursor theme")
         nameFilters: ["*.zip", "*.tar", "*.tar.gz", "*.tgz", "*.tar.xz", "*.tar.bz2"]
         showPreview: false
-        onImageSelected: (path, name) => root.execute("install", path)
+        onImageSelected: (path, name) => root.request("install", path)
     }
+
+    spacing: rootObj.s(8)
+
     SettingsGroup {
         rootObj: root.rootObj
         title: qsTr("Cursors"); icon: "󰍽"; wrapText: true
-        description: root.error || root.notice || qsTr("Theme, size, icons and cursor behaviour")
+        description: root.status
         ClickButton {
-            buttonText: root.busy ? qsTr("Working…") : qsTr("Apply")
-            visible: root.dirty
-            enabled: root.loaded && !root.busy && !previewTimer.running
+            buttonText: qsTr("Reload")
+            visible: root.conflict
+            accentColor: ThemeBackend.surface1; textColor: ThemeBackend.text
+            onTriggered: root.discard()
+        }
+        ClickButton {
+            buttonText: qsTr("Discard")
+            visible: root.dirty && !root.conflict
+            enabled: !root.applying
+            accentColor: ThemeBackend.surface1; textColor: ThemeBackend.text
+            onTriggered: root.discard()
+        }
+        ClickButton {
+            buttonText: root.applying ? qsTr("Applying…") : qsTr("Apply")
+            visible: root.dirty && !root.conflict
+            enabled: root.editable
             accentColor: ThemeBackend.mauve; textColor: ThemeBackend.crust
-            onTriggered: root.execute("apply", {settings: root.draft, revision: root.revision})
+            onTriggered: root.apply()
         }
         subSettings: [
             SettingsRow {
-                rootObj: root.rootObj; settingId: "addons_custom_cursor"; searchTab: "addons"
-                title: qsTr("Custom cursor"); icon: "󰆹"; wrapText: true
-                searchKeywords: "cursor pointer theme image animation size hotspot souris curseur thème taille point clic"
-                description: qsTr("Choose an image for this role. It is applied immediately over the selected theme.")
-                RowLayout {
-                    spacing: root.rootObj.s(12)
-                    ColumnLayout {
-                        spacing: root.rootObj.s(8)
-                        ClickButton {
-                            Layout.alignment: Qt.AlignRight
-                            buttonText: qsTr("Select"); buttonIcon: "󰉋"
-                            implicitHeight: root.rootObj.s(32)
-                            accentColor: ThemeBackend.mauve; textColor: ThemeBackend.crust
-                            enabled: root.loaded && !root.busy
-                            onTriggered: cursorPicker.openPicker(root.selectedPath)
-                        }
-                        Dropdown {
-                            Layout.preferredWidth: root.rootObj.s(280)
-                            implicitHeight: root.rootObj.s(32)
-                            options: root.selectedPath ? [root.selectedPath] : []
-                            currentIndex: 0
-                            placeholderText: qsTr("Choose an image for this role…")
-                            isPathSelector: true; fuzzySearch: true
-                            enabled: root.loaded && !root.busy
-                            accentColor: ThemeBackend.mauve; baseColor: ThemeBackend.surface0
-                            textColor: ThemeBackend.text; fontPixelSize: root.rootObj.s(11)
-                            onSelected: (index, value) => { if (value && value !== root.selectedPath) root.execute("import", value); }
-                        }
-                    }
-                    AddonCursorPreview {
-                        Layout.preferredWidth: root.rootObj.s(72)
-                        Layout.preferredHeight: root.rootObj.s(72)
-                        cursorInfo: root.currentRole
-                    }
-                }
-            },
-            SettingsRow {
                 rootObj: root.rootObj; settingId: "addons_cursor_theme"; searchTab: "addons"
-                title: qsTr("Cursor theme"); icon: "󰏘"; wrapText: true
-                description: qsTr("Select and apply a complete theme immediately. Replaces current icon and click-point customisations.")
+                title: qsTr("Theme"); icon: "󰏘"; wrapText: true
+                searchKeywords: "cursor theme import curseur thème pointer souris"
+                description: qsTr("The base set of pointers. Your custom images below stay on top of it.")
                 Dropdown {
                     Layout.preferredWidth: root.rootObj.s(240)
                     options: root.themes.map(theme => theme.name)
                     currentIndex: root.themes.findIndex(theme => theme.id === root.draft.baseTheme)
-                    enabled: root.loaded && !root.busy
+                    enabled: root.editable
                     fuzzySearch: true
                     accentColor: ThemeBackend.mauve; baseColor: ThemeBackend.surface0; textColor: ThemeBackend.text
-                    onSelected: (index, value) => { if (index >= 0 && root.themes[index].id !== root.draft.baseTheme) root.selectTheme(root.themes[index].id); }
+                    onSelected: (index, value) => {
+                        if (index >= 0 && root.themes[index].id !== root.draft.baseTheme) root.setTheme(root.themes[index].id);
+                    }
                 }
                 ClickButton {
-                    buttonText: qsTr("Import theme"); buttonIcon: "󰉋"
-                    enabled: !root.busy
+                    buttonText: qsTr("Import…"); buttonIcon: "󰉋"
+                    enabled: root.editable
                     accentColor: ThemeBackend.surface1; textColor: ThemeBackend.text
                     onTriggered: themePicker.openPicker(Quickshell.env("HOME") + "/Downloads")
                 }
             },
             SettingsRow {
                 rootObj: root.rootObj; settingId: "addons_cursor_size"; searchTab: "addons"
-                title: qsTr("Cursor size"); icon: "󰩨"
-                description: qsTr("%1 px · multiple resolutions for scaled displays").arg(root.draft.size)
+                title: qsTr("Size"); icon: "󰩨"; wrapText: true
+                searchKeywords: "cursor size taille curseur"
+                description: qsTr("%1 px · sharp on scaled displays").arg(root.draft.size)
                 Draggable {
                     Layout.preferredWidth: root.rootObj.s(220)
                     implicitHeight: root.rootObj.s(18)
                     from: 16; to: 128; stepSize: 1
                     value: root.draft.size
-                    enabled: root.loaded && (!root.busy || isDragging)
+                    enabled: root.editable
                     showValueBubble: true
                     valueFormatter: value => Math.round(value) + " px"
                     backgroundColor: ThemeBackend.surface0; accentColor: ThemeBackend.mauve
                     handleColor: ThemeBackend.text; handleBorderColor: ThemeBackend.mantle
-                    onMoved: value => root.change("size", Math.round(value))
+                    onMoved: value => root.setSize(value)
                 }
             },
             SettingsRow {
                 rootObj: root.rootObj; settingId: "addons_cursor_normal_only"; searchTab: "addons"
-                title: qsTr("Use Normal select for every cursor"); icon: "󰍽"; wrapText: true
+                title: qsTr("Same pointer everywhere"); icon: "󰍽"; wrapText: true
                 searchKeywords: "cursor normal select all same pointer curseur identique unique tous"
-                description: qsTr("Immediately use the Normal select icon, animation and click point for every role. Turning this off restores your other role customisations.")
+                description: qsTr("Use the Normal select pointer in every situation. Your other customisations are kept for when you turn this off.")
                 Toggle {
-                    enabled: root.loaded && !root.busy
+                    enabled: root.editable
                     checked: root.draft.normalOnly === true
                     accentColor: ThemeBackend.mauve
                     onToggled: value => {
@@ -270,45 +293,54 @@ ColumnLayout {
                 }
             },
             SettingsRow {
-                rootObj: root.rootObj; settingId: "addons_cursor_reset_icons"; searchTab: "addons"
-                title: qsTr("Default cursor icons"); icon: "󰑐"; wrapText: true
-                searchKeywords: "cursor reset restore default icons curseur réinitialiser défaut icônes"
-                description: qsTr("Restore and apply all icons and click points from the selected base theme immediately. The cursor size is kept.")
-                ClickButton {
-                    buttonText: qsTr("Restore default icons")
-                    enabled: root.loaded && !root.busy
-                    accentColor: ThemeBackend.surface1; textColor: ThemeBackend.text
-                    onTriggered: root.resetIcons()
-                }
-            },
-            SettingsRow {
                 rootObj: root.rootObj; settingId: "addons_cursor_role"; searchTab: "addons"
-                title: qsTr("Cursor role"); icon: "󰍽"; wrapText: true
-                description: root.draft.normalOnly ? qsTr("Every cursor uses Normal select. Turn off the toggle above to edit other roles.") : qsTr("Normal, links, text, busy, resizing and drag and drop pointers.")
-                Dropdown {
-                    Layout.preferredWidth: root.rootObj.s(300)
-                    options: root.roleNames
-                    currentIndex: root.roleIndex
-                    enabled: root.loaded && !root.busy && !root.draft.normalOnly
-                    fuzzySearch: true
-                    accentColor: ThemeBackend.mauve; baseColor: ThemeBackend.surface0; textColor: ThemeBackend.text
-                    onSelected: (index, value) => { if (index >= 0) root.selectedRole = root.roleIds[index]; }
+                title: qsTr("Pointer shapes"); icon: "󰐙"; wrapText: true
+                searchKeywords: "cursor role icon image custom pointer hotspot curseur icône image personnalisé"
+                description: root.draft.normalOnly
+                    ? qsTr("Every pointer currently uses Normal select. Turn off “Same pointer everywhere” to edit the others.")
+                    : qsTr("Pick a shape to preview or replace it. A dot marks shapes you customised (%1).").arg(root.customCount)
+                ClickButton {
+                    buttonText: qsTr("Restore defaults")
+                    enabled: root.editable && (root.customCount > 0 || root.draft.normalOnly)
+                    accentColor: ThemeBackend.surface1; textColor: ThemeBackend.text
+                    onTriggered: root.resetAll()
                 }
                 bottomContent: [
-                    RowLayout {
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: root.rootObj.s(8)
+                        spacing: root.rootObj.s(10)
                         Repeater {
-                            model: ["left_ptr", "pointer", "text", "wait", "progress", "move", "ew-resize", "not-allowed"]
-                            delegate: AddonCursorRole {
-                                required property string modelData
+                            model: root.groups
+                            delegate: ColumnLayout {
+                                id: group
+                                required property var modelData
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: root.rootObj.s(72)
-                                cursorInfo: root.roles.find(entry => entry.id === modelData) || ({preview: ""})
-                                label: root.roleNames[root.roleIds.indexOf(modelData)]
-                                selected: root.selectedRole === modelData
-                                enabled: root.loaded && !root.busy && !root.draft.normalOnly
-                                onClicked: root.selectedRole = modelData
+                                spacing: root.rootObj.s(6)
+                                Text {
+                                    text: group.modelData.title
+                                    color: ThemeBackend.subtext0
+                                    font.family: ThemeBackend.fontFamily; font.pixelSize: root.rootObj.s(11); font.bold: true
+                                }
+                                GridLayout {
+                                    Layout.fillWidth: true
+                                    columns: root.columns
+                                    rowSpacing: root.rootObj.s(6); columnSpacing: root.rootObj.s(6)
+                                    Repeater {
+                                        model: group.modelData.ids
+                                        delegate: AddonCursorRole {
+                                            required property string modelData
+                                            Layout.fillWidth: true
+                                            Layout.preferredWidth: 1
+                                            Layout.preferredHeight: root.rootObj.s(76)
+                                            cursorInfo: root.roleInfo(modelData)
+                                            label: root.roleName(modelData)
+                                            selected: root.selectedRole === modelData
+                                            customized: !!(root.draft.roles && root.draft.roles[modelData])
+                                            enabled: root.editable && !root.draft.normalOnly
+                                            onClicked: root.selectedRole = modelData
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -316,17 +348,20 @@ ColumnLayout {
             },
             SettingsRow {
                 rootObj: root.rootObj; settingId: "addons_cursor_hotspot"; searchTab: "addons"
-                title: root.roleNames[root.roleIndex]; icon: "󰐙"; wrapText: true
-                description: root.draft.roles[root.selectedRole] ? qsTr("Custom · %1").arg(root.draft.roles[root.selectedRole].name || "") : qsTr("From base theme")
+                title: root.roleName(root.selectedRole); icon: "󰆹"; wrapText: true
+                searchKeywords: "cursor image hotspot click point curseur point de clic"
+                description: root.customRole
+                    ? qsTr("Custom · %1").arg(root.customRole.name || "")
+                    : qsTr("From the base theme")
                 ClickButton {
-                    buttonText: qsTr("Browse…"); buttonIcon: "󰉋"
-                    enabled: root.loaded && !root.busy
-                    accentColor: ThemeBackend.surface1; textColor: ThemeBackend.text
+                    buttonText: qsTr("Choose image…"); buttonIcon: "󰉋"
+                    enabled: root.editable && !root.draft.normalOnly
+                    accentColor: ThemeBackend.mauve; textColor: ThemeBackend.crust
                     onTriggered: cursorPicker.openPicker(root.selectedPath)
                 }
                 ClickButton {
-                    buttonText: qsTr("Reset role")
-                    enabled: !!root.draft.roles[root.selectedRole] && !root.busy
+                    buttonText: qsTr("Reset")
+                    enabled: root.editable && !!root.customRole
                     accentColor: ThemeBackend.surface1; textColor: ThemeBackend.text
                     onTriggered: root.resetRole()
                 }
@@ -335,23 +370,25 @@ ColumnLayout {
                         Layout.fillWidth: true
                         spacing: root.rootObj.s(20)
                         AddonCursorPreview {
-                            Layout.preferredWidth: root.rootObj.s(128)
-                            Layout.preferredHeight: root.rootObj.s(128)
+                            Layout.preferredWidth: root.rootObj.s(140)
+                            Layout.preferredHeight: root.rootObj.s(140)
                             cursorInfo: root.currentRole
-                            editable: root.loaded
+                            editable: root.editable && !root.draft.normalOnly
                             onPointSelected: (x, y) => root.setPoint(x, y)
                         }
                         ColumnLayout {
                             Layout.fillWidth: true
+                            spacing: root.rootObj.s(6)
                             Text {
                                 Layout.fillWidth: true
-                                text: qsTr("Click the preview to set the exact click point. Arrow keys move it one image pixel at a time.")
+                                text: qsTr("The crosshair is the click point — where the pointer actually clicks. Click the preview to move it, or use the arrow keys for pixel-perfect placement.")
                                 wrapMode: Text.WordWrap
                                 color: ThemeBackend.subtext0
                                 font.family: ThemeBackend.fontFamily; font.pixelSize: root.rootObj.s(11)
                             }
                             Text {
-                                text: qsTr("Click point: %1, %2 · %3 × %4 · %5 frame(s)")
+                                visible: root.currentRole.width > 0
+                                text: qsTr("Click point %1, %2  ·  %3 × %4 px  ·  %5 frame(s)")
                                     .arg(Math.round(root.currentRole.hotspot[0] * Math.max(0, root.currentRole.width - 1)))
                                     .arg(Math.round(root.currentRole.hotspot[1] * Math.max(0, root.currentRole.height - 1)))
                                     .arg(root.currentRole.width).arg(root.currentRole.height).arg(root.currentRole.frames)
@@ -364,27 +401,14 @@ ColumnLayout {
             },
             AddonCursorTestArea { rootObj: root.rootObj; Layout.fillWidth: true },
             SettingsRow {
-                rootObj: root.rootObj; settingId: "addons_cursor_apply"; searchTab: "addons"
-                title: root.dirty ? qsTr("Unsaved cursor changes") : qsTr("Cursor settings")
-                description: qsTr("Applies to Hyprland, GTK, Qt, XWayland and Flatpak. Applications that draw their own pointer may use a different cursor.")
-                icon: "󰆓"; wrapText: true
+                rootObj: root.rootObj; settingId: "addons_cursor_export"; searchTab: "addons"
+                title: qsTr("Share this scheme"); icon: "󰆓"; wrapText: true
+                description: qsTr("Applies to Hyprland, GTK, Qt, XWayland and Flatpak. Applications that draw their own pointer may differ.")
                 ClickButton {
                     buttonText: qsTr("Export scheme")
-                    enabled: root.loaded && !root.busy && !previewTimer.running
+                    enabled: root.editable && !root.working
                     accentColor: ThemeBackend.surface1; textColor: ThemeBackend.text
-                    onTriggered: root.execute("export", root.draft)
-                }
-                ClickButton {
-                    buttonText: qsTr("Discard")
-                    enabled: root.dirty && !root.busy
-                    accentColor: ThemeBackend.surface1; textColor: ThemeBackend.text
-                    onTriggered: { previewTimer.stop(); root.execute("status"); }
-                }
-                ClickButton {
-                    buttonText: root.busy ? qsTr("Working…") : qsTr("Apply")
-                    enabled: root.loaded && !root.busy && !previewTimer.running
-                    accentColor: ThemeBackend.mauve; textColor: ThemeBackend.crust
-                    onTriggered: root.execute("apply", {settings: root.draft, revision: root.revision})
+                    onTriggered: root.request("export", root.draft)
                 }
             }
         ]

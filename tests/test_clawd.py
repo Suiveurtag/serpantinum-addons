@@ -26,7 +26,7 @@ ANIMATIONS = ['idle', 'blink', 'look_left', 'look_right', 'look_up', 'walk', 'tu
               'think', 'work', 'oops', 'alert', 'happy', 'petpet', 'petpetheart',
               'read', 'bash', 'search', 'web', 'task', 'todo', 'compact', 'startled',
               'edit', 'edit_2', 'work_2', 'read_2', 'bash_2', 'search_2', 'web_2', 'task_2', 'todo_2', 'think_2', 'happy_2',
-              'celebrate', 'sweat', 'coin', 'sad', 'wave', 'explode',
+              'celebrate', 'sweat', 'coin', 'sad', 'wave', 'work_3', 'work_4', 'work_5', 'edit_3', 'read_3', 'bash_3', 'search_3', 'web_3', 'task_3', 'todo_3', 'explode',
               'perch', 'perch_look', 'hop', 'stumble', 'teeter', 'peek', 'nuke', 'dead', 'dead_land', 'revive', 'tada', 'recharge', 'conduct', 'surge',
               'climb', 'climb_top', 'hang', 'shimmy', 'swing', 'drop', 'dance', 'dance_2', 'shush', 'drowsy', 'exhausted', 'umbrella', 'shiver', 'chime', 'vibe', 'twirl', 'wiggle', 'breakdance', 'talk',
               'sleep_blanket_in', 'sleep_blanket', 'sleep_roll', 'sleep_blanket_roll', 'sleep_blanket_out', 'sleep_jolt', 'wake_groggy', 'sleep_walk']
@@ -219,7 +219,7 @@ class ClawdSpriteTests(unittest.TestCase):
                         self.assertLessEqual({c for _, c in image.getcolors(image.width * image.height)}, BLAST if name == 'explode' else LIMIT if name in ('nuke', 'dead', 'dead_land', 'revive', 'tada', 'recharge', 'conduct', 'surge') else SLEEPY if name in SLEEPY_CLIPS else PALETTE)
         self.assertEqual({n for n, c in manifest['animations'].items() if c['loop']}, {'idle', 'walk', 'sit', 'sleep', 'drag', 'fall', 'work', 'alert', 'petpet', 'petpetheart',
                                                                                                'read', 'bash', 'search', 'web', 'task', 'todo',
-                                                                                               'edit', 'edit_2', 'work_2', 'read_2', 'bash_2', 'search_2', 'web_2', 'task_2', 'todo_2', 'sweat',
+                                                                                               'edit', 'edit_2', 'work_2', 'work_3', 'work_4', 'work_5', 'edit_3', 'read_3', 'bash_3', 'search_3', 'web_3', 'task_3', 'todo_3', 'read_2', 'bash_2', 'search_2', 'web_2', 'task_2', 'todo_2', 'sweat',
                                                                                                'perch', 'teeter', 'peek', 'dead',
                                                                                                'climb', 'hang', 'shimmy', 'swing', 'dance', 'dance_2', 'drowsy', 'exhausted', 'umbrella', 'shiver', 'vibe', 'twirl', 'wiggle', 'breakdance',
                                                                                                'book_idle', 'bike_ride', 'broom_fly', 'boat_idle', 'boat_row', 'boat_fish_wait', 'carry_walk',

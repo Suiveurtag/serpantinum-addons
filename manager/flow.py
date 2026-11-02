@@ -429,7 +429,7 @@ def update_source(ctx, pre) -> bool:
                    f"Delete {DR.tilde(src)} and run the one-line install command again.")
     if out.strip():
         raise Fail("The source checkout has local changes", DR.tilde(last_lines(out)),
-                   f"Reset it: git -C {DR.tilde(src)} reset --hard && git -C {DR.tilde(src)} clean -fd")
+                   f"Keep the changes: git -C {DR.tilde(src)} stash push -u (restore later with git stash pop). Or discard them: git -C {DR.tilde(src)} reset --hard && git -C {DR.tilde(src)} clean -fd")
     rc, out = ctx.step_run("Fetching releases", ["git", "-C", str(src), "fetch", "--tags", "--prune"])
     if rc != 0:
         raise Fail("Could not fetch the releases", DR.tilde(last_lines(out)) or "git fetch failed.",

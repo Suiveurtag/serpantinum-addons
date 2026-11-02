@@ -292,6 +292,28 @@ Item {
                                     onToggled: { Config.setSetting("addonsV2TokensLlamaCpp", checked); }
                                 }
                             }
+                            // Separator: the account scope is a setting about Codex, not a fifth provider.
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 1
+                                color: Qt.rgba(ThemeBackend.surface2.r, ThemeBackend.surface2.g, ThemeBackend.surface2.b, 0.5)
+                            }
+                            SettingsRow {
+                                rootObj: root.rootObj; settingId: "addons_tokens_codex_scope"; searchTab: "addons"; searchKeywords: "codex account compte total local ce pc this pc device appareil sync synchro"
+                                icon: "󰓅"
+                                title: "Codex account total"
+                                description: Config.getSetting("addonsV2TokensCodexAccount", true)
+                                    ? "On: lifetime total of your Codex account, all devices (synced)."
+                                    : "Off: only the tokens run on this PC."
+                                wrapText: true
+                                opacity: tokensSources.stagger(4)
+                                transform: Translate { y: rootObj.s(-8) * (1 - tokensSources.stagger(4)) }
+                                Toggle {
+                                    checked: Config.getSetting("addonsV2TokensCodexAccount", true)
+                                    accentColor: ThemeBackend.mauve
+                                    onToggled: { Config.setSetting("addonsV2TokensCodexAccount", checked); }
+                                }
+                            }
                         }
                     }
                 }

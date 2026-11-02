@@ -38,7 +38,7 @@ quickshell -p … ipc call clawd state       # debug: JSON of his mode, support,
 `look_left`, `look_right`, `look_up`, `walk`, `turn`, `sit`, `sleep`, `drag`,
 `fall`, `land`, `spawn`, `think`, `work`, `oops`, `alert`, `happy`, `petpet`, `petpetheart`,
 `read`, `bash`, `search`, `web`, `task`, `todo`, `compact`, `startled`, `edit`, `edit_2`, `work_2`, `read_2`,
-`bash_2`, `search_2`, `web_2`, `task_2`, `todo_2`, `think_2`, `happy_2`, `celebrate`, `sweat`, `coin`, `sad`, `wave`,
+`bash_2`, `search_2`, `web_2`, `task_2`, `todo_2`, `work_3`…`work_5`, `edit_3`, `read_3`, `bash_3`, `search_3`, `web_3`, `task_3`, `todo_3`, `think_2`, `happy_2`, `celebrate`, `sweat`, `coin`, `sad`, `wave`,
 `explode`, `perch`, `perch_look`, `hop`, `stumble`, `teeter`, `peek`, `nuke`, `dead`, `dead_land`, `revive`, `tada`, ...; 59 in all); loops play
 for about 3 s, then normal behaviour resumes. Scenes: `play explode` previews the singularity (about 37 s), `play nuke` the nuclear
 variant (about 20 s), `play limit` either at random (Escape skips to the end; both leave him dead); `play surge` the superpowered
@@ -132,19 +132,19 @@ head in `full` thoughts mode, and stay in memory in the shell only (never writte
 | Stats: 5-hour / 7-day limit reaches 100 % | nuke or blue screen / kernel panic, 50/50 for 5 h (then dead); singularity or surge, at random for 7 days |
 
 While working he plays the loop of the last tool used by the lead session (the working
-session that moved last), picking at random between the loop and its `_2` variant each time
+session that moved last), picking at random between the loop and its variants (`_2`, `_3`…) each time
 the tool family changes, and switching variant every 8–12 s:
 
 | Tool | Loop |
 | --- | --- |
-| `Read`, `NotebookRead`, `view_image` | `read` (book) / `read_2` (scroll unrolling) |
-| `Edit`, `Write`, `MultiEdit`, `NotebookEdit`, `apply_patch` | `edit` (pencil on a notepad) / `edit_2` (sheet held up, diff lines) |
-| `Bash`, `BashOutput`, `KillShell`, `exec_command`, `write_stdin`, `shell`, `local_shell` | `bash` (terminal above his head) / `bash_2` (output scrolling) |
-| `Grep`, `Glob`, `LS`, `ToolSearch` | `search` (magnifier) / `search_2` (crouched, scanning the ground) |
-| `WebFetch`, `WebSearch`, `web_search` | `web` (globe) / `web_2` (antenna with signal waves) |
-| `Task`, `Agent`, `spawn_agent` | `task` (a mini Clawd) / `task_2` (two mini Clawds hopping) |
-| `TodoWrite`, `update_plan` | `todo` (checklist) / `todo_2` (ticking boxes) |
-| anything else (MCP…) | `work` (keyboard) / `work_2` (fast two-hand typing) |
+| `Read`, `NotebookRead`, `view_image` | `read` (book) / `read_2` (scroll unrolling) / `read_3` (pages flying out of the book) |
+| `Edit`, `Write`, `MultiEdit`, `NotebookEdit`, `apply_patch` | `edit` (pencil on a notepad) / `edit_2` (sheet held up, diff lines) / `edit_3` (hammer and chisel on a block, chips flying) |
+| `Bash`, `BashOutput`, `KillShell`, `exec_command`, `write_stdin`, `shell`, `local_shell` | `bash` (terminal above his head) / `bash_2` (output scrolling) / `bash_3` (a progress bar filling above his head) |
+| `Grep`, `Glob`, `LS`, `ToolSearch` | `search` (magnifier) / `search_2` (crouched, scanning the ground) / `search_3` (binoculars sweeping left and right) |
+| `WebFetch`, `WebSearch`, `web_search` | `web` (globe) / `web_2` (antenna with signal waves) / `web_3` (paper planes taking off) |
+| `Task`, `Agent`, `spawn_agent` | `task` (a mini Clawd) / `task_2` (two mini Clawds hopping) / `task_3` (shouting orders through a megaphone) |
+| `TodoWrite`, `update_plan` | `todo` (checklist) / `todo_2` (ticking boxes) / `todo_3` (kanban cards sliding to done) |
+| anything else (MCP…) | `work` (keyboard) / `work_2` (fast two-hand typing) / `work_3` (juggling) / `work_4` (coffee break) / `work_5` (meshing gears) |
 
 Hooks fired inside a sub-agent do not override the lead thread's tool while it is busy; once the lead thread
 has been quiet for 5 s (typically waiting on the sub-agent), Clawd plays the sub-agent's tool instead. A

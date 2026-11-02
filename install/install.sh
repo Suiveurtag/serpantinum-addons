@@ -188,7 +188,7 @@ else
     if [ -n "$(git -C "$SRC" status --porcelain 2>/dev/null)" ]; then
         fail "The source checkout has local modifications" \
             "$(tilde "$SRC") contains changes that an update would overwrite." \
-            "Discard them: git -C $(tilde "$SRC") reset --hard && git -C $(tilde "$SRC") clean -fd"
+            "Keep them: git -C $(tilde "$SRC") stash push -u (restore later with git stash pop), or discard them: git -C $(tilde "$SRC") reset --hard && git -C $(tilde "$SRC") clean -fd"
     fi
     git -C "$SRC" fetch --quiet --tags --prune origin ||
         fail "Could not fetch updates" "git fetch failed." "Check your connection and retry"

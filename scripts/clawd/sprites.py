@@ -52,6 +52,9 @@ ANIMS = {
     'edit': (5, True), 'edit_2': (5, True), 'work_2': (8, True), 'read_2': (4, True), 'bash_2': (5, True), 'search_2': (4, True),
     'web_2': (4, True), 'task_2': (6, True), 'todo_2': (3, True), 'think_2': (6, False), 'happy_2': (10, False),
     'celebrate': (10, False), 'sweat': (4, True), 'coin': (10, False), 'sad': (4, False), 'wave': (8, False),
+    # lot 8: a third (and more) variant per working loop, picked at random by Clawd.variant / ClawdPet.shuffle
+    'work_3': (6, True), 'work_4': (4, True), 'work_5': (6, True), 'edit_3': (5, True), 'read_3': (4, True),
+    'bash_3': (5, True), 'search_3': (5, True), 'web_3': (5, True), 'task_3': (5, True), 'todo_3': (4, True),
     # lot 5a: windows and ledges (perch grip = the seat line, his legs dangle below it), hopping, tripping, peeking out
     'explode': (10, False), 'perch': (2, True, (10.5, 12)), 'perch_look': (2, False, (10.5, 12)), 'hop': (12, False), 'stumble': (10, False),
     'teeter': (6, True), 'peek': (4, True),

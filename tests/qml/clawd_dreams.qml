@@ -60,7 +60,7 @@ ShellRoot {
                 p.openDream();
                 expect(p.mode === "dream" && p.dreamPhase === "view" && p.asleep, "the click opens the dream");
                 expect(Clawd.dreams.seen.surf.n === 1 && Clawd.dreams.log.length === 1 && Clawd.dreams.log[0].id === "surf", "it joins his collection");
-                expect(Clawd.dreamBook.filter(d => d.seen).length === 1 && Clawd.dreamBook.length === 2, "the book: 1/2");
+                expect(Clawd.dreamBook.filter(d => d.seen).length === 1 && Clawd.dreamBook.length === 5, "the book: 1/5");
                 break;
             case 7:
                 if (!wait(ov.dreamScene.visible && ov.dreamScene.t > 0, "the overlay plays the dream")) break;

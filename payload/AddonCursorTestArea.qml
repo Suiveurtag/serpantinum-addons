@@ -47,22 +47,22 @@ SettingsRow {
                 }
             }
         },
-        AddonGlassSurface {
+        Input {
             Layout.fillWidth: true
             Layout.preferredHeight: root.rootObj.s(40)
-            radius: ThemeBackend.borderRadius
-            surfaceColor: ThemeBackend.surface0
-            TextInput {
-                anchors.fill: parent
-                anchors.margins: root.rootObj.s(10)
-                text: qsTr("Select this text to try the text cursor")
-                readOnly: true; selectByMouse: true; activeFocusOnTab: true
-                color: ThemeBackend.text
-                selectionColor: ThemeBackend.mauve
-                font.family: ThemeBackend.fontFamily; font.pixelSize: root.rootObj.s(11)
-                Accessible.role: Accessible.EditableText
-                Accessible.name: qsTr("Text cursor test")
-            }
+            text: qsTr("Select this text to try the text cursor")
+            placeholderText: qsTr("Type here to try the text cursor")
+            showClearButton: true
+            baseColor: ThemeBackend.surface0; textColor: ThemeBackend.text
+            accentColor: ThemeBackend.mauve; borderColor: ThemeBackend.surface2
+        },
+        Input {
+            Layout.fillWidth: true
+            Layout.preferredHeight: root.rootObj.s(72)
+            multiLine: true
+            placeholderText: qsTr("Multi-line text area")
+            baseColor: ThemeBackend.surface0; textColor: ThemeBackend.text
+            accentColor: ThemeBackend.mauve; borderColor: ThemeBackend.surface2
         }
     ]
 }

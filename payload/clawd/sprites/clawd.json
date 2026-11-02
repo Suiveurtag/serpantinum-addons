@@ -268,6 +268,66 @@
       "fps": 8,
       "loop": false
     },
+    "work_3": {
+      "file": "work_3.png",
+      "frames": 6,
+      "fps": 6,
+      "loop": true
+    },
+    "work_4": {
+      "file": "work_4.png",
+      "frames": 4,
+      "fps": 4,
+      "loop": true
+    },
+    "work_5": {
+      "file": "work_5.png",
+      "frames": 4,
+      "fps": 6,
+      "loop": true
+    },
+    "edit_3": {
+      "file": "edit_3.png",
+      "frames": 4,
+      "fps": 5,
+      "loop": true
+    },
+    "read_3": {
+      "file": "read_3.png",
+      "frames": 4,
+      "fps": 4,
+      "loop": true
+    },
+    "bash_3": {
+      "file": "bash_3.png",
+      "frames": 6,
+      "fps": 5,
+      "loop": true
+    },
+    "search_3": {
+      "file": "search_3.png",
+      "frames": 6,
+      "fps": 5,
+      "loop": true
+    },
+    "web_3": {
+      "file": "web_3.png",
+      "frames": 5,
+      "fps": 5,
+      "loop": true
+    },
+    "task_3": {
+      "file": "task_3.png",
+      "frames": 4,
+      "fps": 5,
+      "loop": true
+    },
+    "todo_3": {
+      "file": "todo_3.png",
+      "frames": 7,
+      "fps": 4,
+      "loop": true
+    },
     "explode": {
       "file": "explode.png",
       "frames": 12,

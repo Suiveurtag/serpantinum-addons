@@ -9,7 +9,7 @@ import "js/dreams.mjs" as Dreams
 
 // Clawd himself, in global logical pixels: x/y is his top-left corner, every ClawdOverlay draws him from here.
 // mode: spawn, idle, walk, turn, sit, sleep, drag, fall, land, play, work (an agent session is busy: Clawd.activity,
-// playing Clawd.workAnim, the loop of the last tool used, or its "_2" variant; "sweat" now and then when strained),
+// playing Clawd.workAnim, the loop of the last tool used, or one of its "_2", "_3"... variants; "sweat" now and then when strained),
 // perch (resting on a window top), hop (a parabolic jump), react (a one-shot that returns to his resting pose),
 // teeter (at the end of a window top), peek (2/3 hidden behind a window: cover), explode (frozen inside a limit scene),
 // corpse (his corpse falling back after it), dead (lying there, grey and smoking: nothing moves him), revive (ClawdRevive),
@@ -119,7 +119,7 @@ Item {
 
     // Working loops that have a variant, and how fast his hands go (the lead session's effort).
     readonly property var families: ["work", "edit", "read", "bash", "search", "web", "task", "todo"]
-    readonly property real speed: mode === "dance" ? beat : mode === "work" && families.indexOf(animation.replace(/_2$/, "")) >= 0 ? Clawd.effortSpeed : 1
+    readonly property real speed: mode === "dance" ? beat : mode === "work" && families.indexOf(animation.replace(/_\d+$/, "")) >= 0 ? Clawd.effortSpeed : 1
 
     function display(name) { return displays.find(d => d.id === name) || null; }
     function displayAt(gx, gy) { return World.displayAt(displays, gx, gy); }
@@ -1266,10 +1266,12 @@ Item {
     // Every 8-12 s at work: the other variant of the loop, or a sweat break when the lead session is strained.
     function shuffle() {
         if (mode !== "work" || Clawd.activity !== "work" || !Clawd.manifest) return;
-        const fam = Clawd.workAnim, two = fam + "_2";
+        const fam = Clawd.workAnim, all = Clawd.variants(fam);
         if (Clawd.strained && animation !== "sweat" && Clawd.roll() < 1 / 3 && Clawd.manifest.animations.sweat) enter("work", "sweat");
-        else if (Clawd.manifest.animations[two]) enter("work", animation === fam ? two : animation === two ? fam : Clawd.variant(fam));
-        else if (animation !== fam) enter("work", fam);
+        else if (all.length > 1) {  // never the one already playing
+            const others = all.filter(a => a !== animation);
+            enter("work", Clawd.pick(others));
+        } else if (animation !== fam) enter("work", fam);
     }
     // The single click, 250 ms late (a double-click cancels it): the journal.
     function singleClick() {

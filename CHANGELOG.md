@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.1.2] - 2026-11-02
+
+### Added
+- Clawd nightmares: "Ouroboros" (a serpent biting its tail, endless nested rings), "Blue screen" (Windows 10) and "Kernel panic" (Linux console, then the blue panic screen with Tux and a QR code).
+- The 5-hour limit plays the nuke or a crash screen (a blue screen or a kernel panic), 50/50; `play bsod`, `play panic`, `play crash` and `play limit5` preview them.
+- Clawd working loops: a third variant (and more) per tool family (`work_3`…`work_5`, `edit_3`, `read_3`, `bash_3`, `search_3`, `web_3`, `task_3`, `todo_3`), picked at random and never the one already playing.
+- AI Tokens: a "Codex account total" setting (Addons → Tokens): the account's lifetime total across devices, or only the tokens run on this PC.
+
+### Changed
+- Custom cursor settings page reworked.
+- The update error for a modified source checkout now suggests `git stash push -u` (keeps your changes) before the destructive reset.
+
 ## [2.1.1] - 2026-11-02
 
 ### Fixed

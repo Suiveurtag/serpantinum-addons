@@ -68,6 +68,14 @@ def option_enabled(source):
         return default
 
 
+def account_scope():
+    """Codex total scope: True = the account's lifetime total (every device, synced), False = only the tokens run on this PC."""
+    try:
+        return json.loads(SETTINGS.read_text()).get('addonsV2TokensCodexAccount', True) is not False
+    except (OSError, ValueError, AttributeError):
+        return True
+
+
 def llama_url():
     """Where llama-server answers: the URL set in the Addons settings, else TOKENS_LLAMACPP_URL, else 127.0.0.1:8080."""
     try:
@@ -386,8 +394,8 @@ class Collector:
 
     # ---- account ----
     def sync(self):
-        if not self.enabled.get('codex'):
-            return
+        if not self.enabled.get('codex') or not account_scope():
+            return                 # this PC only: the account is not needed
         self.sync_at = time.time()
         try:
             result = account_usage()
@@ -426,7 +434,10 @@ class Collector:
         local = dict(self.db.execute('SELECT day, tokens FROM codex_day'))
         acct = self.db.execute('SELECT lifetime, buckets, synced FROM account').fetchone()
         codex = {'local': sum(local.values()), 'local_since': min(local, default=None)}
-        if acct:
+        if not account_scope():
+            # This PC only: the local rollouts are the whole total, the account baseline is ignored.
+            codex.update(total=codex['local'], account=None, pending=None, synced=None, status='local')
+        elif acct:
             buckets = json.loads(acct[1])
             pending = sum(max(0, t - buckets.get(d, 0)) for d, t in local.items())
             codex.update(total=acct[0] + pending, account=acct[0], pending=pending, synced=acct[2],
@@ -459,7 +470,7 @@ class Collector:
         # Manual lifetime correction for historical usage that was not imported
         # from any source transcript/account snapshot.
         total = codex_total + claude_total + sum(source['total'] for source in sources.values())
-        complete = codex['status'] in ('ok', 'off') and claude['status'] != 'missing' and not any(source['status'] == 'error' for source in sources.values())
+        complete = codex['status'] in ('ok', 'local', 'off') and claude['status'] != 'missing' and not any(source['status'] == 'error' for source in sources.values())
         return {'version': 1, 'codex': codex, 'claude': claude, 'sources': sources, 'periods': periods,
                 'combined': {'total': total, 'complete': complete},
                 'active': time.time() - self.last_event < ACTIVE, 'importing': self.importing, 'corrupt_lines': self.corrupt}
