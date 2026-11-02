@@ -77,7 +77,7 @@ Item {
     property string groggy: ""     // the clip that follows his wake-up one-shot
     // The singularity (ClawdSingularity): {screen, x, y, animation, frame, mirrored, scale, clock}; clock = ms when its
     // timeline was at 0, set once his screen is captured. blasting: frozen inside it, nothing else moves him.
-    property var blast: null       // + kind: singularity | nuke
+    property var blast: null       // + kind: singularity | nuke | bsod | panic
     property var quotaQueue: []
     property bool blasting: false
     property bool blastHidden: false
@@ -1055,6 +1055,9 @@ Item {
         if (name === "limit") return explode(Math.random() < 0.5 ? "singularity" : "nuke");  // the quota ran out: either end
         if (name === "explode") return explode("singularity");
         if (name === "nuke") return explode("nuke");
+        if (name === "bsod" || name === "panic") return explode(name);
+        if (name === "crash") return explode(Math.random() < 0.5 ? "bsod" : "panic");
+        if (name === "limit5") return Clawd.roll() < 0.5 ? explode("nuke") : explode(Math.random() < 0.5 ? "bsod" : "panic");  // the 5 h quota ran out: the nuke, or a crash, 50/50
         if (name === "revive") return revive();
         if (name === "recharge") return recharge();
         if (name === "weekly") return weekly();
@@ -1068,14 +1071,14 @@ Item {
         enter("play", name);
     }
 
-    // His quota ran out: he freezes mid-pose (the clock stops) and the limit windows take over (kind: singularity | nuke);
+    // His quota ran out: he freezes mid-pose (the clock stops) and the limit windows take over (kind: singularity | nuke | bsod | panic);
     // they hide him, then reappear(gx) drops his corpse at global x gx and blastDone() ends it.
     function explode(kind) {
         if (blast || !here || dead) return;
         grab = null; menuOpen = false; journalOpen = false; chatOpen = false; target = null; intent = null; resume = null; hop = null;
         dreamAbort();
         brain.stop();
-        blast = { kind: kind === "nuke" ? "nuke" : "singularity", screen: Clawd.screenName, x, y, animation, frame: clock.frame, mirrored, scale: Clawd.scale, clock: 0 };
+        blast = { kind: ["nuke", "bsod", "panic"].indexOf(kind) >= 0 ? kind : "singularity", screen: Clawd.screenName, x, y, animation, frame: clock.frame, mirrored, scale: Clawd.scale, clock: 0 };
         mode = "explode";
         blasting = true;
     }

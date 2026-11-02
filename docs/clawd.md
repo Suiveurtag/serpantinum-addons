@@ -129,7 +129,7 @@ head in `full` thoughts mode, and stay in memory in the shell only (never writte
 | Session start | `wave`, except when Claude restarts the session after a compaction (and the spinner verbs are re-read, at most every 30 s) |
 | Compaction (Claude) | `compact` (squashed flat) |
 | Stats (`Status`, see below): cost crosses a new multiple of $5 | `coin` |
-| Stats: 5-hour / 7-day limit reaches 100 % | nuke / singularity (then dead) or surge, at random for 7 days |
+| Stats: 5-hour / 7-day limit reaches 100 % | nuke or blue screen / kernel panic, 50/50 for 5 h (then dead); singularity or surge, at random for 7 days |
 
 While working he plays the loop of the last tool used by the lead session (the working
 session that moved last), picking at random between the loop and its `_2` variant each time
@@ -297,13 +297,16 @@ awake (`sleep_jolt`) and wakes up sweating. Anything else (a click, a drag, work
 | --- | --- | --- | --- |
 | Rainbow surf | dream | 24 s | `ClawdDreamSurf.qml`: the surge's max helper (`clone` poses 38–49, `clone.frag` rainbow) surfs a wave of rainbow tokens, two flips, a shaka under the moon |
 | Gemini | nightmare | 11.7 s | `ClawdNightmareGemini.qml`: her drawing (`sprites/gemini.png`) in the dark, made evil by `shaders/evil.frag` (glitch slices, RGB split, red eyes); jumpscare at 11 s |
+| Ouroboros | nightmare | 13.5 s | `ClawdNightmareOuroboros.qml`: the serpent bites its own tail and turns; the ring nests inside itself at every scale, an endless zoom, then a figure eight `∞`; plain pixel squares, no shader of its own; jumpscare at 12.8 s |
+| Blue screen | nightmare | 12.5 s | `ClawdNightmareCrash.qml` (`kind: bsod`) around `ClawdCrashScreen.qml`: the Windows 10 blue screen, but the % stops at 99 and the stop code is `CLAWD_DIED_IN_HIS_SLEEP`; flicker, jumpscare at 11.6 s |
+| Kernel panic | nightmare | 12.5 s | the same file (`kind: panic`): a Linux console, oops, call trace, `Attempted to kill init!`, then the blue panic screen (Tux, a big QR code, "Please reboot your computer.") from 9.6 s; jumpscare at 11.6 s |
 
 Every dream he has is recorded in `addonsV2ClawdDreams` (`{seen: {id: {n, first, last}}, log: [{id, kind, at}]}`, last 40):
 the journal's `☾ dreams` tab shows the collection (`? ???` for the ones he never had, `xN` for the others) and the
 recent ones with their time. Waking up after 15 min or more is groggy (`wake_groggy`: squint, yawn, stretch, wobble); a
 blanket is thrown off first (`sleep_blanket_out`).
 
-IPC: `play dream`, `play nightmare` (a random one), `play dream_surf`, `play nightmare_gemini` (the cloud appears: click it),
+IPC: `play dream`, `play nightmare` (a random one), `play dream_surf`, `play nightmare_gemini`, `play nightmare_ouroboros`, `play nightmare_bsod`, `play nightmare_panic` (the cloud appears: click it),
 `play blanket`, `play sleepwalk`; every new strip also plays by name. A new dream: an entry in `js/dreams.mjs` `DREAMS`
 (`id`, `kind`, `title`, `glyph`, `scene`, `duration`, `jump` for a nightmare), a scene file taking `t`, `manifest`, `pixel`,
 `ox`, `oy`, `floorY`, `seed`, `reduced`, one line in `ClawdDream.qml` `scenes`, and its name in `clawd.py` `TYPES`.
@@ -437,7 +440,7 @@ other addons are untouched.
 
 ### Quota limits and resets
 
-A 5-hour limit reaching 100% plays `nuke`; a 7-day limit plays the singularity or the surge, at random (`limit7`). Each provider and window is tracked independently. A first reading at 100% establishes the current state without an explosion; a later observed transition from below 100% triggers it once per window. Stale lower readings cannot rearm the same window. At a known reset deadline, or when a fresh snapshot reports the next window, Clawd plays `recharge` for the 5-hour window; the 7-day reset is silent. Scenes wait their turn and revive him first if needed. Quota state is saved across shell restarts. The first reading after a restart establishes the current state, so an exhaustion missed while the shell was stopped is not replayed.
+A 5-hour limit reaching 100% plays `limit5`: the nuke or a crash screen, 50/50 (the crash is a Windows blue screen or a Linux kernel panic, also 50/50: `ClawdCrash.qml` around `ClawdCrashScreen.qml`, on every screen, then his corpse falls like after the nuke; `play bsod`, `play panic`, `play crash` preview them);  a 7-day limit plays the singularity or the surge, at random (`limit7`). Each provider and window is tracked independently. A first reading at 100% establishes the current state without an explosion; a later observed transition from below 100% triggers it once per window. Stale lower readings cannot rearm the same window. At a known reset deadline, or when a fresh snapshot reports the next window, Clawd plays `recharge` for the 5-hour window; the 7-day reset is silent. Scenes wait their turn and revive him first if needed. Quota state is saved across shell restarts. The first reading after a restart establishes the current state, so an exhaustion missed while the shell was stopped is not replayed.
 
 Claude needs the card's `stats` connection and a running session; Codex is polled every 30 s with `scripts/clawd/codex_limits.py`, which reads only the used % and reset time of the latest rate-limit snapshot in recent local session logs. If the provider has not supplied a recent snapshot, detection is best-effort.
 

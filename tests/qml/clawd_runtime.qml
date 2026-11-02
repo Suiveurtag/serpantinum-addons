@@ -222,7 +222,7 @@ ShellRoot {
                 hook("claude", "Status", "st", { cost: 6 });
                 expect(p.animation === "idle", "same $5 band: nothing new");
                 hook("claude", "Status", "st", { five_hour: 100 });
-                expect(p.blasting && p.mode === "explode" && ["singularity", "nuke"].indexOf(p.blast.kind) >= 0, "5h limit reached: one of the limit scenes");
+                expect(p.blasting && p.mode === "explode" && ["singularity", "nuke", "bsod", "panic"].indexOf(p.blast.kind) >= 0, "5h limit reached: one of the limit scenes");
                 p.blastDone();
                 expect(p.dead && p.mode === "corpse" && Config.getSetting("addonsV2ClawdDead", 0) > 0 && p.y < p.here.y, "dead: his corpse falls from the top");
                 break;
@@ -403,6 +403,7 @@ ShellRoot {
                 // Quotas trigger the matching scene once per window.
                 hook("claude", "Status", "q", { five_hour: 99, five_hour_resets: 1793000000 });
                 expect(!p.blasting, "below the limit");
+                Clawd.dice = 0.1;   // the 5 h limit is the nuke or a crash screen, 50/50: below 0.5 the nuke
                 hook("claude", "Status", "q", { five_hour: 100, five_hour_resets: 1793000000 });
                 expect(p.blasting && p.blast.kind === "nuke" && p.mode === "explode" && p.blast.screen === Clawd.screenName && p.blast.clock === 0, "limit reached: he freezes");
                 const frozen = p.frame;

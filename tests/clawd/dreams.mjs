@@ -9,13 +9,17 @@ const always = v => () => v;
 assert.equal(byId('surf').scene, 'ClawdDreamSurf');
 assert.equal(byId('gemini').jump, 11.0);
 assert.equal(byId('nope'), null);
-for (const n of ['dream', 'nightmare', 'blanket', 'sleepwalk', 'dream_surf', 'nightmare_gemini']) assert.ok(NAMES.includes(n), n);
+for (const n of ['dream', 'nightmare', 'blanket', 'sleepwalk', 'dream_surf', 'nightmare_gemini', 'nightmare_ouroboros', 'nightmare_bsod', 'nightmare_panic']) assert.ok(NAMES.includes(n), n);
 assert.equal(NAMES.length, 4 + DREAMS.length);
 assert.ok(MUMBLES.length >= 5 && BLANKET_MUMBLES.length >= 1);
 
 // pick: kind filter, fallback, unseen boost (x2 => ~2/3 vs 1/3 with two equal entries; use a temp-free check via counts on same kind)
 assert.equal(pick('dream', rnd, {}), 'surf');
-assert.equal(pick('nightmare', rnd, {}), 'gemini');
+assert.ok(['gemini', 'ouroboros', 'bsod', 'panic'].includes(pick('nightmare', rnd, {})));
+for (const id of ['bsod', 'panic']) { assert.equal(byId(id).kind, 'nightmare'); assert.ok(byId(id).jump < byId(id).duration, id); }
+assert.equal(byId('ouroboros').scene, 'ClawdNightmareOuroboros');
+assert.equal(byId('ouroboros').kind, 'nightmare');
+assert.ok(byId('ouroboros').jump < byId('ouroboros').duration);
 assert.equal(pick('zzz', rnd, {}), '');
 let nm = 0, N = 4000;
 for (let i = 0; i < N; i++) if (byId(pick(null, rnd, {})).kind === 'nightmare') nm++;

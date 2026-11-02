@@ -144,7 +144,7 @@ class ClawdInstallTests(unittest.TestCase):
             elif b'shaders/' not in source.read_bytes() or source.suffix != '.qml':
                 self.assertEqual((path, blob), (qs/'clawd'/source.relative_to(PAYLOAD), source.read_bytes()))
         used = {'ClawdBlast.qml': ['desk', 'fx', 'lens'], 'ClawdNuke.qml': ['nuke', 'lens'], 'ClawdRevive.qml': ['revive'], 'ClawdSymphony.qml': ['symphony'], 'ClawdSurge.qml': ['bulge', 'surge', 'clone'],
-                'ClawdDream.qml': ['dream'], 'ClawdDreamSurf.qml': ['clone'], 'ClawdNightmareGemini.qml': ['evil']}
+                'ClawdDream.qml': ['dream'], 'ClawdDreamSurf.qml': ['clone'], 'ClawdNightmareGemini.qml': ['evil']}  # Ouroboros draws with plain items: no shader of its own
         for qml, names in used.items():
             text = dict(copied)[qs/'clawd'/qml].decode()
             self.assertNotRegex(text, r'shaders/\w+\.frag\.qsb', qml)

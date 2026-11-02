@@ -338,7 +338,7 @@ QtObject {
             if (early) events.push("recharge");
             const fired = was && !changed && !early && was.fired;
             const crossed = !!(seen[key] && was && !changed && was.used < 100 && used >= 100 && !fired);
-            if (crossed) events.push(w === "five_hour" ? "nuke" : "limit7");  // limit7: the singularity or the surge
+            if (crossed) events.push(w === "five_hour" ? "limit5" : "limit7");  // limit5: the nuke or a crash screen; limit7: the singularity or the surge
             next[key] = { used: was && !changed && !early ? Math.max(was.used, used) : used, resets, fired: !!fired || crossed,
                           watched: resets > now || !!(was && !changed && was.watched), consumed: false };
             seen[key] = true;
@@ -513,7 +513,7 @@ QtObject {
     function play(name) {
         if (!enabled) return "off";
         // the limit scenes (limit = either at random) and the revival are scenes, not strips
-        if (!manifest || ["limit", "nuke", "revive", "recharge", "weekly", "surge", "limit7"].indexOf(name) < 0 && Acts.NAMES.indexOf(name) < 0 && Dreams.NAMES.indexOf(name) < 0 && !Object.prototype.hasOwnProperty.call(manifest.animations, name)) return "unknown";
+        if (!manifest || ["limit", "limit5", "nuke", "bsod", "panic", "crash", "revive", "recharge", "weekly", "surge", "limit7"].indexOf(name) < 0 && Acts.NAMES.indexOf(name) < 0 && Dreams.NAMES.indexOf(name) < 0 && !Object.prototype.hasOwnProperty.call(manifest.animations, name)) return "unknown";
         command("play", name);
         return "ok";
     }

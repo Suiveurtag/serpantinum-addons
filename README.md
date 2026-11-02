@@ -266,7 +266,7 @@ The effort settings are per level and per agent, in the **effort** line of the c
 **Sleep and dreams**
 - He falls asleep after the delay, in the classic way or (every other time) under a blanket (`sleep_blanket`).
 - While asleep, events can happen: turning over, dreaming (a cloud above his head, clickable), talking in his sleep (a sentence in the thought bubble), sleepwalking on the ground.
-- Dreams: "Rainbow surf" (surfing a wave of rainbow tokens) and "Gemini" (nightmare, startled at the end).
+- Dreams: "Rainbow surf" (surfing a wave of rainbow tokens) "Gemini" and "Ouroboros" (nightmares, startled at the end).
 - The collection (`addonsV2ClawdDreams`) keeps the last 40 dreams; dreams never had appear as `? ???`.
 - Waking after 15 min or more: groggy (`wake_groggy`).
 

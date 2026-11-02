@@ -26,9 +26,13 @@ Item {
     // his head while he lies asleep (row ~8 of his 21x14 frame)
     readonly property point head: Qt.point(ox + 10.5 * pixel, oy + 8 * pixel)
 
-    readonly property var scenes: ({ ClawdDreamSurf: surf, ClawdNightmareGemini: gemini })
+    readonly property var scenes: ({ ClawdDreamSurf: surf, ClawdNightmareGemini: gemini, ClawdNightmareOuroboros: ouroboros, ClawdNightmareBsod: bsod, ClawdNightmarePanic: panic })
     Component { id: surf; ClawdDreamSurf { t: host.t; manifest: host.manifest; pixel: host.pixel; ox: host.ox; oy: host.oy; floorY: host.floorY; seed: host.seed; reduced: host.reduced } }
     Component { id: gemini; ClawdNightmareGemini { t: host.t; manifest: host.manifest; pixel: host.pixel; ox: host.ox; oy: host.oy; floorY: host.floorY; seed: host.seed; reduced: host.reduced } }
+
+    Component { id: ouroboros; ClawdNightmareOuroboros { t: host.t; manifest: host.manifest; pixel: host.pixel; ox: host.ox; oy: host.oy; floorY: host.floorY; seed: host.seed; reduced: host.reduced } }
+    Component { id: bsod; ClawdNightmareCrash { kind: "bsod"; t: host.t; manifest: host.manifest; pixel: host.pixel; ox: host.ox; oy: host.oy; floorY: host.floorY; seed: host.seed; reduced: host.reduced } }
+    Component { id: panic; ClawdNightmareCrash { kind: "panic"; t: host.t; manifest: host.manifest; pixel: host.pixel; ox: host.ox; oy: host.oy; floorY: host.floorY; seed: host.seed; reduced: host.reduced } }
 
     Loader {
         anchors.fill: parent

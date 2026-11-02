@@ -5,6 +5,9 @@
 export const DREAMS = [
   { id: 'surf', kind: 'dream', title: 'Rainbow surf', glyph: '✦', scene: 'ClawdDreamSurf', duration: 24, weight: 1 },
   { id: 'gemini', kind: 'nightmare', title: 'Gemini', glyph: '☠', scene: 'ClawdNightmareGemini', duration: 11.7, jump: 11.0, weight: 1 },
+  { id: 'ouroboros', kind: 'nightmare', title: 'Ouroboros', glyph: '∞', scene: 'ClawdNightmareOuroboros', duration: 13.5, jump: 12.8, weight: 1 },
+  { id: 'bsod', kind: 'nightmare', title: 'Blue screen', glyph: ':(', scene: 'ClawdNightmareBsod', duration: 12.5, jump: 11.6, weight: 1 },
+  { id: 'panic', kind: 'nightmare', title: 'Kernel panic', glyph: '#', scene: 'ClawdNightmarePanic', duration: 12.5, jump: 11.6, weight: 1 },
 ];
 
 export const NAMES = (() => {

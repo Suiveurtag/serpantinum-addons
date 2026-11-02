@@ -14,7 +14,8 @@ PanelWindow {
     readonly property var here: pet.display(screen.name)
     readonly property bool main: !!blast && blast.screen === screen.name
     readonly property bool nuke: !!blast && blast.kind === "nuke"
-    readonly property Item scene: nuke ? nukeScene : blastScene
+    readonly property bool crash: !!blast && (blast.kind === "bsod" || blast.kind === "panic")
+    readonly property Item scene: nuke ? nukeScene : crash ? crashScene : blastScene
     property bool running: false
     property bool armed: false     // capture requested
     property bool returned: false
@@ -34,6 +35,7 @@ PanelWindow {
         returned = false;
         blastScene.t = 0;   // only the running scene's clock moves: the other one stays hidden
         nukeScene.t = 0;
+        crashScene.t = 0;
         running = true;
         if (blast.screen === screen.name) prelude.restart();  // not main: its binding may not have caught up with blast yet
     }
@@ -42,7 +44,7 @@ PanelWindow {
     }
 
     // He froze; a moment later the screen does: hide him, capture without him, start the clock at the freeze.
-    Timer { id: prelude; interval: win.nuke ? 250 : 900; onTriggered: { win.pet.blastHidden = true; capture.restart(); } }
+    Timer { id: prelude; interval: win.nuke || win.crash ? 250 : 900; onTriggered: { win.pet.blastHidden = true; capture.restart(); } }
     Timer { id: capture; interval: 60; onTriggered: { win.armed = true; fallback.restart(); } }
     Timer { id: fallback; interval: 1500; onTriggered: win.go() }  // no capture: the scene runs on black
     function go() {
@@ -87,8 +89,8 @@ PanelWindow {
         desk: shot.item
         side: !win.main
         pixel: win.blast ? win.blast.scale : Clawd.scale
-        pose: !win.nuke && win.blast && win.here ? { x: win.blast.x - win.here.x, y: win.blast.y - win.here.y, animation: win.blast.animation, frame: win.blast.frame, mirrored: win.blast.mirrored } : null
-        focus: !win.nuke
+        pose: !win.nuke && !win.crash && win.blast && win.here ? { x: win.blast.x - win.here.x, y: win.blast.y - win.here.y, animation: win.blast.animation, frame: win.blast.frame, mirrored: win.blast.mirrored } : null
+        focus: !win.nuke && !win.crash
         Keys.onEscapePressed: win.skip()
         MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }
     }
@@ -102,6 +104,19 @@ PanelWindow {
         floor: win.here ? win.here.floor - win.here.y : height
         pose: win.nuke && win.blast && win.here ? { x: win.blast.x - win.here.x, y: win.blast.y - win.here.y, animation: win.blast.animation, frame: win.blast.frame, mirrored: win.blast.mirrored } : null
         focus: win.nuke
+        Keys.onEscapePressed: win.skip()
+        MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }
+    }
+    ClawdCrash {
+        id: crashScene
+        anchors.fill: parent
+        manifest: Clawd.manifest
+        desk: shot.item
+        side: !win.main
+        kind: win.crash ? win.blast.kind : "bsod"
+        pixel: win.blast ? win.blast.scale : Clawd.scale
+        floor: win.here ? win.here.floor - win.here.y : height
+        focus: win.crash
         Keys.onEscapePressed: win.skip()
         MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }
     }
