@@ -93,6 +93,26 @@ def md3(colors):
     return {'colors': {k: {mode: {'hex': v, 'color': v} for mode in ('default', 'dark', 'light')} for k, v in roles.items()}}
 
 
+def tint_surfaces(colors, mode, addon_mode):
+    """Carry the wallpaper palette into shell surfaces as well as accents."""
+    dark = mode == 'dark'
+    sampled = [colors[key] for key in ('red', 'peach', 'yellow', 'green', 'teal', 'sapphire', 'blue', 'mauve', 'pink')]
+    hue, saturation, _ = max(
+        (colorsys.rgb_to_hsv(*(int(color[i:i + 2], 16) / 255 for i in (1, 3, 5))) for color in sampled),
+        key=lambda hsv: hsv[1],
+    )
+    surface_saturation = min(0.42 if addon_mode == 'vivid' else 0.28, saturation * (0.62 if addon_mode == 'vivid' else 0.42))
+    values = ({'base': .13, 'mantle': .17, 'crust': .10, 'surface0': .21, 'surface1': .27, 'surface2': .34,
+               'overlay0': .52, 'overlay1': .61, 'overlay2': .70, 'text': .94, 'subtext0': .78, 'subtext1': .66}
+              if dark else
+              {'base': .94, 'mantle': .90, 'crust': .97, 'surface0': .86, 'surface1': .81, 'surface2': .76,
+               'overlay0': .60, 'overlay1': .50, 'overlay2': .40, 'text': .14, 'subtext0': .28, 'subtext1': .39})
+    for key, value in values.items():
+        sat = surface_saturation * (0.18 if key in ('text', 'subtext0', 'subtext1') else 1)
+        rgb = colorsys.hsv_to_rgb(hue, sat, value)
+        colors[key] = '#%02x%02x%02x' % tuple(round(channel * 255) for channel in rgb)
+
+
 def atomic(path, data):
     fd, name = tempfile.mkstemp(dir=path.parent)
     with os.fdopen(fd, 'w') as f:
@@ -101,7 +121,7 @@ def atomic(path, data):
 
 
 def generate(image, config, static_config, mode, scheme, addon_mode, state):
-    subprocess.run(['matugen', 'image', image, '-c', config, '-m', mode, '-t', scheme, '--source-color-index', '0'], check=True)
+    subprocess.run(['matugen', 'image', image, '-c', config, '-m', mode, '-t', scheme], check=True)
     state = Path(state)
     colors_path = state / 'qs_colors.json'
     matugen_colors_path = state / 'qs_matugen_colors.json'
@@ -114,6 +134,7 @@ def generate(image, config, static_config, mode, scheme, addon_mode, state):
     colors = json.loads(colors_path.read_text())
     accents, points = palette(image, addon_mode, read_overrides(state, image))
     colors.update(accents)
+    tint_surfaces(colors, mode, addon_mode)
     with tempfile.TemporaryDirectory(prefix='serpantinum-colors-') as directory:
         synthetic = Path(directory) / 'colors.json'
         synthetic.write_text(json.dumps(md3(colors)))
