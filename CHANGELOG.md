@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Addon badge on the wallpaper accents row, as in Claude mode.
 
 ### Changed
+- AI Tokens: the live dot pulses for Hermes and opencode (and llama.cpp) activity too, not only for Codex and Claude Code.
 - Settings sidebar: addons now sit in their own separate group.
 - Clawd journal: a click on a session row follows it, a double click raises its terminal.
 - Capri and Clawd card wording updated ("Capricorn", "cute pal").

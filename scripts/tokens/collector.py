@@ -38,6 +38,8 @@ OPENCODE_DB = Path(os.environ.get('TOKENS_OPENCODE_DB') or HOME/'.local/share/op
 LLAMA_URL = os.environ.get('TOKENS_LLAMACPP_URL') or 'http://127.0.0.1:8080'
 OPENCODE_EVERY = 3    # seconds between reads of opencode's session table
 LLAMA_EVERY = 3       # seconds between llama.cpp /metrics reads
+HERMES_DB = Path(os.environ.get('TOKENS_HERMES_DB') or HOME/'.hermes/state.db')
+HERMES_EVERY = 3      # seconds between reads of Hermes' session database (live indicator only, no totals)
 # source -> (shell setting that enables it, default). Codex and Claude were always on; the new sources are opt-in.
 OPTIONS = {'codex': ('addonsV2TokensCodex', True), 'claude': ('addonsV2TokensClaude', True),
            'opencode': ('addonsV2TokensOpencode', False), 'llamacpp': ('addonsV2TokensLlamaCpp', False)}
@@ -87,6 +89,17 @@ def opencode_totals():
     finally:
         db.close()
     return totals
+
+
+def hermes_marker():
+    """Changes whenever Hermes stores a message or spends tokens. Read-only; None while Hermes has no database."""
+    if not HERMES_DB.is_file():
+        return None
+    db = sqlite3.connect(HERMES_DB.as_uri() + '?mode=ro', uri=True, timeout=2)
+    try:
+        return tuple(db.execute('SELECT (SELECT max(id) FROM messages), (SELECT coalesce(sum(input_tokens)+sum(output_tokens),0) FROM sessions)').fetchone())
+    finally:
+        db.close()
 
 
 def llama_counters(url):
@@ -150,6 +163,9 @@ class Collector:
         self.opencode_error = None
         self.llama_at = 0.0
         self.llama_error = None
+        self.opencode_seen_totals = None   # session id -> total at the previous read: a growing total means a running turn
+        self.hermes_at = 0.0
+        self.hermes_marker = None
 
     def meta(self, key):
         row = self.db.execute('SELECT v FROM meta WHERE k=?', (key,)).fetchone()
@@ -274,8 +290,11 @@ class Collector:
         except ValueError:
             return
         if time.time() - moment < 60:
-            self.last_event = time.time()
-            self.db.execute("INSERT INTO meta VALUES('last_event', ?) ON CONFLICT(k) DO UPDATE SET v=?", (str(self.last_event),) * 2)
+            self.mark_live()
+
+    def mark_live(self):
+        self.last_event = time.time()
+        self.db.execute("INSERT INTO meta VALUES('last_event', ?) ON CONFLICT(k) DO UPDATE SET v=?", (str(self.last_event),) * 2)
 
     # ---- other tools ----
     def poll_sources(self):
@@ -283,13 +302,27 @@ class Collector:
         if self.enabled.get('opencode') and now - self.opencode_at >= OPENCODE_EVERY:
             self.opencode_at = now
             try:
-                for sid, total in opencode_totals().items():
+                totals = opencode_totals()
+                if self.opencode_seen_totals is not None and any(total > self.opencode_seen_totals.get(sid, 0) for sid, total in totals.items()):
+                    self.mark_live()           # a token count grew: an opencode turn is running
+                self.opencode_seen_totals = totals
+                for sid, total in totals.items():
                     # max(): a session never gives back tokens it already showed, even once opencode deletes it
                     self.db.execute('INSERT INTO opencode_seen VALUES(?,?) ON CONFLICT(id) DO UPDATE SET total=max(total, excluded.total)', (sid, total))
                 self.opencode_error = None
             except (sqlite3.Error, OSError, ValueError) as error:
                 self.opencode_error = 'unreadable'     # the exception text can carry the database path: keep it out of state.json
             self.db.commit()
+        if now - self.hermes_at >= HERMES_EVERY:
+            self.hermes_at = now
+            try:
+                marker = hermes_marker()
+            except (sqlite3.Error, OSError):
+                marker = None                  # locked or unreadable: judged again on the next read
+            if marker is not None:
+                if self.hermes_marker is not None and marker != self.hermes_marker:
+                    self.mark_live()           # a message or a token count moved: a Hermes turn is running
+                self.hermes_marker = marker
         if self.enabled.get('llamacpp') and now - self.llama_at >= LLAMA_EVERY:
             self.llama_at = now
             try:
@@ -305,6 +338,8 @@ class Collector:
                 last_prompt, last_predicted, total = row
                 # a counter below its last reading means the server restarted: everything it shows is new
                 grown = (prompt - last_prompt if prompt >= last_prompt else prompt) + (predicted - last_predicted if predicted >= last_predicted else predicted)
+                if grown:
+                    self.mark_live()           # the server counted new tokens: a llama.cpp request is running
                 self.db.execute('UPDATE llama_seen SET prompt=?, predicted=?, total=? WHERE id=1', (prompt, predicted, total + grown))
             self.db.commit()
 
@@ -359,7 +394,12 @@ class Collector:
             codex.update(total=None, account=None, pending=None, synced=None, status='no-baseline')
         codex['error'] = self.sync_error
         c = self.db.execute('SELECT coalesce(sum(input),0), coalesce(sum(output),0), coalesce(sum(cache_create),0), coalesce(sum(cache_read),0), min(day) FROM claude_day').fetchone()
-        claude = {'input': c[0], 'output': c[1], 'cache_creation': c[2], 'cache_read': c[3], 'total': sum(c[:4]), 'since': c[4],
+        try:
+            adjustment = max(0, int(self.meta('lifetime_adjustment') or 0))
+        except (TypeError, ValueError):
+            adjustment = 0
+        claude = {'input': c[0], 'output': c[1], 'cache_creation': c[2], 'cache_read': c[3],
+                  'adjustment': adjustment, 'total': sum(c[:4]) + adjustment, 'since': c[4],
                   'status': 'local' if c[4] else 'empty' if CLAUDE.is_dir() else 'missing'}
         sources = {}
         if self.enabled.get('opencode'):
@@ -375,6 +415,8 @@ class Collector:
         periods = self.periods()
         codex_total = (codex['total'] or 0) if self.enabled.get('codex') else 0
         claude_total = claude['total'] if self.enabled.get('claude') else 0
+        # Manual lifetime correction for historical usage that was not imported
+        # from any source transcript/account snapshot.
         total = codex_total + claude_total + sum(source['total'] for source in sources.values())
         complete = codex['status'] in ('ok', 'off') and claude['status'] != 'missing' and not any(source['status'] == 'error' for source in sources.values())
         return {'version': 1, 'codex': codex, 'claude': claude, 'sources': sources, 'periods': periods,

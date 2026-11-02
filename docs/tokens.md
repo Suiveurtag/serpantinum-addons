@@ -34,7 +34,9 @@ the card says `local since <date>`. The collector stores totals in SQLite, so an
 
 `scripts/tokens/collector.py` (stdlib only), run by the user unit `serpantinum-tokens.service` (installed and enabled by `install.py`).
 State lives in `~/.local/state/serpantinum/tokens/` (dir 0700): `tokens.db` (SQLite, WAL) and `state.json` (0600, counters and
-status only) which the widget watches. Idle cost: a stat pass every 3 s, an account sync every 10 min (backoff up to 1 h when failing).
+status only) which the widget watches. Idle cost: a stat pass every 3 s, an account sync every 10 min (backoff up to 1 h when failing), and one read-only query every 3 s each for Hermes (`TOKENS_HERMES_DB`, default `~/.hermes/state.db`) and for opencode or llama.cpp when those are on.
+
+The live dot (bar and widget) pulses while any agent is working: Codex and Claude Code when a token event lands in their logs; Hermes when it stores a message or spends tokens; opencode when a session's token count grows; llama.cpp when its counters grow. It stays lit for 8 s after the last change. The Hermes source is always read, since it has no settings toggle; opencode and llama.cpp follow their toggles.
 
 ```sh
 python3 ~/.local/share/serpantinum-addons-v2/scripts/tokens/collector.py status   # last published state

@@ -60,6 +60,7 @@ class TokenTests(unittest.TestCase):
         self.account(1000)
         collector.CODEX, collector.CLAUDE, collector.STATE, collector.CODEX_CMD = root/'codex/sessions', root/'claude/projects', root/'state', str(fake)
         collector.SETTINGS = root/'settings.json'                                   # no user settings: defaults apply
+        collector.HERMES_DB = root/'hermes/state.db'                                # absent: the real ~/.hermes is never read
         self.open()
 
     def tearDown(self):
@@ -113,6 +114,43 @@ class TokenTests(unittest.TestCase):
         self.assertEqual(self.run_once(sync=False)['sources']['llamacpp']['total'], 30)
         self.c.llama_at = 0
         self.assertEqual(self.run_once(sync=False)['sources']['llamacpp']['total'], 30 + 5 + 2)   # restart: counters begin again at zero
+
+    def test_hermes_and_opencode_turns_drive_the_live_dot(self):
+        hermes = Path(self.tmp.name)/'hermes-state.db'
+        db = sqlite3.connect(hermes)
+        db.execute('CREATE TABLE sessions(id TEXT PRIMARY KEY, input_tokens INTEGER, output_tokens INTEGER)')
+        db.execute('CREATE TABLE messages(id INTEGER PRIMARY KEY, session_id TEXT, role TEXT)')
+        db.execute("INSERT INTO sessions VALUES('h1', 0, 0)")
+        db.execute("INSERT INTO messages VALUES(1, 'h1', 'user')")
+        db.commit()
+        db.close()
+        opencode = Path(self.tmp.name)/'opencode.db'
+        db = sqlite3.connect(opencode)
+        db.execute('CREATE TABLE session(id TEXT PRIMARY KEY, tokens_input INTEGER, tokens_output INTEGER, tokens_reasoning INTEGER, tokens_cache_read INTEGER, tokens_cache_write INTEGER)')
+        db.execute("INSERT INTO session VALUES('o1', 1, 1, 0, 0, 0)")
+        db.commit()
+        db.close()
+        collector.HERMES_DB, collector.OPENCODE_DB = hermes, opencode
+        self.write_settings(addonsV2TokensOpencode=True)
+
+        def reading():
+            self.c.hermes_at = self.c.opencode_at = 0
+            return self.run_once(sync=False)['active']
+
+        self.assertFalse(reading())                 # first reads are baselines: no turn is known yet
+        self.assertFalse(reading())                 # nothing moved
+        db = sqlite3.connect(hermes)
+        db.execute("INSERT INTO messages VALUES(2, 'h1', 'assistant')")
+        db.commit()
+        db.close()
+        self.assertTrue(reading())                  # Hermes stored a message
+        self.c.last_event = 0
+        self.assertFalse(reading())
+        db = sqlite3.connect(opencode)
+        db.execute("UPDATE session SET tokens_output=50 WHERE id='o1'")
+        db.commit()
+        db.close()
+        self.assertTrue(reading())                  # opencode's token count grew
 
     def test_llama_cpp_url_comes_from_settings(self):
         seen = []
