@@ -7,17 +7,18 @@ Changes that arrive in the same burst (a 140 ms window, the same timing as the b
 Add it from the widgets editor like any other widget; size and position are the native ones.
 
 It is also a **bar module**: Settings → Bar → Modules lists "AI Tokens" under available modules; drag it into any zone. Horizontal bars show
-the odometer total with a live dot; hovering folds it into the Codex / Claude split. Vertical bars show the compact total (`5.55B`).
+the odometer total with a live dot; hovering folds it into the split by provider. Vertical bars show the compact total (`5.55B`).
+The "AI Tokens" card in the same Modules page previews the bar item and picks which providers the hover shows (Codex, Claude, OpenCode, llama.cpp; Codex and Claude by default, at least one stays on). The choice is stored as `bar.tokensHoverProviders` in `settings.json`.
 Removing the addon leaves the id in your bar layout; delete it from the bar settings first.
 
 ## How the numbers are built
 
 | Source | Historical baseline | Live updates | Dedupe |
 | --- | --- | --- | --- |
-| Codex | The account's own `summary.lifetimeTokens` from `codex app-server` → `account/usage/read` (verified on codex-cli 0.166.0; its daily buckets sum exactly to it). Codex's own login is used, nothing is read or stored | `~/.codex/sessions` rollouts: growth of `total_token_usage.total_tokens`, scanned every 3 s, per file high-water mark | Repeated or replayed snapshots add nothing; forked sub-agent threads replaying parent history are counted once |
-| Claude Code | None exists locally: only what `~/.claude/projects` still holds (subagents included) plus everything the collector has kept since | Transcript tails, every 3 s | `message.id` + `requestId`; a message that grows adds only the growth |
-| opencode | None: sessions it still holds in `~/.local/share/opencode/opencode.db` (read-only, every 3 s) | Session table totals (input, output, reasoning, cache read/write) | A session keeps its highest total, even once opencode deletes it |
-| llama.cpp | None: counters start at zero when the collector first sees them | `/metrics` of the llama-server URL set in the llama.cpp row of the Addons settings (default `http://127.0.0.1:8080`; `addonsV2TokensLlamaCppUrl` in `settings.json`), every 3 s (prompt + generated tokens) | A server restart (counters go back down) adds everything it reports again from zero; nothing is added while it is not running |
+| Codex | The account's own `summary.lifetimeTokens` from `codex app-server` → `account/usage/read` (verified on codex-cli 0.166.0; its daily buckets sum exactly to it). Codex's own login is used, nothing is read or stored | `~/.codex/sessions` rollouts: growth of `total_token_usage.total_tokens`, woken by inotify (about 50 ms after the write), per file high-water mark | Repeated or replayed snapshots add nothing; forked sub-agent threads replaying parent history are counted once |
+| Claude Code | None exists locally: only what `~/.claude/projects` still holds (subagents included) plus everything the collector has kept since | Transcript tails, woken by inotify | `message.id` + `requestId`; a message that grows adds only the growth |
+| opencode | None: sessions it still holds in `~/.local/share/opencode/opencode.db` (read-only, woken by inotify on its database) | Session table totals (input, output, reasoning, cache read/write) | A session keeps its highest total, even once opencode deletes it |
+| llama.cpp | None: counters start at zero when the collector first sees them | `/metrics` of the llama-server URL set in the llama.cpp row of the Addons settings (default `http://127.0.0.1:8080`; `addonsV2TokensLlamaCppUrl` in `settings.json`), every second (prompt + generated tokens) | A server restart (counters go back down) adds everything it reports again from zero; nothing is added while it is not running |
 
 Claude tokens are input + output + cache creation + cache read. `~/.claude/stats-cache.json` is deliberately ignored: its daily
 totals are 2-3x those of the deduplicated transcripts.
@@ -34,7 +35,7 @@ the card says `local since <date>`. The collector stores totals in SQLite, so an
 
 `scripts/tokens/collector.py` (stdlib only), run by the user unit `serpantinum-tokens.service` (installed and enabled by `install.py`).
 State lives in `~/.local/state/serpantinum/tokens/` (dir 0700): `tokens.db` (SQLite, WAL) and `state.json` (0600, counters and
-status only) which the widget watches. Idle cost: a stat pass every 3 s, an account sync every 10 min (backoff up to 1 h when failing), and one read-only query every 3 s each for Hermes (`TOKENS_HERMES_DB`, default `~/.hermes/state.db`) and for opencode or llama.cpp when those are on.
+status only) which the widget watches. Idle cost: inotify watches on the Codex and Claude log trees (a 3 s stat pass remains as a safety net), an account sync every 10 min (backoff up to 1 h when failing), and one read-only query per database change for Hermes (`TOKENS_HERMES_DB`, default `~/.hermes/state.db`) and for opencode or llama.cpp when those are on.
 
 The live dot (bar and widget) pulses while any agent is working: Codex and Claude Code when a token event lands in their logs; Hermes when it stores a message or spends tokens; opencode when a session's token count grows; llama.cpp when its counters grow. It stays lit for 8 s after the last change. The Hermes source is always read, since it has no settings toggle; opencode and llama.cpp follow their toggles.
 

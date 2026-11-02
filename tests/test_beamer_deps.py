@@ -28,7 +28,7 @@ class BeamerDependencies(unittest.TestCase):
         def run(argv, **kwargs):
             calls.append(argv)
             missing.clear()
-            return mock.Mock(returncode=0, stdout='')
+            return mock.Mock(returncode=0, stdout=self.installer.BEAMER_APP + '\t1.5.18\n')
 
         with mock.patch.object(self.installer.shutil, 'which', side_effect=which), \
              mock.patch.object(self.installer, '_beamer_missing', side_effect=lambda t: t in missing), \
@@ -38,6 +38,21 @@ class BeamerDependencies(unittest.TestCase):
         self.assertIn('flatpak', calls[0])
         self.assertIn('wl-clipboard', calls[0])
         self.assertIn('gcc', calls[0])
+        self.assertEqual(len(calls), 2)   # the package install, then the read-only Flatpak listing: no Flathub fetch
+
+    def test_missing_flatpak_app_is_a_quiet_skip(self):
+        calls = []
+
+        def run(argv, **kwargs):
+            calls.append(argv)
+            return mock.Mock(returncode=0, stdout='')
+
+        with mock.patch.object(self.installer, '_beamer_missing', side_effect=lambda t: False), \
+             mock.patch.object(self.installer.shutil, 'which', return_value='/usr/bin/x'), \
+             mock.patch.object(self.installer.subprocess, 'run', side_effect=run):
+            with self.assertRaisesRegex(RuntimeError, 'not installed'):
+                self.installer.ensure_beamer_dependencies()
+        self.assertEqual(calls, [['flatpak', 'list', '--user', '--app', '--columns=application,version']])
 
     def test_unpackaged_hyprland_is_a_clear_error(self):
         with mock.patch.object(self.installer, '_beamer_missing', side_effect=lambda t: t == 'hyprctl'):

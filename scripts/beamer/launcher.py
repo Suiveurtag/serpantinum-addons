@@ -93,7 +93,9 @@ def main():
         while not clipboard_socket.exists():
             if clipboard.poll() is not None:
                 raise SystemExit(f"Beamer clipboard bridge failed (exit {clipboard.returncode})")
-            if bridge.poll() is not None or time.monotonic() >= deadline:
+            if bridge.poll() is not None:
+                raise SystemExit(f"Beamer input bridge stopped (exit {bridge.returncode})")
+            if time.monotonic() >= deadline:
                 raise SystemExit("Beamer clipboard bridge did not start")
             time.sleep(0.05)
         if clipboard.poll() is not None:

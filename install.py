@@ -22,6 +22,7 @@ import urllib.error
 import urllib.request
 import capri
 import clawd
+import bar_outline
 import release_ui
 import seasonal
 import tokens
@@ -901,6 +902,35 @@ def patch_click_button(text):
     return text
 
 
+def patch_icon_button(text):
+    # Settings rows draw IconButton.buttonIcon with a Text. An icon that starts with "file:" (an addon's SVG) is drawn as an Image tinted with the button's text colour.
+    import re
+    text = re.sub(r'(?m)^[ \t]*// BEGIN serpantinum-addons-v2 image (?:icon|import)\n.*?^[ \t]*// END serpantinum-addons-v2 image (?:icon|import)\n', '', text, flags=re.S)
+    # Restore the Text's visibility first, so re-running the patch is a no-op.
+    text = text.replace('            visible: root.buttonIcon.indexOf("file:") !== 0\n            text: root.buttonIcon\n', '            text: root.buttonIcon\n')
+    anchor_import = 'import QtQuick.Controls\n'
+    text_anchor = '        Text {\n            anchors.centerIn: parent\n            text: root.buttonIcon\n'
+    if text.count(anchor_import) != 1 or text.count(text_anchor) != 1:
+        raise InstallError('IconButton anchors changed; image icons cannot be placed')
+    import_block = '// BEGIN serpantinum-addons-v2 image import\nimport QtQuick.Effects\n// END serpantinum-addons-v2 image import\n'
+    image_block = '''        // BEGIN serpantinum-addons-v2 image icon
+        Image {
+            anchors.centerIn: parent
+            visible: root.buttonIcon.indexOf("file:") === 0
+            source: visible ? root.buttonIcon : ""
+            width: root.iconFontSize * 1.15; height: width
+            sourceSize: Qt.size(width, height)
+            smooth: true; mipmap: true
+            layer.enabled: true
+            layer.effect: MultiEffect { colorization: 1; colorizationColor: root.textColor }
+        }
+        // END serpantinum-addons-v2 image icon
+'''
+    text = text.replace(anchor_import, anchor_import + import_block, 1)
+    text = text.replace(text_anchor, image_block + text_anchor.replace('            text: root.buttonIcon\n', '            visible: root.buttonIcon.indexOf("file:") !== 0\n            text: root.buttonIcon\n'), 1)
+    return text
+
+
 def patch_theme(text):
     import re
     text = re.sub(r'                        // BEGIN serpantinum-addons-v2 theme\n.*?                        // END serpantinum-addons-v2 theme\n', '', text, flags=re.S)
@@ -1213,12 +1243,20 @@ def patch_keybinds(text):
     if marker in text:
         return text.replace('quickshell ipc call addonColorPicker toggle', command)
     if '"SUPER + SHIFT + C"' in text: raise InstallError('Color picker shortcut already in use')
-    anchor = 'hl.bind("SUPER + SHIFT + S", hl.dsp.exec_cmd("serpantinum screenshot"), { locked = true })'
-    if text.count(anchor) != 1: raise InstallError('Screenshot shortcut anchor changed')
     addition = '''\n-- BEGIN serpantinum-addons-v2 color picker
 hl.bind("SUPER + SHIFT + C", hl.dsp.exec_cmd("''' + command + '''"), { locked = true })
 -- END serpantinum-addons-v2 color picker'''
-    return text.replace(anchor, anchor + addition, 1)
+    # Place the block after the screenshot bind when it is unambiguous; users often edit that line,
+    # so otherwise append at the end instead of refusing to install.
+    # Only a complete one-line top-level bind outside any block comment is a safe insertion point.
+    anchors = [m for m in re.finditer(r'^hl\.bind\(\s*"SUPER \+ SHIFT \+ S"[^\n]*\)[ \t\r]*$', text, re.M)
+               if m.group().count('(') == m.group().count(')')
+               and len(re.findall(r'--\[=*\[', text[:m.start()])) <= len(re.findall(r'\]=*\]', text[:m.start()]))]
+    if len(anchors) == 1:
+        end = anchors[0].end()
+        rest = text[end:]
+        return text[:end] + addition + (rest if rest else '\n')
+    return text.rstrip('\n') + '\n' + addition + '\n'
 
 
 def mouse_script_path():
@@ -1235,13 +1273,14 @@ def patch_window_keybinds(text):
                       lambda match: match.group(1) + mouse_script, text)
     if '"SUPER + Tab"' in text or '"ALT + Tab"' in text: raise InstallError('Window switching shortcuts already in use')
     anchor = '-- END serpantinum-addons-v2 color picker'
-    if text.count(anchor) != 1: raise InstallError('Color picker shortcut anchor changed')
+    if text.count(anchor) != 1: anchor = None
     addition = '''\n-- BEGIN serpantinum-addons-v2 window switching
 -- Super+Tab : écran suivant + souris au centre de cet écran
 hl.bind("SUPER + Tab", hl.dsp.exec_cmd(''' + mouse_script + '''))
 -- Alt+Tab : fenêtre suivante dans l'écran et le workspace courants, mise au premier plan
 hl.bind("ALT + Tab", hl.dsp.exec_cmd("hyprctl eval 'hl.dispatch(hl.dsp.window.cycle_next()); hl.dispatch(hl.dsp.window.bring_to_top())'"))
 -- END serpantinum-addons-v2 window switching'''
+    if anchor is None: return text.rstrip('\n') + '\n' + addition + '\n'
     return text.replace(anchor, anchor + addition, 1)
 
 
@@ -1312,23 +1351,9 @@ def patch_draw_keybind(text):
     return text.rstrip() + '\n\n' + marker + '\n' + 'hl.bind("SUPER + SHIFT + D", hl.dsp.exec_cmd(' + json.dumps(command) + '))\n-- END serpantinum-addons-v2 desktop draw\n'
 
 
-def patch_beamer_release_keybind(text):
-    marker = '-- BEGIN serpantinum-addons-v2 beamer input release'
-    if marker in text:
-        return text
-    for line in text.splitlines():
-        if line.lstrip().startswith('--'):
-            continue
-        match = re.search(r'''\bhl\.bind\s*\(\s*(['"])(.*?)\1''', line)
-        if not match:
-            continue
-        keys = {key.strip().upper() for key in match.group(2).split('+')}
-        if ('SUPER' in keys or 'MOD4' in keys) and 'SHIFT' in keys and (('F12' in keys) or ('CODE:96' in keys)):
-            raise InstallError('Beamer emergency release shortcut SUPER + SHIFT + F12 already in use')
-    return (text.rstrip() + '\n\n' + marker + '\n'
-            + '-- Release a captured keyboard and pointer if the remote machine cannot return them.\n'
-            + 'hl.bind("SUPER + SHIFT + F12", hl.dsp.release_input_capture(), { allow_input_capture = true, submap_universal = true, dont_inhibit = true })\n'
-            + '-- END serpantinum-addons-v2 beamer input release\n')
+def remove_retired_release(text):
+    """The Super+Shift+F12 emergency release was retired in v2.1: clean up any block left by an earlier install."""
+    return re.sub(r'\n*-- BEGIN serpantinum-addons-v2 beamer input release\n.*?-- END serpantinum-addons-v2 beamer input release\n?', '\n', text, flags=re.S).rstrip() + '\n'
 
 
 EDGE_GUARD_BEGIN = '            // BEGIN serpantinum-addons-v2 beamer edge guard\n'
@@ -1442,6 +1467,7 @@ PAYLOAD_FILES = {
     **{name + '.qml': 'guide/' + name + '.qml' for name in ('AddonCursorSettings', 'AddonCursorPreview', 'AddonCursorRole', 'AddonCursorTestArea')},
     'AddonPaletteEditor.qml': 'guide/theme/AddonPaletteEditor.qml',
     'AddonGlassSurface.qml': 'reusables/AddonGlassSurface.qml',
+    'AddonButtonEffect.qml': 'reusables/AddonButtonEffect.qml',
 }
 # Upstream files that the payload replaces outright (they exist upstream, so uninstall restores rather than deletes them).
 OVERWRITES = ('calendar/CalendarPopup.qml',)
@@ -1474,7 +1500,7 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
                QS/'guide/GuidePopup.qml': patch_guide, QS/'guide/GuideSidebar.qml': patch_guide_sidebar, QS/'guide/IdleTab.qml': patch_idle_tab,
                (theme_state if theme_state.exists() else theme_view): patch_theme,QS/'network/NetworkPopup.qml': patch_network,
                QS/'singletons/theme/Matugen.qml': patch_matugen, QS/'widgets/faces/weather/WeatherFaceFull.qml': patch_weather_face,
-               QS/'bar/faces/left/LeftFace.qml': patch_left_face, QS/'reusables/buttons/ClickButton.qml': patch_click_button,
+               QS/'bar/faces/left/LeftFace.qml': patch_left_face, QS/'reusables/buttons/ClickButton.qml': patch_click_button, QS/'reusables/buttons/IconButton.qml': patch_icon_button,
                QS/'guide/bar/modules/BarMenuCard.qml': patch_bar_menu_card, QS/'guide/bar/modules/BarModulesSettings.qml': patch_bar_modules_settings,
                QS/'bar/BarModuleRegistry.qml': patch_bar_module_registry, QS/'widgets/WidgetRegistry.qml': patch_widget_registry}
     for path, transform in patches.items():
@@ -1502,7 +1528,7 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
     text = read(kb)
     for transform in (patch_keybinds, patch_window_keybinds, patch_spotlight_keybind, patch_zoom_keybind, patch_draw_keybind):
         text = patch_file(kb, transform, text)
-    for transform in ((remove_beamer_blocks,) if without_beamer else (patch_beamer_release_keybind, patch_beamer_overlay_rule)):
+    for transform in ((remove_beamer_blocks,) if without_beamer else (remove_retired_release, patch_beamer_overlay_rule)):
         text = patch_file(kb, transform, text)
     pending[kb] = patch_file(kb, lambda value: remove_inline_settings(value, '--'), text)
 
@@ -1523,6 +1549,10 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
         if hasattr(module, 'patch_keybind'):
             pending[kb] = patch_file(kb, module.remove if removing else (lambda value, m=module: m.patch_keybind(value, QS/'Shell.qml')), pending[kb])
 
+    # Bar outlines (Addons → General, off by default): always patched like the update UI.
+    for path, transform in bar_outline.transformations(QS).items():
+        pending[path] = patch_file(path, transform, staged(path))
+
     # The in-shell update UI is not optional (no --without flag): always patched, always copied.
     for path, transform in release_ui.transformations(QS).items():
         pending[path] = patch_file(path, transform, staged(path))
@@ -1537,7 +1567,7 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
     pending[QS/'guide/DnsControl.qml'] = payload_text('DnsControl.qml')
     plan.created.add(QS/'guide/DnsControl.qml')
     for path, declarations in [(QS/'guide/theme/qmldir', ['AddonPaletteEditor 1.0 AddonPaletteEditor.qml']),
-                               (QS/'reusables/qmldir', ['AddonGlassSurface 1.0 AddonGlassSurface.qml']),
+                               (QS/'reusables/qmldir', ['AddonGlassSurface 1.0 AddonGlassSurface.qml', 'AddonButtonEffect 1.0 AddonButtonEffect.qml']),
                                (QS/'guide/qmldir', [c + ' 1.0 ' + c + '.qml' for c in ('AddonCursorSettings', 'AddonCursorPreview', 'AddonCursorRole', 'AddonCursorTestArea')] + ['DnsControl 1.0 DnsControl.qml']),
                                (QS/'network/qmldir', ['DnsControl 1.0 DnsControl.qml']),
                                (QS/'qmldir', ['AddonColorPicker 1.0 AddonColorPicker.qml', 'AddonMouseSpotlight 1.0 AddonMouseSpotlight.qml', 'AddonDesktopZoom 1.0 AddonDesktopZoom.qml',
@@ -1777,10 +1807,24 @@ def git_commit():
         return None
 
 
+def forget_seen_markers():
+    path = Path(os.environ.get('QS_SETTINGS') or HOME/'.config/serpantinum/settings.json')
+    try:
+        data = json.loads(path.read_text())
+        if isinstance(data, dict) and data.pop('addonsV2SeenNew', None) is not None:
+            tmp = path.with_name(path.name + '.tmp')
+            tmp.write_text(json.dumps(data, indent=2))
+            os.replace(tmp, path)
+    except (OSError, ValueError):
+        pass
+
+
 def record_install(plan, state):
     channel = 'release' if SOURCE == (DEPLOY/'source').resolve() else 'dev'
     try: version = (SOURCE/'VERSION').read_text().strip() or None
     except OSError: version = None
+    if release.read_install_state() is None:   # first install, or a reinstall after an uninstall (an update keeps install.json): the "new" outlines show again
+        forget_seen_markers()
     without = [c.name for c in COMPANIONS if plan.options[c.option]] + (['beamer'] if plan.options['without_beamer'] else [])
     release.write_install_state({
         'version': version, 'commit': git_commit(), 'channel': channel, 'source': str(SOURCE),
@@ -1874,7 +1918,6 @@ BEAMER_TOOLS = (
      {'pacman': 'wayland-protocols', 'dnf': 'wayland-protocols-devel', 'xbps': 'wayland-protocols-devel'}),
     ('hyprctl', None),
 )
-BEAMER_REMOTE = 'https://dl.flathub.org/repo/flathub.flatpakrepo'
 BEAMER_APP = 'uk.co.kalkman.beamer'
 
 
@@ -1889,7 +1932,7 @@ def _beamer_missing(tool):
 
 
 def ensure_beamer_dependencies():
-    """Install the missing Beamer tools with the system package manager, then the Beamer Flatpak. Raises RuntimeError."""
+    """Install the missing Beamer tools with the system package manager. The Beamer Flatpak must already be installed; raises RuntimeError otherwise."""
     if not services_enabled():
         return  # tests: never touch the real package manager or Flatpak remotes
     missing = [(tool, packages) for tool, packages in BEAMER_TOOLS if _beamer_missing(tool)]
@@ -1913,10 +1956,7 @@ def ensure_beamer_dependencies():
         raise RuntimeError('Flatpak is not available')
     from_list = subprocess.run(['flatpak', 'list', '--user', '--app', '--columns=application,version'], capture_output=True, text=True).stdout
     if not any(row.startswith(BEAMER_APP + '\t') for row in from_list.splitlines()):
-        print(f'Beamer: installing the Flatpak {BEAMER_APP} from Flathub', file=sys.stderr)
-        subprocess.run(['flatpak', 'remote-add', '--user', '--if-not-exists', 'flathub', BEAMER_REMOTE], capture_output=True)
-        if subprocess.run(['flatpak', 'install', '--user', '-y', 'flathub', BEAMER_APP]).returncode != 0:
-            raise RuntimeError(f'installing the Flatpak {BEAMER_APP} from Flathub failed')
+        raise RuntimeError(f'the user Flatpak {BEAMER_APP} is not installed; integration skipped until you install it from Flathub')
 
 
 def beamer_launcher(remove):

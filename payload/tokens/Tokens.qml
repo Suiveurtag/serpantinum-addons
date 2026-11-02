@@ -15,6 +15,26 @@ QtObject {
     readonly property real opencode: data && data.sources && data.sources.opencode ? data.sources.opencode.total : 0
     readonly property real llamacpp: data && data.sources && data.sources.llamacpp ? data.sources.llamacpp.total : 0
     readonly property real total: data ? data.combined.total : 0
+
+    // Providers the bar hover can show (Settings → Bar → Modules → AI Tokens). A new provider is one entry here plus its
+    // total in valueOf(); the catalog order is the order shown on hover.
+    readonly property var providerCatalog: [
+        { id: "codex", name: "Codex", tone: ThemeBackend.blue, logo: "assets/logos/codex.svg" },
+        { id: "claude", name: "Claude", tone: ThemeBackend.peach, logo: "assets/logos/claudecode.svg" },
+        { id: "opencode", name: "OpenCode", tone: ThemeBackend.mauve, logo: "assets/logos/opencode.svg" },
+        { id: "llamacpp", name: "llama.cpp", tone: ThemeBackend.teal, logo: "assets/logos/llamacpp.svg" }
+    ]
+    readonly property var defaultHoverProviders: ["codex", "claude"]
+
+    function valueOf(id) {
+        switch (id) {
+        case "codex": return codex;
+        case "claude": return claude;
+        case "opencode": return opencode;
+        case "llamacpp": return llamacpp;
+        }
+        return 0;
+    }
     readonly property bool active: !stale && !!data && data.active
     readonly property bool complete: !stale && !!data && data.combined.complete
 

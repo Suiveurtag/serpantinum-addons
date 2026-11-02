@@ -1,4 +1,8 @@
-"""Add an independently reversible Hyprland rescue bind and Beamer overlay rule."""
+"""Add an independently reversible Beamer overlay rule to Hyprland.
+
+The Super+Shift+F12 emergency release bundle was retired in v2.1: this module
+only installs the no-blur overlay rule now, but still recognises an include
+written by an earlier version that also carried the rescue bind."""
 
 import json
 import os
@@ -16,6 +20,7 @@ END = "-- END beamer-hyprland-compat include"
 RULE = ('hl.window_rule({ name = "beamer-hyprland-compat-overlay", '
         'match = { class = "^(effect_overlay_x11|effect_overlay_helper)[.]py$", xwayland = true }, '
         'no_blur = true, pin = true, move = "0 0" })\n')
+# Retired in v2.1: never written again, kept only to recognise an include made by an earlier version.
 BIND = ('hl.bind("SUPER + SHIFT + F12", hl.dsp.release_input_capture(), '
         '{ allow_input_capture = true, dont_inhibit = true, submap_universal = true })\n')
 
@@ -32,27 +37,9 @@ class Receipt:
     created: bool
 
 
-def rescue(binds):
-    return any(b.get("allow_input_capture") is True
-               and "release_input_capture" in str(b.get("dispatcher", "")).lower()
-               and (b.get("key") or b.get("keycode")) for b in binds if isinstance(b, dict))
-
-
-def conflict(binds):
-    return any(b.get("modmask") == 65 and (str(b.get("key", "")).lower() == "f12"
-               or b.get("keycode") == 96) for b in binds if isinstance(b, dict))
-
-
 def call(*args):
     return subprocess.run(["hyprctl", *args], check=True, text=True,
                           capture_output=True, timeout=10).stdout
-
-
-def binds():
-    value = json.loads(call("-j", "binds"))
-    if not isinstance(value, list):
-        raise RuntimeError("Liste de raccourcis Hyprland invalide")
-    return value
 
 
 def checked_config():
@@ -139,21 +126,18 @@ def install():
     included = config.parent / "config/serpantinum_beamer_remote.lua"
     if included.is_symlink():
         raise RuntimeError(f"Lien symbolique refusé : {included}")
-    current = binds()
     include = (f"{BEGIN}\ndofile({json.dumps(str(included), ensure_ascii=False)})\n{END}\n").encode()
     if BEGIN.encode() in old or END.encode() in old:
         if include not in old:
             raise RuntimeError("Un marqueur d'inclusion Beamer modifié existe déjà ; il est conservé")
-        expected = (("-- Beamer : secours InputCapture et absence de flou sur son animation\n" + RULE).encode(),
+        # the second and third shapes were written before the rescue bind was retired in v2.1 and still use the old header
+        expected = (("-- Beamer : absence de flou sur son animation\n" + RULE).encode(),
+                    ("-- Beamer : secours InputCapture et absence de flou sur son animation\n" + RULE).encode(),
                     ("-- Beamer : secours InputCapture et absence de flou sur son animation\n" + BIND + RULE).encode())
-        if not included.is_file() or included.read_bytes() not in expected or not rescue(current):
-            raise RuntimeError("Le fichier inclus ou le raccourci Beamer a changé ; intervention manuelle nécessaire")
+        if not included.is_file() or included.read_bytes() not in expected:
+            raise RuntimeError("Le fichier inclus Beamer a changé ; intervention manuelle nécessaire")
         return None
-    existing_rescue = rescue(current)
-    if not existing_rescue and conflict(current):
-        raise RuntimeError("Super+Maj+F12 est déjà utilisé ; configure d'abord un autre raccourci de secours")
-    contents = ("-- Beamer : secours InputCapture et absence de flou sur son animation\n"
-                + ("" if existing_rescue else BIND) + RULE).encode()
+    contents = ("-- Beamer : absence de flou sur son animation\n" + RULE).encode()
     if included.exists() and included.read_bytes() != contents:
         raise RuntimeError(f"Fichier de configuration existant conservé : {included}")
     included.parent.mkdir(parents=True, exist_ok=True)
@@ -170,8 +154,8 @@ def install():
             raise RuntimeError("La configuration a changé pendant l'installation ; aucune inclusion ajoutée")
         atomic_replace(config, updated, mode)
         call("reload", "config-only")
-        if call("configerrors").strip() or not rescue(binds()):
-            raise RuntimeError("Le raccourci de secours n'a pas pu être activé")
+        if call("configerrors").strip():
+            raise RuntimeError("La configuration rechargée signale une erreur")
     except Exception as exc:
         problems = rollback(receipt)
         if problems:

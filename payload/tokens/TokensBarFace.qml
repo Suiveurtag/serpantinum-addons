@@ -20,7 +20,15 @@ Item {
     }
 
     property bool showLayout: !barWindow
-    property bool hovered: hover.containsMouse
+    // The settings preview forces the split so the chosen providers are visible without hovering.
+    property bool hovered: hover.containsMouse || (!!widget && widget.forceSplit === true)
+
+    // Providers chosen in Settings → Bar → Modules → AI Tokens, in catalog order.
+    readonly property var hoverIds: {
+        let bs = Config.getSetting("bar", {});
+        return bs && Array.isArray(bs.tokensHoverProviders) ? bs.tokensHoverProviders : Tokens.defaultHoverProviders;
+    }
+    readonly property var hoverProviders: Tokens.providerCatalog.filter(p => hoverIds.indexOf(p.id) !== -1)
     property real lastTotal: -1
     readonly property real pad: s(isCompact ? 10 : 12)
     readonly property real gap: s(7)
@@ -52,6 +60,14 @@ Item {
     transform: Translate {
         x: (root.isVertical || root.showLayout) ? 0 : root.s(60)
         Behavior on x { NumberAnimation { duration: 800; easing.type: Easing.OutQuint } }
+    }
+
+    // Hover outline (Addons → General → Animated bar outlines).
+    AddonButtonEffect {
+        anchors.fill: parent
+        requiresOption: "addonsV2BarOutlines"
+        active: hover.containsMouse
+        cornerRadius: root.module && root.module.radius !== undefined ? root.module.radius : 10
     }
 
     MouseArea {
@@ -153,13 +169,13 @@ Item {
                 opacity: root.hovered ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                 Repeater {
-                    model: [{ tone: ThemeBackend.blue, value: Tokens.codex }, { tone: ThemeBackend.peach, value: Tokens.claude }]
+                    model: root.hoverProviders
                     delegate: Row {
                         required property var modelData
                         spacing: root.s(4)
                         Rectangle { width: root.s(6); height: width; radius: width / 2; color: modelData.tone; anchors.verticalCenter: parent.verticalCenter }
                         Text {
-                            text: Tokens.compact(modelData.value)
+                            text: Tokens.compact(Tokens.valueOf(modelData.id))
                             font.family: ThemeBackend.fontFamily
                             font.pixelSize: root.fontSize
                             font.bold: true

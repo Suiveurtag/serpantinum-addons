@@ -97,8 +97,7 @@ also gated by the current tab, and its shader unloads after the exit fade.
 In the standalone Settings window, the hearth, corner web and distant crossings
 belong to the content viewport. They follow its resized bounds and the compact
 or right-to-left sidebar, and unload when Settings is hidden or the viewport is
-empty. Opening Settings does not run the Wallpaper Engine palette generator;
-Vibrant and Vivid remain owned by the shell's wallpaper/theme workflow.
+empty. Vibrant and Vivid remain owned by the shell's wallpaper/theme workflow.
 The ambient clock pauses when the last visible consumer releases it and stops
 when Halloween is OFF. Performance
 mode retains a still atmosphere and disables ambient motion and bursts.

@@ -116,7 +116,7 @@ python3 install.py --without-halloween   # seasonal effects
 python3 install.py --without-capri       # Capri
 python3 install.py --without-clawd       # Clawd (also removes its agent hooks and the status relay)
 python3 install.py --without-tokens      # AI Tokens widget and its service (the database stays)
-python3 install.py --without-beamer      # Beamer integration (launcher, Super+Shift+F12 release, overlay rule)
+python3 install.py --without-beamer      # Beamer integration (launcher, overlay rule)
 serpantinum reload
 ```
 
@@ -406,7 +406,8 @@ Native widget (type `tokens`, "AI Tokens") and bar module.
 
 **Display**
 - Widget: large token total (rolling counter), Codex and Claude totals, live indicator and the state of each source. Added from the widget editor.
-- Bar module: Settings → Bar → Modules → "AI Tokens", to drag into a zone. Horizontal bar: rolling total, hover to see the Codex / Claude split. Vertical bar: compact total (`5.55B`).
+- Bar module: Settings → Bar → Modules → "AI Tokens", to drag into a zone. Horizontal bar: rolling total, hover to see the split by provider. Vertical bar: compact total (`5.55B`).
+- Hover providers: the "AI Tokens" card in Settings → Bar → Modules has a live preview and a toggle per provider (Codex and Claude by default; OpenCode and llama.cpp available; at least one stays on).
 - Live indicator: lights up for 8 s after each token event.
 
 **Calculation**
@@ -418,7 +419,7 @@ Native widget (type `tokens`, "AI Tokens") and bar module.
 **Collector**
 - `scripts/tokens/collector.py` (standard library only), user service `serpantinum-tokens.service`, installed and enabled by `install.py`.
 - SQLite database in WAL mode in `~/.local/state/serpantinum/tokens/` (folder 0700); `state.json` (0600) read by the widget.
-- Costs: scan every 3 s, account sync every 10 min (backs off up to 1 h on failure). systemd limits: 300 MB, lower priority.
+- Costs: inotify-driven scan (3 s safety net, llama.cpp polled every 1 s), account sync every 10 min (backs off up to 1 h on failure). systemd limits: 300 MB, lower priority.
 - Corrupt database: renamed `tokens.db.corrupt-<time>` and rebuilt from the logs and the account.
 - `state.json` older than 150 s: the widget shows `collector stopped`.
 - Commands: `collector.py status`, `collector.py once`, `systemctl --user status serpantinum-tokens`.
@@ -555,6 +556,7 @@ Tab **Addons → Mouse** (sub-tab "Mouse").
 - **Hide weather location**: the city name in the weather widget is continuously scrambled (random characters), without changing the data.
 - **Mullvad DNS**: switch to Mullvad DNS-over-TLS on the active connection (see [Network and idle](#10-network-and-idle)).
 - **Legacy clock design**: restores the v1 calendar and clock.
+- **Animated bar outlines**: the bar button whose panel is open gets a flowing outline in the theme colours (the whole module for the styles that have no button, one shared outline for grouped modules such as clock + weather); the settings and launcher buttons are outlined while open, and the AI Tokens bar item on hover. Off by default.
 - **Passive addons**: list of tools without a switch, with their shortcut (Capri, Clawd, drawing, zoom, colour picker, capture, monitors, shortcuts, Beamer, Vibrant/Vivid).
 - **Halloween**: switch for the seasonal effects (see [Halloween](#3-halloween-seasonal-effects)).
 - **Capri** and **Clawd**: cards with a switch and options (see above).
@@ -564,10 +566,9 @@ Tab **Addons → Mouse** (sub-tab "Mouse").
 
 ### 13. Beamer (KVM across two PCs on Hyprland)
 
-Makes the Flatpak [Beamer](https://flathub.org/apps/uk.co.kalkman.beamer) 1.5.18 work with a Hyprland shell: the pointer and keyboard cross to the other PC and back, and the clipboard is shared. Optional: installed with the other addons unless you pass `--without-beamer`; skipped quietly when Flatpak or Beamer is missing.
+Makes the Flatpak [Beamer](https://flathub.org/apps/uk.co.kalkman.beamer) 1.5.18 work with a Hyprland shell: the pointer and keyboard cross to the other PC and back, and the clipboard is shared. Optional: installed with the other addons unless you pass `--without-beamer`; skipped quietly when Flatpak or Beamer is missing (the installer installs its build tools but never fetches the Flatpak itself — install Beamer from Flathub first).
 
 - **Launcher**: "Beamer (Serpantinum)" desktop entry (`scripts/beamer/setup.py install`), which patches Beamer at run time without touching its Flatpak files (Hyprland capture and injection, clipboard bridge, effect fix).
-- **Emergency release**: `Super+Shift+F12` gives the keyboard and pointer back if the other PC does not return them.
 - **Crossing effects with two screens**: the transparent overlay is click-through, drawn in the right coordinates and anchored to the leftmost monitor by a window rule (no blur, pinned).
 - **Second PC**: `scripts/beamer/REMOTE.md` (bundle built by `package_remote.py`). Clipboard details: `scripts/beamer/CLIPBOARD.md`.
 
@@ -621,7 +622,7 @@ python3 -m unittest tests.test_release tests.test_release_ui tests.test_manager 
 python3 scripts/clawd/sprites.py --check                  # Clawd sprites up to date
 ```
 
-- The tests cover native theme integration, tab order and idempotence, preservation of Lua actions, external-edit conflicts, Capri (settings, chat, hooks, guide, AI configuration), Clawd (states, chat, dreams, effort colours), seasonal effects (Qt lifecycle), cursors, zoom, magnifier, trackpad, outline, installation and removal, release/update logic (`test_release`), the in-shell update UI (`test_release_ui`), the terminal manager (`test_manager`) and uninstall (`test_uninstall`).
+- The tests cover native theme integration, tab order and idempotence, preservation of Lua actions, external-edit conflicts, Capri (settings, chat, hooks, guide, AI configuration), Clawd (states, chat, dreams, effort colours), seasonal effects (Qt lifecycle), cursors, zoom, magnifier, trackpad, window and bar outlines, the AI Tokens bar card, installation and removal, release/update logic (`test_release`), the in-shell update UI (`test_release_ui`), the terminal manager (`test_manager`) and uninstall (`test_uninstall`).
 - Validation in a real session (captures, interactions, logs) is described in the detailed documents.
 
 ## Development tools

@@ -29,6 +29,22 @@ class ChangeTests(unittest.TestCase):
         patched = installer.patch_keybinds(keys)
         self.assertEqual(patched, installer.patch_keybinds(patched))
         self.assertIn('addonColorPicker toggle', patched)
+        for variant in ('hl.bind("SUPER + SHIFT + S", hl.dsp.exec_cmd("grim -g x"))\n', 'hl.bind("SUPER + SHIFT + Q", hl.dsp.exec_cmd("x"))\n',
+                        keys + keys, keys.rstrip('\n'),
+                        'hl.bind("SUPER + SHIFT + S", hl.dsp.exec_cmd("grim")\n  , { locked = true })\n',
+                        '--[[\n' + keys + ']]\n', 'if x then\n  ' + keys + 'end\n'):
+            result = installer.patch_keybinds(variant)
+            self.assertEqual(result.count('SUPER + SHIFT + C'), 1)
+            self.assertEqual(result, installer.patch_keybinds(result))
+            self.assertIn('window switching', installer.patch_window_keybinds(result))
+            self.assertTrue(result.endswith('\n'))
+        inline = installer.patch_keybinds(keys + 'x = 1\n')
+        self.assertLess(inline.index('SHIFT + S'), inline.index('SHIFT + C'))
+        self.assertLess(inline.index('SHIFT + C'), inline.index('x = 1'))
+        for bad in ('--[[\n' + keys + ']]\n', 'hl.bind("SUPER + SHIFT + S", hl.dsp.exec_cmd("grim")\n  , {})\n'):
+            r = installer.patch_keybinds(bad)
+            self.assertGreater(r.index('SHIFT + C'), r.rindex('\n', 0, r.index('-- BEGIN')) - 1)
+            self.assertTrue(r.index('-- BEGIN') > bad.rstrip('\n').__len__() - 1)
 
     def test_guide_idempotence_and_about_order(self):
         text = (installer.QS/'guide/GuidePopup.qml').read_text()

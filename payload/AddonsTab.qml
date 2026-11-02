@@ -54,7 +54,7 @@ Item {
             }
             SettingsRow {
                 rootObj: root.rootObj; settingId: "addons_weather_city_obfuscation"; searchTab: "addons"; searchKeywords: "weather city location privacy obfuscated météo ville localisation"
-                title: "Obfuscate weather location"; description: "Scramble the city name in the weather widget."; icon: "󰖟"
+                title: "Obfuscate weather location"; description: "Scramble the city name in the weather widget."; icon: "󰍑"
                 Toggle {
                     checked: Config.getSetting("addonsV2ObfuscateWeatherCity", false)
                     accentColor: ThemeBackend.mauve
@@ -75,6 +75,15 @@ Item {
                     checked: Config.getSetting("addonsV2LegacyClock", false)
                     accentColor: ThemeBackend.mauve
                     onToggled: { Config.setSetting("addonsV2LegacyClock", checked); }
+                }
+            }
+            SettingsRow {
+                rootObj: root.rootObj; settingId: "addons_bar_outlines"; searchTab: "addons"; searchKeywords: "bar outline panel open contour barre panneau animation effects"
+                title: "Animated bar outlines"; description: "Outline the bar button (or its whole group) while its panel is open, and the AI tokens item on hover."; icon: "󱓼"
+                Toggle {
+                    checked: Config.getSetting("addonsV2BarOutlines", false)
+                    accentColor: ThemeBackend.mauve
+                    onToggled: { Config.setSetting("addonsV2BarOutlines", checked); }
                 }
             }
             // AI tokens counter: a header that folds the sources open and shut. Closed by default.
@@ -357,10 +366,10 @@ Item {
                                     { id: "addons_passive_screenshot", title: "Screenshot tools", icon: "󰹑", keywords: "screenshot capture freeze screenshot tool capture écran image", detail: "Frozen capture fixed · Super+Shift+S" },
                                     { id: "addons_passive_tokens", title: "AI Tokens counter", icon: "󰞷", keywords: "AI tokens counter Codex Claude usage compteur jetons", detail: "Widget and bar module · Codex + Claude usage" },
                                     { id: "addons_passive_monitors", title: "Monitor tools", icon: "󰍹", keywords: "monitor display screen monitors écran", detail: "Display tools for connected monitors" },
-                                    { id: "addons_passive_screen_switch", title: "Next screen", icon: "󰍹", keywords: "screen monitor next switch Super Tab écran moniteur", detail: "Super+Tab · Move pointer to the screen centre" },
+                                    { id: "addons_passive_screen_switch", title: "Next screen", icon: "󰆽", keywords: "screen monitor next switch Super Tab écran moniteur", detail: "Super+Tab · Move pointer to the screen centre" },
                                     { id: "addons_passive_window_switch", title: "Next window", icon: "󰖯", keywords: "window next switch Alt Tab fenêtre", detail: "Alt+Tab · Next window on this screen and workspace" },
                                     { id: "addons_passive_keybinds", title: "Keybind editor", icon: "󰌌", keywords: "keybind shortcut keyboard raccourci clavier", detail: "Edit and record shell shortcuts" },
-                                    { id: "addons_passive_beamer", title: "Beamer (KVM)", icon: "󰍹", keywords: "beamer kvm mouse keyboard clipboard share pc souris clavier presse-papier", detail: "Super+Shift+F12 · Release keyboard and pointer from the other PC" },
+                                    { id: "addons_passive_beamer", title: "Beamer (KVM)", icon: Qt.resolvedUrl("../tokens/assets/logos/beamer.svg"), keywords: "beamer kvm mouse keyboard clipboard share pc souris clavier presse-papier", detail: "Crossing effects and shared clipboard between the two PCs" },
                                     { id: "addons_passive_theme_modes", title: "Vibrant and Vivid theme modes", icon: "󰏘", keywords: "theme matugen vibrant vivid color mode thème", detail: "Colour modes for the shell palette" }
                                 ]
                                 delegate: SettingsRow {

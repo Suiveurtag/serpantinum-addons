@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 import subprocess
+import sys
 
 import pytest
 
@@ -15,8 +16,15 @@ def prepare(monkeypatch, tmp_path, version='1.5.18'):
     monkeypatch.setattr(launcher.sys, 'argv', ['launcher.py'])
     monkeypatch.setenv('XDG_RUNTIME_DIR', str(tmp_path))
     monkeypatch.setattr(launcher.subprocess, 'check_output', lambda *a, **k: f'{launcher.APP}\t{version}\n')
-    for name in ('hyprland_capture.py', 'hyprland_inject.py', 'hyprland_clipboard.py', 'input_bridge.py', 'clipboard_bridge.py', 'effect_fix.py', 'effect_overlay_helper.py'):
+    for name in ('hyprland_capture.py', 'hyprland_inject.py', 'hyprland_clipboard.py', 'input_bridge.py', 'clipboard_bridge.py', 'effect_fix.py', 'effect_overlay_helper.py', 'overlay_place.py'):
         (tmp_path / name).touch()
+    # the tests cover the launcher only: keep the real overlay guard's process monitor out of the patched subprocess calls
+    overlay = importlib.util.spec_from_file_location('overlay_place', Path(__file__).resolve().parent / 'overlay_place.py')
+    overlay_module = importlib.util.module_from_spec(overlay)
+    overlay.loader.exec_module(overlay_module)
+    monkeypatch.setitem(sys.modules, 'overlay_place', overlay_module)
+    monkeypatch.setattr(overlay_module, 'start', lambda *args, **kwargs: None)
+    monkeypatch.setattr(overlay_module, 'clear', lambda *args, **kwargs: None)
     monkeypatch.setenv('XDG_CACHE_HOME', str(tmp_path))
     helpers = tmp_path / 'serpantinum-addons-v2/beamer'
     helpers.mkdir(parents=True)

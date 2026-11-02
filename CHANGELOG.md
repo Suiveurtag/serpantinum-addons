@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- Beamer (KVM) integration for Hyprland: launcher, clipboard bridge, `Super+Shift+F12` emergency release, click-through crossing effects on two screens; optional (`--without-beamer`).
+- Animated bar outlines (Addons → General, off by default): the bar button whose panel is open gets the v1 flowing outline; classic / button / minimal styles outline the button, other styles the whole module; grouped modules (clock + weather) share one outline around their group; the settings and launcher buttons are outlined while open; the AI tokens bar item is outlined on hover.
+- AI Tokens card in Settings → Bar → Modules: a live preview and a toggle per provider (Codex, Claude, OpenCode, llama.cpp) to choose which ones the bar module shows on hover (Codex and Claude by default, at least one stays on).
+- AI Tokens: the button that adds the widget in the widgets editor wears the flowing outline until you hover or use it (once per install).
+- AI Tokens collector reacts to inotify instead of a 3 s poll: Codex, Claude Code, opencode and Hermes changes reach the widget in about 50 ms; llama.cpp is polled every second.
+- Beamer (KVM) integration for Hyprland: launcher, clipboard bridge, click-through crossing effects on two screens; optional (`--without-beamer`).
 - Clawd chat provider: choose Codex (default), an OpenAI-compatible API, or a local server (Ollama, llama.cpp, LM Studio) from the Clawd card.
 - Clawd session watch: connect OpenCode and Hermes alongside Claude Code and Codex.
 
@@ -15,9 +19,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - AI Tokens: the live dot pulses for Hermes and opencode (and llama.cpp) activity too, not only for Codex and Claude Code.
 - The installer now installs missing prerequisites itself: `git`, `curl` and Python 3 (bootstrap script), then the required system packages with `pacman`, `dnf` or `xbps-install` (no confirmation question from the addons; `sudo` and the package manager still prompt). `--yes` no longer refuses to install them.
 - The installer runs Serpantinum's official installer when Serpantinum is not installed, instead of stopping.
+- Beamer launcher: the installer installs the addon's build tools but no longer fetches the Beamer Flatpak; without it the integration is skipped with a note.
+- Addons tab: the Beamer row shows the Beamer logo and no longer lists the removed emergency shortcut (settings rows can now draw an addon's SVG as their icon); new icons for the weather-location and next-screen rows.
+
+### Fixed
+- Installer: a customised or commented `Super+Shift+S` screenshot line in the keybinds file no longer stops the install; the colour picker and window switching shortcuts are appended at the end of the file instead.
+- AI Tokens digits: a new value arriving while a digit is still rolling no longer leaves the wheel parked between two digits.
+- AI Tokens: an opencode session listed in both tables of its database keeps its larger total instead of the first one read.
+- Beamer launcher: a stopped input bridge is reported as such, not as "clipboard bridge did not start".
 
 ### Removed
 - Wallpaper Engine scene backgrounds (scenes, `we-layerd` bridge, installer, docs and tests). The feature will return later.
+- Beamer: the `Super+Shift+F12` emergency release bind and its remote rescue shortcut (the block written by an earlier install is removed on the next install); the crossing relies on Beamer's own Escape hold instead.
 
 ## [2.0.1] - 2026-11-01
 

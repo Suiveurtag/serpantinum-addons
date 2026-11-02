@@ -2,7 +2,6 @@
 """Install the Beamer compatibility files on another Hyprland machine."""
 
 import argparse
-import json
 import os
 from pathlib import Path
 import shutil
@@ -20,32 +19,6 @@ FILES = (
     "clipboard_offer.c", "build-clipboard.sh",
     "REMOTE.md", "remote_install.py", "remote_hyprland.py",
 )
-
-
-def has_rescue_binding(binds):
-    """Only accept a compositor-level release binding that works during capture."""
-    return any(
-        bind.get("allow_input_capture") is True
-        and "release_input_capture" in str(bind.get("dispatcher", "")).lower()
-        and (bind.get("key") or bind.get("keycode"))
-        for bind in binds if isinstance(bind, dict)
-    )
-
-
-def check_rescue():
-    try:
-        result = subprocess.run(["hyprctl", "-j", "binds"], check=True, text=True,
-                                capture_output=True, timeout=5)
-        binds = json.loads(result.stdout)
-        if not isinstance(binds, list):
-            raise ValueError("bind list expected")
-    except (OSError, subprocess.SubprocessError, ValueError) as exc:
-        raise RuntimeError("Impossible de vérifier les raccourcis de la session Hyprland active") from exc
-    if not has_rescue_binding(binds):
-        raise RuntimeError(
-            "Aucun raccourci Hyprland de secours release_input_capture avec "
-            "allow_input_capture n'est actif. Consulte REMOTE.md avant de poursuivre."
-        )
 
 
 def cleanup_copy(dest, directory_inode, copied):
@@ -112,7 +85,6 @@ def install():
     directory_inode = None
     copied = {}
     try:
-        check_rescue()
         root.mkdir(parents=True, exist_ok=True)
         if not dest.exists():
             dest.mkdir(mode=0o700)
@@ -141,9 +113,6 @@ def main():
         if args.check:
             setup.check_dependencies()
             remote_hyprland.checked_config()
-            current = remote_hyprland.binds()
-            if not has_rescue_binding(current) and remote_hyprland.conflict(current):
-                raise RuntimeError("Super+Maj+F12 est déjà utilisé ; configure d'abord un autre raccourci de secours")
             print("Prérequis et configuration Hyprland vérifiés ; rien n'a été installé.")
         else:
             dest, desktop = install()

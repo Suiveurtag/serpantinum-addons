@@ -14,8 +14,11 @@ import calendar
 import datetime
 import hashlib
 import json
+import ctypes
 import os
+import select
 import sqlite3
+import struct
 import subprocess
 import sys
 import threading
@@ -28,7 +31,7 @@ CODEX = Path(os.environ.get('TOKENS_CODEX_HOME') or os.environ.get('CODEX_HOME')
 CLAUDE = Path(os.environ.get('TOKENS_CLAUDE_HOME') or HOME/'.claude')/'projects'
 STATE = Path(os.environ.get('TOKENS_STATE_DIR') or HOME/'.local/state/serpantinum/tokens')
 CODEX_CMD = os.environ.get('TOKENS_CODEX_CMD') or 'codex'
-SCAN = 3          # seconds between log scans
+SCAN = 3          # safety net: longest wait between scans when inotify reports nothing (or is unavailable)
 SYNC = 600        # seconds between account syncs
 ACTIVE = 8        # seconds a token event keeps the live indicator on
 PRUNE = 400 * 86400
@@ -36,10 +39,10 @@ PERIODS = (('today', 0), ('week', 6), ('month', 29))   # recent windows, in UTC 
 SETTINGS = Path(os.environ.get('QS_SETTINGS') or HOME/'.config/serpantinum/settings.json')
 OPENCODE_DB = Path(os.environ.get('TOKENS_OPENCODE_DB') or HOME/'.local/share/opencode/opencode.db')
 LLAMA_URL = os.environ.get('TOKENS_LLAMACPP_URL') or 'http://127.0.0.1:8080'
-OPENCODE_EVERY = 3    # seconds between reads of opencode's session table
-LLAMA_EVERY = 3       # seconds between llama.cpp /metrics reads
+OPENCODE_EVERY = 0.25   # minimum seconds between reads of opencode's session table (woken by inotify on its database)
+LLAMA_EVERY = 1       # seconds between llama.cpp /metrics reads (no file to watch: polled)
 HERMES_DB = Path(os.environ.get('TOKENS_HERMES_DB') or HOME/'.hermes/state.db')
-HERMES_EVERY = 3      # seconds between reads of Hermes' session database (live indicator only, no totals)
+HERMES_EVERY = 0.25  # seconds between reads of Hermes' session database (live indicator only, no totals)
 # source -> (shell setting that enables it, default). Codex and Claude were always on; the new sources are opt-in.
 OPTIONS = {'codex': ('addonsV2TokensCodex', True), 'claude': ('addonsV2TokensClaude', True),
            'opencode': ('addonsV2TokensOpencode', False), 'llamacpp': ('addonsV2TokensLlamaCpp', False)}
@@ -85,7 +88,8 @@ def opencode_totals():
                 continue
             rows = db.execute(f'SELECT id, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write FROM {table}').fetchall()
             for sid, *values in rows:
-                totals.setdefault(sid, sum(num(value) for value in values))
+                # max(): a session id can exist in both tables; keep the larger total, as poll_sources does in the database
+                totals[sid] = max(totals.get(sid, 0), sum(num(value) for value in values))
     finally:
         db.close()
     return totals
@@ -104,7 +108,7 @@ def hermes_marker():
 
 def llama_counters(url):
     """Lifetime prompt and generated token counters of a llama-server started with --metrics."""
-    with urllib.request.urlopen(url.rstrip('/') + '/metrics', timeout=2) as reply:
+    with urllib.request.urlopen(url.rstrip('/') + '/metrics', timeout=1) as reply:
         text = reply.read().decode('utf-8', 'replace')
     found = {}
     for line in text.splitlines():
@@ -114,6 +118,43 @@ def llama_counters(url):
     if len(found) != 2:
         raise ValueError('no llama.cpp token counters (start llama-server with --metrics)')
     return found['llamacpp:prompt_tokens_total'], found['llamacpp:tokens_predicted_total']
+
+
+class Watcher:
+    """inotify through ctypes (stdlib only): wakes the main loop the moment a log or database changes. Without inotify, it just sleeps."""
+    MASK = 0x2 | 0x80 | 0x100 | 0x8   # MODIFY | MOVED_TO | CREATE | CLOSE_WRITE
+
+    def __init__(self):
+        try:
+            self.fd = ctypes.CDLL(None, use_errno=True).inotify_init1(os.O_NONBLOCK | os.O_CLOEXEC)
+            self.add_watch = ctypes.CDLL(None, use_errno=True).inotify_add_watch
+        except (OSError, AttributeError):
+            self.fd = -1
+        if self.fd < 0:
+            self.fd = None
+
+    def add(self, path):
+        if self.fd is not None:
+            self.add_watch(self.fd, os.fsencode(path), self.MASK)   # failure (missing dir, watch limit) is covered by the SCAN safety net
+
+    def add_tree(self, root):
+        for dirpath, _, _ in os.walk(root):
+            self.add(dirpath)
+
+    def wait(self, timeout):
+        """Block until something changes or `timeout` passes; True when inotify woke us."""
+        if self.fd is None:
+            time.sleep(timeout)
+            return False
+        if not select.select([self.fd], [], [], timeout)[0]:
+            return False
+        time.sleep(0.05)           # let a burst of appended lines land, then handle it in one pass
+        try:
+            while os.read(self.fd, 65536):
+                pass
+        except BlockingIOError:
+            pass
+        return True
 
 
 def h64(text):
@@ -496,8 +537,16 @@ def main():
     collector.scan()
     collector.publish(True)
     pruned = time.time()
+    watcher = Watcher()
     while True:
-        time.sleep(SCAN)
+        for root in (CODEX, CLAUDE):
+            watcher.add_tree(root)           # also picks up directories created since the last pass
+        for path in (OPENCODE_DB.parent, HERMES_DB.parent):
+            watcher.add(path)
+        wait = min(SCAN, LLAMA_EVERY) if collector.enabled.get('llamacpp') else SCAN
+        if time.time() - collector.last_event < ACTIVE:   # wake exactly when the live dot must go out
+            wait = min(wait, max(0.05, collector.last_event + ACTIVE - time.time() + 0.05))
+        watcher.wait(wait)
         collector.scan()
         if collector.due():
             collector.sync()

@@ -46,6 +46,8 @@ Item {
                 readonly property bool isDigit: ch >= "0" && ch <= "9"
                 property real roll: 0
                 property int last: -1
+                // Integer target of the wheel. Deltas pile onto it, never onto the animated `roll`: a new value arriving mid-roll would otherwise park the wheel between two digits.
+                property real goal: 0
                 readonly property int whole: Math.floor(roll)
                 // Bounded: out-of-range values reach Qt.alpha and flood the log with setAlphaF warnings.
                 readonly property real frac: Math.max(0, Math.min(1, roll - whole))
@@ -61,15 +63,17 @@ Item {
                         // otherwise the spin's end value overwrites the new digit and it stays stuck.
                         spinAnim.stop();
                         const shown = Math.round(roll) % 10;
-                        roll = Math.round(roll) + (d - shown + 10) % 10;
+                        goal = Math.round(roll) + (d - shown + 10) % 10;
+                        roll = goal;
                         last = d;
                         return;
                     }
                     // A digit cannot be rolled backwards: wrapping 9 to 0 keeps rolling forward.
-                    roll = last < 0 || !root.animate ? d : roll + (d - last + 10) % 10;
+                    goal = last < 0 || !root.animate ? d : Math.round(goal) + (d - last + 10) % 10;
+                    roll = goal;
                     last = d;
                 }
-                Component.onCompleted: if (isDigit) { last = Number(ch); roll = last; }
+                Component.onCompleted: if (isDigit) { last = Number(ch); roll = last; goal = last; }
                 Behavior on roll {
                     enabled: root.animate
                     NumberAnimation { duration: root.duration; easing.type: Easing.OutExpo }
@@ -78,7 +82,7 @@ Item {
                     id: spinAnim
                     running: root.spinning && slot.isDigit
                     // however the spin ends, the wheel lands on a whole digit (no half-rolled fragment)
-                    onStopped: slot.roll = Math.round(slot.roll)
+                    onStopped: { slot.roll = Math.round(slot.roll); slot.goal = slot.roll; }
                     PauseAnimation { duration: slot.index * 70 }
                     // two full turns, then settle on the digit (roll mod 10 is the digit shown)
                     NumberAnimation { target: slot; property: "roll"; from: 0; to: Number(slot.ch) + 20; duration: root.spinDuration; easing.type: Easing.OutCubic }

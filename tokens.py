@@ -6,11 +6,14 @@ import subprocess
 from pathlib import Path
 
 MARK = 'serpantinum-tokens-v2'
-TYPES = ['singleton Tokens 1.0 tokens/Tokens.qml'] + [f'{name} 1.0 tokens/{name}.qml' for name in ('AddonTokens', 'TokensFace', 'TokensBarFace', 'TokensDigits')]
+TYPES = ['singleton Tokens 1.0 tokens/Tokens.qml'] + [f'{name} 1.0 tokens/{name}.qml' for name in ('AddonTokens', 'TokensFace', 'TokensBarFace', 'TokensDigits', 'BarTokensCard')]
 UNIT = 'serpantinum-tokens.service'
+MODULES_TAB = 'guide/bar/BarModulesTab.qml'
+MODULES_ANCHOR = '            BarMediaCard { tab: barModulesRoot }\n'
 
 
 def patch_qmldir(text):
+    text = text.replace('AddonButtonEffect 1.0 tokens/AddonButtonEffect.qml\n', '')   # moved to reusables/ (shared by the bar outlines)
     for declaration in TYPES:
         if declaration not in text:
             text = text.rstrip('\n') + '\n' + declaration + '\n'
@@ -25,6 +28,15 @@ def patch_shell(text):
     return text.replace(anchor, f'    // BEGIN {MARK} host\n    AddonTokens {{}}\n    // END {MARK} host\n' + anchor, 1)
 
 
+def patch_modules_tab(text):
+    # Settings → Bar → Modules gets the AI Tokens card (preview, hover providers) after the Media card.
+    text = remove_blocks(text)
+    if text.count(MODULES_ANCHOR) != 1:
+        raise ValueError('Tokens bar modules anchor changed')
+    block = f'    // BEGIN {MARK} card\n            BarTokensCard {{ tab: barModulesRoot }}\n    // END {MARK} card\n'
+    return text.replace(MODULES_ANCHOR, MODULES_ANCHOR + block, 1)
+
+
 def remove_blocks(text):
     return re.sub(r'^[ ]*// BEGIN ' + MARK + r' ([^\n]+)\n.*?^[ ]*// END ' + MARK + r' \1\n', '', text, flags=re.S | re.M)
 
@@ -34,7 +46,7 @@ def remove(text):
 
 
 def transformations(qs):
-    return {qs/'qmldir': patch_qmldir, qs/'Shell.qml': patch_shell}
+    return {qs/'qmldir': patch_qmldir, qs/'Shell.qml': patch_shell, qs/MODULES_TAB: patch_modules_tab}
 
 
 def resources(payload, qs):
