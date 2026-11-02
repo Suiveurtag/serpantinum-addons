@@ -25,13 +25,19 @@ def patch_palette(text):
     # Theme changes while ON still update the normal values, so OFF is exact.
     pattern = r'    property color (\w+): ("#[0-9a-fA-F]+")'
     colors = re.findall(pattern, text)
-    if len(colors) != 22 or text.count('root[propName]') != 2:
+    modern_slots = text.count('root[slot]') == 1 and text.count('root[item.name]') == 1
+    legacy_slots = text.count('root[propName]') == 2
+    if len(colors) != 22 or not (modern_slots or legacy_slots):
         raise ValueError('ThemeBackend palette storage changed')
     text = re.sub(pattern, lambda m: (
         f'    property color _normal{m[1]}: {m[2]}\n'
         f'    property color {m[1]}: Halloween.presentColor("{m[1]}", _normal{m[1]})'
     ), text)
-    text = text.replace('root[propName]', 'root["_normal" + propName]')
+    if modern_slots:
+        text = text.replace('root[slot]', 'root["_normal" + (slot.startsWith("_") ? slot.slice(1) : slot)]')
+        text = text.replace('root[item.name]', 'root["_normal" + (item.name.startsWith("_") ? item.name.slice(1) : item.name)]')
+    else:
+        text = text.replace('root[propName]', 'root["_normal" + propName]')
     return text.replace('    id: root\n', f'    id: root\n    // BEGIN {MARK} palette\n    // Normal preset values are never overwritten by the seasonal palette.\n    // END {MARK} palette\n', 1)
 
 
@@ -202,6 +208,21 @@ def patch_network(text):
 
 
 def patch_music(text):
+    if '                        id: coverHost\n' not in text:
+        # Recent upstream releases moved the cover into MusicCover.qml. Keep
+        # the remaining popup effect here; the cover-specific layers belong
+        # to the extracted component and must not be injected into its parent.
+        return insert(text, '            id: innerBg\n', ('music vapor', '''            Loader {
+                enabled: false
+                anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter
+                width: parent.width * 0.88; height: parent.height * 0.18
+                active: Halloween.activeSeason && root.active
+                sourceComponent: HearthGlow {
+                    intensity: 0.36 + root.bassLevel * 0.25
+                    engaged: !!(root.targetPlayer && root.targetPlayer.isPlaying)
+                }
+            }
+'''))
     text = insert(text, '                        id: coverHost\n', ('album reflection', '''                        Loader {
                             id: seasonalReflection
                             enabled: false

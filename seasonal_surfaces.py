@@ -121,14 +121,19 @@ def osd(text):
 
 
 def lock(text):
-    text = insert(text, '                                                id: passwordInput\n', ('lock input light', '''                                                property Item seasonalFocusLight: ControlEffects {
+    password_anchor = '                                                id: passwordInput\n'
+    dashboard_anchor = '                                id: mainDashboardShell\n'
+    if password_anchor in text:
+        text = insert(text, password_anchor, ('lock input light', '''                                                property Item seasonalFocusLight: ControlEffects {
                                                     parent: passwordInput; anchors.fill: parent; z: 3
                                                     engaged: passwordInput.activeFocus && rootLock.locked
                                                     cornerRadius: ThemeBackend.borderRadius
                                                     charge: lockUI.authenticating ? 1 : 0
                                                 }
 '''))
-    return insert(text, '                                id: mainDashboardShell\n', ('lock veil', '''                                Loader {
+    if dashboard_anchor not in text:
+        return text
+    return insert(text, dashboard_anchor, ('lock veil', '''                                Loader {
                                     anchors.fill: parent; z: 5; enabled: false
                                     active: Halloween.activeSeason && rootLock.locked && mainDashboardShell.visible && !screenRoot.isUnlocking
                                     sourceComponent: LockVeil { authenticating: lockUI.authenticating; failed: lockUI.failed }
@@ -159,6 +164,8 @@ def volume(text):
 
 
 def theme(text):
+    if '    property var systemPresets: []\n' not in text:
+        return text
     text = insert(text, '    property var systemPresets: []\n', ('theme data', '''    readonly property var seasonalPresets: [{
         name: "Halloween Night", category: "seasonal", colors: Halloween.colors,
         previewArtwork: Halloween.artwork
@@ -168,6 +175,8 @@ def theme(text):
     anchor = '                    GridLayout {\n                        id: themesGrid'
     marker = f'{MARK} theme category'
     text = re.sub(r'\n    // BEGIN ' + re.escape(marker) + r'\n.*?    // END ' + re.escape(marker) + r'\n', '', text, flags=re.S)
+    if anchor not in text:
+        return text
     if text.count(anchor) != 1: raise ValueError('Theme grid anchor changed')
     body = '''                    Text {
                         visible: themeTabRoot.filteredSeasonalPresets.length > 0

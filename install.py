@@ -38,22 +38,23 @@ def patch_guide(text):
     # Register addon tabs in that model so upstream handles the sidebar and content.
     if 'property var tabsModel: [' in text:
         if '// BEGIN serpantinum-addons-v2 tabs' not in text:
-            anchor = '        { id: "About", key: "about", name: "About", icon: "󰋽", file: "AboutTab.qml", iconOffsetX: 0 }'
-            if text.count(anchor) != 1: raise ValueError('Guide tabs model anchor changed')
+            import re
+            match = re.search(r'(?m)^        \{ id: "About", key: "about"[^\n]*$', text)
+            if not match: raise ValueError('Guide tabs model anchor changed')
             block = '''        // BEGIN serpantinum-addons-v2 tabs
-        { id: "Addons", key: "addons", name: "Addons", icon: "󰐱", file: "AddonsTab.qml", iconOffsetX: 0 },
-        { id: "Monitors", key: "addon_monitors", name: "Monitors", icon: "󰍹", file: "AddonMonitorsTab.qml", iconOffsetX: 0 },
-        { id: "Keybinds", key: "addon_keybinds", name: "Keybinds", icon: "󰌌", file: "AddonKeybindsTab.qml", iconOffsetX: 0 },
+        { id: "Addons", key: "addons", name: "Addons", icon: "󰐱", file: "AddonsTab.qml" },
+        { id: "Monitors", key: "addon_monitors", name: "Monitors", icon: "󰍹", file: "AddonMonitorsTab.qml" },
+        { id: "Keybinds", key: "addon_keybinds", name: "Keybinds", icon: "󰌌", file: "AddonKeybindsTab.qml" },
         // END serpantinum-addons-v2 tabs
 '''
-            text = text.replace(anchor, block + anchor, 1)
+            text = text[:match.start()] + block + text[match.start():]
         old = '                return I18n.t("guide.tabs." + (t.key || t.id).toLowerCase(), t.name || t.id);'
         new = '''                let key = "guide.tabs." + (t.key || t.id).toLowerCase();
                 let label = I18n.t(key);
                 return label === key ? (t.name || t.id) : label;'''
         if old in text:
             text = text.replace(old, new, 1)
-        elif new not in text:
+        elif new not in text and 'return label && label !== key ? label : (t.name || t.id);' not in text:
             raise ValueError('Guide tab title fallback anchor changed')
         return text
     # Migrate our first revision while leaving every upstream tab intact.
@@ -218,19 +219,21 @@ def patch_main(text):
 
 def patch_network(text):
     if '// BEGIN ' + MARK + ' dns' in text: return text
-    anchor = '    id: window\n'
+    owner = 'popupWindowRoot' if '    id: popupWindowRoot\n' in text else 'window'
+    anchor = f'    id: {owner}\n'
     if text.count(anchor) != 1: raise ValueError('Network root anchor changed')
     block = '''
     // BEGIN serpantinum-addons-v2 dns
     DnsControl {
         anchors.right: parent.right; anchors.top: parent.top
-        anchors.rightMargin: window.s(18); anchors.topMargin: window.s(16)
-        width: window.s(160); height: window.s(32); z: 100
-        visible: window.activeMode === "wifi" || window.activeMode === "eth"
+        anchors.rightMargin: OWNER.s(18); anchors.topMargin: OWNER.s(16)
+        width: OWNER.s(160); height: OWNER.s(32); z: 100
+        visible: OWNER.activeMode === "wifi" || OWNER.activeMode === "eth"
         pollEnabled: window.visible && visible
     }
     // END serpantinum-addons-v2 dns
 '''
+    block = block.replace('OWNER', owner).replace('pollEnabled: window.visible', f'pollEnabled: {owner}.visible')
     return text.replace(anchor, anchor + block, 1)
 
 
@@ -341,6 +344,9 @@ def patch_shell(text):
 
 
 def patch_screenshot_overlay(text):
+    # Recent upstream releases already preserve and crop the frozen screenshot.
+    if 'function frozenSourceArgs()' in text and 'root.frozenSourceArgs()' in text:
+        return text
     marker = '// BEGIN serpantinum-addons-v2 frozen screenshot source'
     if marker not in text:
         anchor = '        let cmd = `bash ${Caching.serpantinumDir}/scripts/screenshot.sh --geometry "${root.geometryString}"`;'
@@ -380,6 +386,9 @@ def patch_screenshot_overlay(text):
 
 
 def patch_screenshot_script(text):
+    # Keep upstream's native --source/--crop path when it is available.
+    if 'SOURCE_IMG=' in text and 'crop_source()' in text:
+        return text
     marker = '# BEGIN serpantinum-addons-v2 frozen screenshot source'
     if marker in text: return text
     anchor = 'GEOMETRY=""\n'
@@ -408,6 +417,8 @@ def patch_screenshot_script(text):
 
 
 def patch_screenshot_cleanup(text):
+    if 'SOURCE_IMG=' in text and 'crop_source()' in text:
+        return text
     marker = '# BEGIN serpantinum-addons-v2 frozen screenshot cleanup'
     if marker in text: return text
     anchor = 'done\n\nexport XDG_RUNTIME_DIR='
@@ -425,6 +436,8 @@ export XDG_RUNTIME_DIR='''
 
 
 def patch_screenshot_frozen_validation(text):
+    if 'SOURCE_IMG=' in text and 'crop_source()' in text:
+        return text
     old = '''# BEGIN serpantinum-addons-v2 frozen screenshot source
     if [ -n "$FROZEN_IMG" ] && [ -f "$FROZEN_IMG" ] && [ -n "$FROZEN_GEOMETRY" ] && [ -n "$FROZEN_SIZE" ]; then
         ADDON_SCRIPT_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/serpantinum-addons-v2/scripts"
@@ -540,16 +553,18 @@ def patch_draw_keybind(text):
 
 def install(without_halloween=False):
     # Calculate all transformations first. Never partly apply an unknown upstream revision.
-    patches = {QS/'Main.qml': patch_main, QS/'Shell.qml': patch_shell, QS/'screenshot/ScreenshotOverlay.qml': patch_screenshot_overlay, QS/'quickactions/Floating.qml': patch_floating, QS/'guide/GuidePopup.qml': patch_guide, QS/'guide/GuideSidebar.qml': patch_guide_sidebar, QS/'guide/IdleTab.qml': patch_idle_tab, QS/'guide/theme/ThemeTab.qml': patch_theme, QS/'network/NetworkPopup.qml': patch_network, QS/'singletons/theme/Matugen.qml': patch_matugen, QS/'widgets/faces/weather/WeatherFaceFull.qml': patch_weather_face}
+    patches = {QS/'Main.qml': patch_main, QS/'Shell.qml': patch_shell, QS/'screenshot/ScreenshotOverlay.qml': patch_screenshot_overlay, QS/'quickactions/Floating.qml': patch_floating, QS/'guide/GuidePopup.qml': patch_guide, QS/'guide/GuideSidebar.qml': patch_guide_sidebar, QS/'guide/IdleTab.qml': patch_idle_tab, QS/'guide/theme/ThemeTabState.qml': patch_theme, QS/'network/NetworkPopup.qml': patch_network, QS/'singletons/theme/Matugen.qml': patch_matugen, QS/'widgets/faces/weather/WeatherFaceFull.qml': patch_weather_face}
     pending = {path: transform(path.read_text()) for path, transform in patches.items()}
     screenshot_script = QS.parent/'scripts/screenshot.sh'
     pending[screenshot_script] = patch_screenshot_frozen_validation(patch_screenshot_cleanup(patch_screenshot_script(screenshot_script.read_text())))
     keybind_path = HOME/'.config/hypr/config/keybinds.lua'
     pending[keybind_path] = patch_draw_keybind(patch_zoom_keybind(patch_spotlight_keybind(patch_keybinds(keybind_path.read_text()))))
     for path, transform in seasonal.transformations(QS).items():
-        text = pending.get(path, path.read_text())
+        if path not in pending and not path.is_file():
+            continue
+        text = pending[path] if path in pending else path.read_text()
         pending[path] = seasonal.remove(text) if without_halloween else transform(text)
-    payloads = {'AddonAwake.qml': 'AddonAwake.qml', 'AddonDesktopDraw.qml': 'AddonDesktopDraw.qml', 'AddonDesktopZoom.qml': 'AddonDesktopZoom.qml', 'AddonMouseSpotlight.qml': 'AddonMouseSpotlight.qml', 'AddonColorPicker.qml': 'AddonColorPicker.qml', 'AddonsTab.qml': 'guide/AddonsTab.qml', 'AddonMonitorsTab.qml': 'guide/AddonMonitorsTab.qml', 'AddonKeybindsTab.qml': 'guide/AddonKeybindsTab.qml', 'DnsControl.qml': 'network/DnsControl.qml', 'LegacyCalendar.qml': 'calendar/LegacyCalendar.qml', 'CalendarPopup.qml': 'calendar/CalendarPopup.qml'}
+    payloads = {'AddonAwake.qml': 'AddonAwake.qml', 'AddonDesktopDraw.qml': 'AddonDesktopDraw.qml', 'AddonDesktopZoom.qml': 'AddonDesktopZoom.qml', 'AddonMouseSpotlight.qml': 'AddonMouseSpotlight.qml', 'AddonColorPicker.qml': 'AddonColorPicker.qml', 'AddonPaletteEditor.qml': 'guide/theme/AddonPaletteEditor.qml', 'AddonsTab.qml': 'guide/AddonsTab.qml', 'AddonMonitorsTab.qml': 'guide/AddonMonitorsTab.qml', 'AddonKeybindsTab.qml': 'guide/AddonKeybindsTab.qml', 'DnsControl.qml': 'network/DnsControl.qml', 'LegacyCalendar.qml': 'calendar/LegacyCalendar.qml', 'CalendarPopup.qml': 'calendar/CalendarPopup.qml'}
     for source, target in payloads.items(): pending[QS/target] = (SOURCE/'payload'/source).read_text()
     # NativeCalendar is captured before installing the wrapper, then patched in
     # memory. The native UI remains the source of truth for both seasonal states.
