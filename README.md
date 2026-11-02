@@ -63,6 +63,8 @@ After a Serpantinum update the addons must be reinstalled; the shell shows "Rein
 | Codex CLI (`codex login`) | Clawd chat and Capri's ChatGPT provider (subscription) |
 | Ollama (optional) | Capri running locally |
 
+You do not have to install these by hand. The installer installs what is missing: `git`, `curl` and Python 3 first, then (from the terminal manager) Serpantinum itself if it is absent, by running its official installer, and finally every required package above with `pacman`, `dnf` or `xbps-install`. `sudo` asks for your password and the package manager asks for its own confirmation. Codex CLI and Ollama are optional and are never installed for you.
+
 ## Installation and removal
 
 ### Install
@@ -73,6 +75,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-a
 
 This opens the terminal manager (`addons.py`). Extra arguments go after `_`, e.g. `... _ update`.
 
+- Missing prerequisites are installed for you (see [Prerequisites](#prerequisites)). If Serpantinum is not installed, its own installer runs first (it is interactive and needs a terminal). `--yes` skips the addons questions, not the prompts of `sudo`, the package manager and the Serpantinum installer.
 - Shell changes are computed first, then applied. An unknown anchor stops the installation **without changing anything**.
 - Each modified file is backed up (dated) in `~/.local/share/serpantinum-addons-v2/backups/`.
 - A second installation changes no file (idempotent).

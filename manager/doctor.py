@@ -87,7 +87,8 @@ def run_checks(rel=None, run=None, which=None, network=True, probe=None,
                           f"{sv}" + (f" ({ss['commit']})" if ss.get("commit") else "")))
     else:
         out.append(Result("serpantinum", "Serpantinum", FAIL, "not found",
-                          f"Install Serpantinum first: {SERPANTINUM_URL}"))
+                          "Run: python3 addons.py install (it runs the Serpantinum installer "
+                          f"for you, see {SERPANTINUM_URL})"))
 
     # compat
     compat = rel.load_compat()

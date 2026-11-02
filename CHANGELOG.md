@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Clawd chat provider: choose Codex (default), an OpenAI-compatible API, or a local server (Ollama, llama.cpp, LM Studio) from the Clawd card.
 - Clawd session watch: connect OpenCode and Hermes alongside Claude Code and Codex.
 
+### Changed
+- AI Tokens: the live dot pulses for Hermes and opencode (and llama.cpp) activity too, not only for Codex and Claude Code.
+- The installer now installs missing prerequisites itself: `git`, `curl` and Python 3 (bootstrap script), then the required system packages with `pacman`, `dnf` or `xbps-install` (no confirmation question from the addons; `sudo` and the package manager still prompt). `--yes` no longer refuses to install them.
+- The installer runs Serpantinum's official installer when Serpantinum is not installed, instead of stopping.
+
 ### Removed
 - Wallpaper Engine scene backgrounds (scenes, `we-layerd` bridge, installer, docs and tests). The feature will return later.
 
@@ -24,7 +29,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Addon badge on the wallpaper accents row, as in Claude mode.
 
 ### Changed
-- AI Tokens: the live dot pulses for Hermes and opencode (and llama.cpp) activity too, not only for Codex and Claude Code.
 - Settings sidebar: addons now sit in their own separate group.
 - Clawd journal: a click on a session row follows it, a double click raises its terminal.
 - Capri and Clawd card wording updated ("Capricorn", "cute pal").

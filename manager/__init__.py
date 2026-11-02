@@ -8,6 +8,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ISSUES_URL = "https://github.com/Suiveurtag/serpantinum-addons/issues"
 SERPANTINUM_URL = "https://github.com/ilyamiro/serpantinum"
+# Serpantinum's own interactive installer (the one its README tells users to run).
+SERPANTINUM_INSTALL_URL = "https://raw.githubusercontent.com/ilyamiro/serpantinum/master/install/install.sh"
 
 _release = None
 

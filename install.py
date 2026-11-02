@@ -1312,6 +1312,38 @@ def patch_draw_keybind(text):
     return text.rstrip() + '\n\n' + marker + '\n' + 'hl.bind("SUPER + SHIFT + D", hl.dsp.exec_cmd(' + json.dumps(command) + '))\n-- END serpantinum-addons-v2 desktop draw\n'
 
 
+def patch_beamer_release_keybind(text):
+    marker = '-- BEGIN serpantinum-addons-v2 beamer input release'
+    if marker in text:
+        return text
+    for line in text.splitlines():
+        if line.lstrip().startswith('--'):
+            continue
+        match = re.search(r'''\bhl\.bind\s*\(\s*(['"])(.*?)\1''', line)
+        if not match:
+            continue
+        keys = {key.strip().upper() for key in match.group(2).split('+')}
+        if ('SUPER' in keys or 'MOD4' in keys) and 'SHIFT' in keys and (('F12' in keys) or ('CODE:96' in keys)):
+            raise InstallError('Beamer emergency release shortcut SUPER + SHIFT + F12 already in use')
+    return (text.rstrip() + '\n\n' + marker + '\n'
+            + '-- Release a captured keyboard and pointer if the remote machine cannot return them.\n'
+            + 'hl.bind("SUPER + SHIFT + F12", hl.dsp.release_input_capture(), { allow_input_capture = true, submap_universal = true, dont_inhibit = true })\n'
+            + '-- END serpantinum-addons-v2 beamer input release\n')
+
+
+def patch_beamer_overlay_rule(text):
+    marker = '-- BEGIN serpantinum-addons-v2 beamer overlay'
+    if marker in text:
+        return text
+    return (text.rstrip() + '\n\n' + marker + '\n'
+            + 'hl.window_rule({\n'
+            + '    name = "serpantinum-beamer-overlay-no-blur",\n'
+            + '    match = { class = "^effect_overlay_x11[.]py$", xwayland = true },\n'
+            + '    no_blur = true,\n'
+            + '})\n'
+            + '-- END serpantinum-addons-v2 beamer overlay\n')
+
+
 def remove_inline_settings(text, prefix):
     pattern = rf"(?m)^[ \t]*{re.escape(prefix)} BEGIN serpantinum-addons-v2 inline settings\n.*?^[ \t]*{re.escape(prefix)} END serpantinum-addons-v2 inline settings\n?"
     return re.sub(pattern, "", text, flags=re.S)
@@ -1349,6 +1381,7 @@ PAYLOAD_FILES = {
 OVERWRITES = ('calendar/CalendarPopup.qml',)
 # Legacy: shell files patched by the retired scene bridge; uninstall still restores them.
 WALLPAPER_FILES = ('singletons/theme/Wallpaper.qml', 'wallpaper/WallpaperEngine.qml', 'reusables/display/WallpaperBlur.qml')
+RETIRED_WALLPAPER_MARKER = 'BEGIN serpantinum-wallpaper-engine'
 BANNER_TAB = 'guide/AddonsBannersTab.qml'
 
 
@@ -1362,7 +1395,7 @@ class Plan:
         self.keybinds = keybinds_path()
 
 
-def build_plan(without_halloween=False, without_capri=False, without_clawd=False, without_tokens=False):
+def build_plan(without_halloween=False, without_capri=False, without_clawd=False, without_tokens=False, restore_retired=True):
     """Compute every change in memory. Fail closed: any unknown upstream shape raises InstallError, nothing is written."""
     options = {'without_halloween': without_halloween, 'without_capri': without_capri,
                'without_clawd': without_clawd, 'without_tokens': without_tokens}
@@ -1381,6 +1414,19 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
     for path, transform in patches.items():
         pending[path] = patch_file(path, transform)
     pending[theme_view] = patch_file(theme_view, patch_theme_view, pending.get(theme_view))
+    # Retired wallpaper bridge: a shell file still carrying its block (installed before the retirement) is restored
+    # from the installed upstream commit; otherwise it keeps calling the deleted wallpaper_engine.py and never switches.
+    retired = [QS/name for name in WALLPAPER_FILES if (QS/name).is_file() and RETIRED_WALLPAPER_MARKER in read(QS/name)]
+    commit = release.serpantinum_state().get('commit') if retired and restore_retired else None
+    if commit:
+        upstream = Upstream(commit)
+        for path in retired:
+            try:
+                blob = upstream.fetch(os.path.relpath(path, QS.parent.parent))
+            except UpstreamUnavailable as error:
+                raise InstallError(f'Cannot restore {show_path(path)} from Serpantinum {commit}: {error}', show_path(path), 'wallpaper', 'Go online or set SERPANTINUM_UPSTREAM_CACHE, then run the installer again. Nothing was modified.') from error
+            if blob is None: raise InstallError(f'Cannot restore {show_path(path)}: missing upstream copy', show_path(path), 'wallpaper', 'Run the installer again once Serpantinum is reachable.')
+            pending[path] = blob.decode('utf-8')
     plan.screenshot = QS.parent/'scripts/screenshot.sh'
     text = patch_file(plan.screenshot, patch_screenshot_script)
     text = patch_file(plan.screenshot, patch_screenshot_cleanup, text)
@@ -1388,7 +1434,7 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
 
     kb = plan.keybinds
     text = read(kb)
-    for transform in (patch_keybinds, patch_window_keybinds, patch_spotlight_keybind, patch_zoom_keybind, patch_draw_keybind):
+    for transform in (patch_keybinds, patch_window_keybinds, patch_spotlight_keybind, patch_zoom_keybind, patch_draw_keybind, patch_beamer_release_keybind, patch_beamer_overlay_rule):
         text = patch_file(kb, transform, text)
     pending[kb] = patch_file(kb, lambda value: remove_inline_settings(value, '--'), text)
 
@@ -1832,7 +1878,7 @@ def uninstall_targets(state):
         keybinds = Path(manifest['keybinds']) if manifest.get('keybinds') else keybinds_path()
         origin = 'install.json'
     else:
-        plan = build_plan()
+        plan = build_plan(restore_retired=False)
         manifest = manifest_of(plan)
         patched = [Path(os.path.normpath(QS/entry)) for entry in manifest['patched']] + [QS/name for name in WALLPAPER_FILES]
         created = [Path(os.path.normpath(QS/entry)) for entry in manifest['created']]
@@ -1908,8 +1954,24 @@ def _uninstall_locked(report, purge, check):
     keybind_new = strip_keybind_blocks(keybind_old) if keybind_old is not None else None
     if keybind_new is not None and re.search(r'^-- BEGIN serpantinum-[\w-]*v2 ', keybind_new, re.M):
         report['warnings'].append(f'{keybinds}: a managed block has no matching END line and was left in place')
+    beamer_state = Path(os.environ.get('XDG_STATE_HOME') or HOME/'.local/state')/'serpantinum-addons-v2/beamer-install.json'
+    beamer_setup, beamer_remove, beamer_keep = None, [], []
+    if beamer_state.exists() or beamer_state.is_symlink():
+        candidates = (SOURCE/'scripts/beamer/setup.py', DEPLOY/'scripts/beamer/setup.py')
+        setup_path = next((p for p in candidates if p.is_file()), None)
+        if setup_path is None:
+            raise InstallError('Cannot remove the Beamer launcher: addon setup.py is missing', str(beamer_state), 'beamer',
+                               'Restore the addons checkout and retry; nothing was modified.')
+        try:
+            beamer_setup = _load('addons_beamer_setup', setup_path)
+            beamer_remove, beamer_keep = beamer_setup.uninstall_plan()
+        except (OSError, ValueError, RuntimeError) as error:
+            raise InstallError(f'Cannot inspect Beamer launcher ownership: {error}', str(beamer_state), 'beamer',
+                               'Check the Beamer install state and retry; nothing was modified.') from error
     report['changed_files'] = [show_path(op[1]) for op in ops]
     if keybind_new is not None and keybind_new != keybind_old: report['changed_files'].append(show_path(keybinds))
+    report['changed_files'] += [str(path) for path in beamer_remove]
+    report['kept'] += [f'{path} (modified Beamer file)' for path in beamer_keep]
     report['changes'] = len(report['changed_files'])
     for warning in report['warnings']: say(report, f'warning: {warning}')
     if check:
@@ -1924,6 +1986,10 @@ def _uninstall_locked(report, purge, check):
         (backup/'state').mkdir(parents=True, exist_ok=True)
         shutil.copy2(install_json, backup/'state/install.json')
     clawd.uninstall_hooks()    # may refuse (foreign hook file): stops before any shell file changes
+    if beamer_setup is not None:
+        preserved = beamer_setup.uninstall()
+        report['removed'] += [str(path) for path in beamer_remove if path not in preserved and not path.exists()]
+        report['kept'] += [f'{path} (modified Beamer file)' for path in preserved if path not in beamer_keep]
     for op in ops:
         if op[0] == 'write': write_atomic(op[1], op[2], _mode_of(op[1]))
         else: op[1].unlink()

@@ -441,6 +441,206 @@ class Doctor(unittest.TestCase):
         self.assertNotIn(os.path.expanduser("~"), md)
 
 
+class NullLog:
+    shown = "~/log"
+
+    def write(self, text):
+        pass
+
+
+def make_ctx(system=None, rel=None, argv=("install",), tty=True, call=None, fetch=None):
+    """A flow context whose system, terminal, downloads and interactive commands are all fake."""
+    ui, out = make_ui(tty=tty, environ={"TERM": "dumb"})
+    ctx = F.Ctx(ui, addons.parse_args(list(argv)), rel or FakeRelease(), NullLog(),
+                probe=(system or healthy()).probe(), call=call or (lambda cmd: 0),
+                fetch=fetch or (lambda url, dest: Path(dest).write_text("#!/bin/sh\n")))
+    return ctx, out
+
+
+def make_pre(ctx):
+    ss, compat, status, inst = F.quick_state(ctx)
+    return F.Pre(ss, compat, status, inst, deps=D.check_all(ctx.probe, compat))
+
+
+class FakeResponse:
+    def __init__(self, data):
+        self.data = data
+
+    def read(self):
+        return self.data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class InstallsSerpantinum(unittest.TestCase):
+    def test_runs_its_installer_when_missing(self):
+        rel = FakeRelease(sv=None)
+        calls = []
+
+        def call(cmd):
+            calls.append(cmd)
+            self.assertTrue(Path(cmd[1]).read_text().startswith("#!"))  # downloaded script is still there
+            rel.sv = "2.3.2"  # what the real installer does: write the version file
+            return 0
+
+        ctx, out = make_ctx(rel=rel, call=call)
+        pre = make_pre(ctx)
+        self.assertIsNone(pre.ss["version"])
+        F.require_serpantinum(ctx, pre)
+        self.assertEqual([c[0] for c in calls], ["bash"])
+        self.assertEqual((pre.ss["version"], pre.compat_status), ("2.3.2", "ok"))
+        self.assertIn("Serpantinum 2.3.2 installed", out.getvalue())
+        self.assertEqual(ctx.phase, "prepare")
+
+    def test_leaves_an_existing_install_alone(self):
+        calls = []
+        ctx, _ = make_ctx(call=lambda cmd: calls.append(cmd) or 0)
+        F.require_serpantinum(ctx, make_pre(ctx))
+        self.assertEqual(calls, [])
+
+    def test_needs_a_terminal(self):
+        calls = []
+        ctx, _ = make_ctx(rel=FakeRelease(sv=None), tty=False, call=lambda cmd: calls.append(cmd) or 0)
+        with self.assertRaises(F.Fail) as cm:
+            F.require_serpantinum(ctx, make_pre(ctx))
+        self.assertIn("terminal", cm.exception.why)
+        self.assertEqual(calls, [])
+
+    def test_download_failure_stops_before_running_anything(self):
+        calls = []
+
+        def fetch(url, dest):
+            raise OSError("offline")
+
+        ctx, _ = make_ctx(rel=FakeRelease(sv=None), fetch=fetch, call=lambda cmd: calls.append(cmd) or 0)
+        with self.assertRaises(F.Fail) as cm:
+            F.require_serpantinum(ctx, make_pre(ctx))
+        self.assertIn("download", cm.exception.what)
+        self.assertEqual(calls, [])
+
+    def test_installer_failure(self):
+        ctx, _ = make_ctx(rel=FakeRelease(sv=None), call=lambda cmd: 3)
+        with self.assertRaises(F.Fail) as cm:
+            F.require_serpantinum(ctx, make_pre(ctx))
+        self.assertIn("did not finish", cm.exception.what)
+        self.assertIn("3", cm.exception.why)
+
+    def test_still_missing_after_a_clean_exit(self):
+        ctx, _ = make_ctx(rel=FakeRelease(sv=None), call=lambda cmd: 0)
+        with self.assertRaises(F.Fail) as cm:
+            F.require_serpantinum(ctx, make_pre(ctx))
+        self.assertIn("not found after", cm.exception.what)
+
+    def test_ctrl_c_is_reported_as_an_interrupted_change(self):
+        def call(cmd):
+            raise KeyboardInterrupt
+
+        ctx, _ = make_ctx(rel=FakeRelease(sv=None), call=call)
+        with self.assertRaises(KeyboardInterrupt):
+            F.require_serpantinum(ctx, make_pre(ctx))
+        self.assertEqual(ctx.phase, "installing")
+
+    def test_download_script_refuses_non_scripts(self):
+        with tempfile.TemporaryDirectory() as td:
+            dest = Path(td) / "install.sh"
+            with unittest.mock.patch("urllib.request.urlopen", return_value=FakeResponse(b"<html>404</html>")):
+                with self.assertRaises(OSError):
+                    F.download_script("https://example.invalid/install.sh", dest)
+            self.assertFalse(dest.exists())
+            with unittest.mock.patch("urllib.request.urlopen", return_value=FakeResponse(b"#!/usr/bin/env bash\n:\n")):
+                F.download_script("https://example.invalid/install.sh", dest)
+            self.assertTrue(dest.read_text().startswith("#!"))
+
+    def test_serpantinum_comes_before_dependencies(self):
+        order = []
+        ctx, _ = make_ctx()
+        pre = make_pre(ctx)
+        with unittest.mock.patch.object(F, "require_serpantinum", lambda c, p: order.append("serpantinum")), \
+                unittest.mock.patch.object(F, "ensure_deps", lambda c, p: order.append("deps")), \
+                unittest.mock.patch.object(F, "choose_addons", lambda c, p: (_ for _ in ()).throw(F.Cancelled())):
+            with self.assertRaises(F.Cancelled):
+                F.action_install(ctx, "install", pre)
+        self.assertEqual(order, ["serpantinum", "deps"])
+
+
+class InstallsDependencies(unittest.TestCase):
+    def system(self, missing=("jq",), manager="pacman"):
+        s = healthy()
+        s.present |= {manager}
+        s.present -= set(missing)
+        return s
+
+    def test_missing_dependencies_are_installed_without_asking(self):
+        for flags in ((), ("--yes",)):  # --yes used to refuse; it must install too
+            s = self.system()
+            calls = []
+
+            def call(cmd):
+                calls.append(cmd)
+                s.present.add("jq")  # what the package manager does
+                return 0
+
+            ctx, out = make_ctx(system=s, argv=("install", *flags), call=call)
+            pre = make_pre(ctx)
+            F.ensure_deps(ctx, pre)
+            self.assertEqual(calls, [["sudo", "pacman", "-S", "--needed", "jq"]], flags)
+            self.assertNotIn("[Y/n]", out.getvalue())
+            self.assertEqual(D.missing(pre.deps, required=True), [])
+            self.assertIn("Dependencies installed", out.getvalue())
+
+    def test_uses_the_detected_package_manager(self):
+        s = self.system(manager="dnf")
+        calls = []
+        ctx, _ = make_ctx(system=s, call=lambda cmd: calls.append(cmd) or s.present.add("jq") or 0)
+        F.ensure_deps(ctx, make_pre(ctx))
+        self.assertEqual(calls, [["sudo", "dnf", "install", "jq"]])
+
+    def test_nothing_to_do_when_everything_is_present(self):
+        calls = []
+        ctx, _ = make_ctx(call=lambda cmd: calls.append(cmd) or 0)
+        F.ensure_deps(ctx, make_pre(ctx))
+        self.assertEqual(calls, [])
+
+    def test_optional_tools_are_never_installed(self):
+        calls = []
+        ctx, out = make_ctx(system=self.system(missing=("ollama", "codex")), call=lambda cmd: calls.append(cmd) or 0)
+        F.ensure_deps(ctx, make_pre(ctx))
+        self.assertEqual(calls, [])
+        self.assertIn("Optional tools not found", out.getvalue())
+
+    def test_failing_install_command(self):
+        ctx, _ = make_ctx(system=self.system(), call=lambda cmd: 1)
+        with self.assertRaises(F.Fail) as cm:
+            F.ensure_deps(ctx, make_pre(ctx))
+        self.assertIn("Installing the dependencies failed", cm.exception.what)
+
+    def test_dependency_still_missing_afterwards(self):
+        ctx, _ = make_ctx(system=self.system(), call=lambda cmd: 0)
+        with self.assertRaises(F.Fail) as cm:
+            F.ensure_deps(ctx, make_pre(ctx))
+        self.assertIn("still missing", cm.exception.what)
+
+    def test_no_supported_package_manager(self):
+        ctx, _ = make_ctx(system=self.system(manager="pacman"))
+        ctx.probe = self.system(manager="nothing").probe()
+        with self.assertRaises(F.Fail) as cm:
+            F.ensure_deps(ctx, make_pre(ctx))
+        self.assertIn("no supported package manager", cm.exception.what)
+
+    def test_ctrl_c_is_reported_as_an_interrupted_change(self):
+        def call(cmd):
+            raise KeyboardInterrupt
+
+        ctx, _ = make_ctx(system=self.system(), call=call)
+        with self.assertRaises(KeyboardInterrupt):
+            F.ensure_deps(ctx, make_pre(ctx))
+        self.assertEqual(ctx.phase, "installing")
+
+
 class ErrorFormat(unittest.TestCase):
     def test_full(self):
         lines = tui.format_error("It broke", "because x", "do y", "~/log.txt", "https://i")
@@ -532,6 +732,60 @@ class Bootstrap(unittest.TestCase):
 
     def test_refuses_root_message_present(self):
         self.assertIn("Do not run this as root", self.SCRIPT.read_text())
+
+    def run_script(self, manager=None):
+        """Run install.sh with a PATH holding only a few real tools plus a fake sudo and package manager.
+
+        The fake package manager logs its arguments and "installs" git and curl as stubs that fail,
+        so the script stops at the clone step, after the parts under test.
+        """
+        if os.geteuid() == 0:
+            self.skipTest("install.sh refuses to run as root")
+        bash, py3 = shutil.which("bash"), shutil.which("python3")
+        if not (bash and py3 and sys.version_info >= (3, 10)):
+            self.skipTest("needs bash and python3 >= 3.10 on PATH")
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            bindir, log = td / "bin", td / "pm.log"
+            bindir.mkdir()
+            for tool in ("id", "dirname", "mkdir", "ls", "chmod", "tput"):
+                real = shutil.which(tool)
+                if real:
+                    (bindir / tool).symlink_to(real)
+            (bindir / "python3").symlink_to(py3)
+            (bindir / "sudo").write_text(f'#!{bash}\nexec "$@"\n')
+            stub = f"#!{bash}\\nexit 1\\n"
+            if manager:
+                (bindir / manager).write_text(
+                    f'#!{bash}\necho "$0 $*" | sed "s|.*/||" >> "{log}"\n'
+                    f'printf \'{stub}\' > "{bindir}/git"\nprintf \'{stub}\' > "{bindir}/curl"\n'
+                    f'chmod +x "{bindir}/git" "{bindir}/curl"\n')
+                (bindir / "sed").symlink_to(shutil.which("sed"))
+            for f in bindir.iterdir():
+                f.chmod(0o755) if not f.is_symlink() else None
+            env = {"PATH": str(bindir), "HOME": str(td / "home"), "NO_COLOR": "1"}
+            r = subprocess.run([bash, str(self.SCRIPT)], capture_output=True, text=True, env=env,
+                               stdin=subprocess.DEVNULL, timeout=60)
+            return r, (log.read_text() if log.exists() else "")
+
+    def test_installs_missing_tools_itself(self):
+        for manager, expected in (("pacman", "pacman -S --needed git curl"),
+                                  ("dnf", "dnf install git curl"),
+                                  ("xbps-install", "xbps-install -S git curl")):
+            r, log = self.run_script(manager)
+            self.assertEqual(log.strip(), expected, manager)
+            self.assertIn("git, curl and python3 ready", r.stderr, manager)
+
+    def test_missing_serpantinum_does_not_stop_the_script(self):
+        r, _ = self.run_script("pacman")
+        self.assertIn("Serpantinum is not installed", r.stderr)
+        self.assertIn("Fetching Serpantinum Addons", r.stderr)  # went on to the next step
+
+    def test_no_package_manager_is_a_clear_failure(self):
+        r, log = self.run_script(None)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual(log, "")
+        self.assertIn("No supported package manager", r.stderr)
 
 
 class Cli(unittest.TestCase):

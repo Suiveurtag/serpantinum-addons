@@ -12,6 +12,8 @@ ACTIONS = ("install", "update", "reinstall", "uninstall", "doctor")
 
 EPILOG = """\
 Without an action, an interactive menu is shown.
+install, update and reinstall also install what is missing: Serpantinum itself
+(through its own installer) and the required system packages (pacman, dnf or xbps).
 Examples:
   python3 addons.py                    interactive menu
   python3 addons.py update             update to the latest release
@@ -31,7 +33,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--focus", choices=ACTIONS, metavar="ACTION",
                    help="preselect an action in the menu (it still asks for confirmation)")
     p.add_argument("-y", "--yes", action="store_true",
-                   help="non-interactive: accept defaults (requires an action; never installs system packages)")
+                   help="accept the defaults without asking (requires an action; sudo, the package manager "
+                        "and the Serpantinum installer still prompt)")
     p.add_argument("--ref", metavar="REF", help="update to this tag or branch instead of the latest release")
     p.add_argument("--purge", action="store_true", help="with uninstall: also delete addon data")
     p.add_argument("--report", action="store_true", help="with doctor: print a markdown report for GitHub issues")

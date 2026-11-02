@@ -170,6 +170,44 @@ class RoundTripTests(unittest.TestCase):
         self.assertTrue(capri_state.is_dir())
         self.assertTrue((self.state/'serpantinum-addons-v2/hyprland.lua.keep').is_file())
 
+    def test_uninstall_removes_only_owned_beamer_files_after_read_only_check(self):
+        self.assertEqual(self.run_cli()[0], 0)
+        beamer = self.installer._load('test_beamer_setup', ROOT/'scripts/beamer/setup.py')
+        desktop, state, cache = beamer.paths()
+        desktop.parent.mkdir(parents=True, exist_ok=True)
+        cache.mkdir(parents=True, exist_ok=True)
+        state.parent.mkdir(parents=True, exist_ok=True)
+        desktop.write_bytes(b'addon desktop')
+        for name in beamer.HELPERS:
+            (cache/name).write_bytes(name.encode())
+        state.write_text(json.dumps({'desktop': beamer.digest(desktop.read_bytes()),
+                                     'helpers': {name: beamer.digest((cache/name).read_bytes()) for name in beamer.HELPERS}}))
+        before = (desktop.read_bytes(), state.read_bytes(), *( (cache/name).read_bytes() for name in beamer.HELPERS))
+        code, checked, _ = self.run_json('--uninstall', '--check')
+        self.assertEqual(code, 0)
+        self.assertIn(str(desktop), checked['changed_files'])
+        self.assertEqual(before, (desktop.read_bytes(), state.read_bytes(), *( (cache/name).read_bytes() for name in beamer.HELPERS)))
+        code, report, _ = self.run_json('--uninstall')
+        self.assertEqual(code, 0)
+        self.assertIn(str(desktop), report['removed'])
+        self.assertFalse(desktop.exists())
+        self.assertFalse(state.exists())
+        self.assertTrue(all(not (cache/name).exists() for name in beamer.HELPERS))
+
+    def test_uninstall_keeps_modified_beamer_launcher_and_ownership_state(self):
+        self.assertEqual(self.run_cli()[0], 0)
+        beamer = self.installer._load('test_beamer_setup_modified', ROOT/'scripts/beamer/setup.py')
+        desktop, state, cache = beamer.paths()
+        desktop.parent.mkdir(parents=True, exist_ok=True)
+        state.parent.mkdir(parents=True, exist_ok=True)
+        desktop.write_bytes(b'customized desktop')
+        state.write_text(json.dumps({'desktop': beamer.digest(b'original desktop'), 'helpers': {}}))
+        code, report, _ = self.run_json('--uninstall')
+        self.assertEqual(code, 0)
+        self.assertEqual(desktop.read_bytes(), b'customized desktop')
+        self.assertTrue(state.exists())
+        self.assertTrue(any(str(desktop) in entry for entry in report['kept']))
+
     def test_uninstall_aborts_when_a_file_cannot_be_resolved(self):
         self.assertEqual(self.run_cli()[0], 0)
         installed = snapshot(self.shell/'src')

@@ -97,44 +97,80 @@ fi
 
 header
 
-pm_install_line() {
-    if command -v pacman >/dev/null 2>&1; then
-        echo "sudo pacman -S --needed $*"
-    elif command -v dnf >/dev/null 2>&1; then
-        echo "sudo dnf install ${*//python/python3}"
-    elif command -v xbps-install >/dev/null 2>&1; then
-        echo "sudo xbps-install -S ${*//python/python3}"
+if command -v pacman >/dev/null 2>&1; then
+    PM="pacman"
+elif command -v dnf >/dev/null 2>&1; then
+    PM="dnf"
+elif command -v xbps-install >/dev/null 2>&1; then
+    PM="xbps"
+else
+    PM=""
+fi
+
+# Package name of a tool for the detected package manager.
+pkg_for() {
+    if [ "$1" = "python" ] && [ "$PM" != "pacman" ]; then
+        echo "python3"
     else
-        echo ""
+        echo "$1"
     fi
 }
 
+# Install packages with sudo; the package manager asks for its own confirmation.
+install_packages() {
+    case "$PM" in
+        pacman) sudo pacman -S --needed "$@" ;;
+        dnf) sudo dnf install "$@" ;;
+        xbps) sudo xbps-install -S "$@" ;;
+    esac
+}
+
+python_ok() {
+    command -v python3 >/dev/null 2>&1 &&
+        python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)'
+}
+
 step "Checking tools"
-missing=()
-command -v git >/dev/null 2>&1 || missing+=("git")
-command -v curl >/dev/null 2>&1 || missing+=("curl")
-if ! command -v python3 >/dev/null 2>&1; then
-    missing+=("python")
-elif ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)'; then
-    fail "Python 3.10 or newer is required" \
-        "Found $(python3 --version 2>&1)." \
-        "Update it: $(pm_install_line python || true)"
+need=()
+command -v git >/dev/null 2>&1 || need+=("git")
+command -v curl >/dev/null 2>&1 || need+=("curl")
+python_ok || need+=("python")
+if [ "${#need[@]}" -gt 0 ]; then
+    [ -n "$PM" ] ||
+        fail "Missing tools: ${need[*]//python/python3}" \
+            "No supported package manager was found (pacman, dnf or xbps-install)." \
+            "Install them yourself, then run this again"
+    command -v sudo >/dev/null 2>&1 ||
+        fail "sudo is needed to install: ${need[*]//python/python3}" \
+            "It is the only way this script installs system packages." \
+            "Install sudo (or the tools above) as root, then run this again"
+    pkgs=()
+    for tool in "${need[@]}"; do
+        pkgs+=("$(pkg_for "$tool")")
+    done
+    child "installing ${pkgs[*]} (sudo asks for your password)"
+    install_packages "${pkgs[@]}" ||
+        fail "Could not install ${pkgs[*]}" \
+            "The package manager reported an error (see above)." \
+            "Fix it, or install them yourself, then run this again"
+    hash -r
+    command -v git >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 ||
+        fail "git and curl are still missing" \
+            "The package manager finished but the tools are not on PATH." \
+            "Open a new terminal and run this again"
+    python_ok ||
+        fail "Python 3.10 or newer is required" \
+            "Found $(python3 --version 2>&1 || echo "no python3")." \
+            "Upgrade the $(pkg_for python) package (or install a newer Python), then run this again"
 fi
-if [ "${#missing[@]}" -gt 0 ]; then
-    cmd="$(pm_install_line "${missing[@]}")"
-    fail "Missing tools: ${missing[*]//python/python3}" \
-        "These are needed to download and run the installer." \
-        "${cmd:-Install them with your package manager (supported: pacman, dnf, xbps-install)}, then run this again"
-fi
-child "git, curl and python3 found"
+child "git, curl and python3 ready"
 
 step "Checking Serpantinum"
-if [ ! -f "${STATE_HOME}/serpantinum/version" ] && [ ! -d "${DATA_HOME}/serpantinum" ]; then
-    fail "Serpantinum is not installed" \
-        "Neither $(tilde "$STATE_HOME")/serpantinum/version nor $(tilde "$DATA_HOME")/serpantinum exists." \
-        "Install Serpantinum first: ${SERPANTINUM_URL}"
+if [ -f "${STATE_HOME}/serpantinum/version" ] || [ -d "${DATA_HOME}/serpantinum" ]; then
+    child "Serpantinum found"
+else
+    child "Serpantinum is not installed: the manager launches its installer (${SERPANTINUM_URL}) when you install"
 fi
-child "Serpantinum found"
 
 # ---------------------------------------------------------------- source checkout
 step "Fetching Serpantinum Addons"

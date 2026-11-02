@@ -5,12 +5,14 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import traceback
+import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from . import ISSUES_URL, REPO_ROOT, SERPANTINUM_URL, local_version, release
+from . import ISSUES_URL, REPO_ROOT, SERPANTINUM_INSTALL_URL, SERPANTINUM_URL, local_version, release
 from . import deps as D
 from . import doctor as DR
 from .tui import UI
@@ -82,6 +84,16 @@ def _run_proc(argv, cwd=None, timeout=INSTALL_TIMEOUT):
         return 127, str(e)
 
 
+def download_script(url, dest, timeout=30):
+    """Fetch a shell script to `dest`; refuse anything that is not a script (e.g. an HTML error page)."""
+    req = urllib.request.Request(url, headers={"User-Agent": "serpantinum-addons-v2-installer"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = resp.read()
+    if not data.startswith(b"#!"):
+        raise OSError("the downloaded file is not a shell script")
+    Path(dest).write_bytes(data)
+
+
 @dataclass
 class Ctx:
     ui: UI
@@ -90,6 +102,8 @@ class Ctx:
     log: Log
     run: object = _run_proc
     probe: object = None
+    call: object = subprocess.call      # interactive commands: they own the terminal (sudo, package manager, installers)
+    fetch: object = download_script
     phase: str = "prepare"  # prepare | installing
 
     def step_run(self, label, argv, cwd=None):
@@ -195,7 +209,7 @@ def show_preflight(ctx, pre):
         ui.child(f"Serpantinum {sv} (compatibility: {pre.compat_status.replace('_', ' ')})",
                  None if kind == "ok" else "warn")
     else:
-        ui.child("Serpantinum not found", "err")
+        ui.child("Serpantinum not found: its installer will run first", "warn")
     req = [r for r in pre.deps if r.dep.required]
     miss = D.missing(req)
     opt_miss = D.missing(pre.deps, required=False)
@@ -216,12 +230,51 @@ def show_preflight(ctx, pre):
 
 
 # ---------------------------------------------------------------- helpers
-def require_serpantinum(ctx, pre):
-    sv = pre.ss.get("version")
-    if not sv:
-        raise Fail("Serpantinum was not found",
+def install_serpantinum(ctx, pre):
+    """Run Serpantinum's own (interactive) installer, then refresh what preflight knew."""
+    ui = ctx.ui
+    ui.step("Serpantinum is not installed: running its installer")
+    ui.child(SERPANTINUM_INSTALL_URL, "dim")
+    if not ui.interactive:
+        raise Fail("Serpantinum is not installed",
+                   "Its installer is interactive and needs a terminal.",
+                   f"Run it from a terminal ({SERPANTINUM_URL}), then run this again.")
+    with tempfile.TemporaryDirectory(prefix="serpantinum-installer-") as tmp:
+        script = Path(tmp) / "install.sh"
+        ctx.log.write(f"download {SERPANTINUM_INSTALL_URL}\n")
+        try:
+            with ui.spinner("Downloading the Serpantinum installer"):
+                ctx.fetch(SERPANTINUM_INSTALL_URL, script)
+        except (OSError, ValueError) as e:  # URLError and HTTPError are OSError
+            raise Fail("Could not download the Serpantinum installer", DR.tilde(e) or e.__class__.__name__,
+                       f"Check your connection, or install Serpantinum yourself: {SERPANTINUM_URL}")
+        ui.hint("Handing the terminal over to the Serpantinum installer")
+        ui.println()
+        ctx.log.write(f"$ bash {script}   (interactive)\n")
+        ctx.phase = "installing"
+        try:
+            rc = ctx.call(["bash", str(script)])
+        except OSError as e:
+            rc = 127
+            ctx.log.write(f"{e}\n")
+        ctx.phase = "prepare"  # not reset on Ctrl-C: run() then reports an interrupted change
+        ctx.log.write(f"[exit {rc}]\n\n")
+    if rc != 0:
+        raise Fail("The Serpantinum installer did not finish", f"It exited with {rc}.",
+                   "Fix the error shown above (or run it yourself, see the Serpantinum README), then run this again.")
+    pre.ss, pre.compat, pre.compat_status, _ = quick_state(ctx)
+    pre.deps = D.check_all(ctx.probe, pre.compat)  # it may have installed some of our dependencies too
+    if not pre.ss.get("version"):
+        raise Fail("Serpantinum was not found after its installer ran",
                    "Neither ~/.local/state/serpantinum/version nor ~/.local/share/serpantinum exists.",
-                   f"Install Serpantinum first: {SERPANTINUM_URL}")
+                   f"Install it yourself ({SERPANTINUM_URL}), then run this again.")
+    ui.status("ok", f"Serpantinum {pre.ss['version']} installed")
+
+
+def require_serpantinum(ctx, pre):
+    if not pre.ss.get("version"):
+        install_serpantinum(ctx, pre)
+    sv = pre.ss.get("version")
     if pre.compat_status == "too_old":
         mn = (pre.compat.get("serpantinum") or {}).get("min")
         raise Fail(f"Serpantinum {sv} is too old", f"These addons need Serpantinum {mn} or newer.",
@@ -244,33 +297,29 @@ def ensure_deps(ctx, pre):
     ui.step("Missing required dependencies")
     for r in miss_req:
         ui.child(f"{r.dep.label} ({r.detail or r.status}): needed for {r.dep.feature}", "warn")
-    mgr = D.detect_package_manager(None)
+    which = getattr(ctx.probe, "which", None)
+    mgr = D.detect_package_manager(which)
     if mgr is None:
         raise Fail("Required dependencies are missing and no supported package manager was found",
                    "Supported: pacman, dnf, xbps-install.",
                    "Install: " + ", ".join(r.dep.label for r in miss_req))
-    plan = D.build_plan(miss_req, mgr)
+    plan = D.build_plan(miss_req, mgr, which)
     for dep, how in plan.manual:
         ui.child(f"{dep.label}: {how}", "warn")
     if plan.commands:
         ui.println()
-        ui.println("  The following command(s) would install them:")
+        ui.step("Installing the missing dependencies")
+        ui.hint("sudo asks for your password; the package manager asks for its own confirmation.")
         for argv in plan.commands:
             ui.println("    " + ui.paint("$ " + D.format_command(argv), "accent"))
-        if getattr(ctx.args, "yes", False):
-            raise Fail("Required dependencies are missing",
-                       "--yes never installs system packages unattended.",
-                       "Run the command(s) above, then try again.")
-        if not ui.confirm("Run them now? (your package manager asks for its own confirmation)", True):
-            raise Fail("Required dependencies are missing", "",
-                       "Install them (command above), then run this again.")
-        for argv in plan.commands:
             ctx.log.write(f"$ {D.format_command(argv)}   (interactive)\n")
+            ctx.phase = "installing"
             try:
-                rc = subprocess.call(argv)
+                rc = ctx.call(argv)
             except OSError as e:
                 rc = 127
                 ctx.log.write(f"{e}\n")
+            ctx.phase = "prepare"  # not reset on Ctrl-C: run() then reports an interrupted change
             ctx.log.write(f"[exit {rc}]\n\n")
             if rc != 0:
                 raise Fail("Installing the dependencies failed", D.format_command(argv) + f" exited with {rc}.",
