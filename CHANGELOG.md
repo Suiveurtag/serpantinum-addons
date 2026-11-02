@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.1.0] - 2026-11-02
 
 ### Added
 - Animated bar outlines (Addons → General, off by default): the bar button whose panel is open gets the v1 flowing outline; classic / button / minimal styles outline the button, other styles the whole module; grouped modules (clock + weather) share one outline around their group; the settings and launcher buttons are outlined while open; the AI tokens bar item is outlined on hover.
