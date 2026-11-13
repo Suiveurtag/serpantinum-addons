@@ -612,6 +612,176 @@
       "fps": 6,
       "loop": true
     },
+    "yawn": {
+      "file": "yawn.png",
+      "frames": 12,
+      "fps": 6,
+      "loop": false
+    },
+    "stretch": {
+      "file": "stretch.png",
+      "frames": 11,
+      "fps": 6,
+      "loop": false
+    },
+    "scratch": {
+      "file": "scratch.png",
+      "frames": 11,
+      "fps": 8,
+      "loop": false
+    },
+    "sneeze": {
+      "file": "sneeze.png",
+      "frames": 12,
+      "fps": 8,
+      "loop": false
+    },
+    "look_around": {
+      "file": "look_around.png",
+      "frames": 9,
+      "fps": 4,
+      "loop": false
+    },
+    "tap": {
+      "file": "tap.png",
+      "frames": 17,
+      "fps": 8,
+      "loop": false
+    },
+    "shake": {
+      "file": "shake.png",
+      "frames": 11,
+      "fps": 12,
+      "loop": false
+    },
+    "doze": {
+      "file": "doze.png",
+      "frames": 12,
+      "fps": 4,
+      "loop": false
+    },
+    "bubble": {
+      "file": "bubble.png",
+      "frames": 12,
+      "fps": 6,
+      "loop": false
+    },
+    "butterfly": {
+      "file": "butterfly.png",
+      "frames": 21,
+      "fps": 6,
+      "loop": false
+    },
+    "yoyo": {
+      "file": "yoyo.png",
+      "frames": 19,
+      "fps": 8,
+      "loop": false
+    },
+    "whistle": {
+      "file": "whistle.png",
+      "frames": 14,
+      "fps": 6,
+      "loop": false
+    },
+    "skip": {
+      "file": "skip.png",
+      "frames": 16,
+      "fps": 8,
+      "loop": false
+    },
+    "sit_sway": {
+      "file": "sit_sway.png",
+      "frames": 8,
+      "fps": 4,
+      "loop": true
+    },
+    "sit_gaze": {
+      "file": "sit_gaze.png",
+      "frames": 8,
+      "fps": 2,
+      "loop": true
+    },
+    "perch_kick": {
+      "file": "perch_kick.png",
+      "frames": 16,
+      "fps": 8,
+      "loop": false,
+      "grip": [
+        10.5,
+        12
+      ]
+    },
+    "perch_yawn": {
+      "file": "perch_yawn.png",
+      "frames": 12,
+      "fps": 6,
+      "loop": false,
+      "grip": [
+        10.5,
+        12
+      ]
+    },
+    "work_6": {
+      "file": "work_6.png",
+      "frames": 8,
+      "fps": 4,
+      "loop": true
+    },
+    "edit_4": {
+      "file": "edit_4.png",
+      "frames": 8,
+      "fps": 5,
+      "loop": true
+    },
+    "read_4": {
+      "file": "read_4.png",
+      "frames": 10,
+      "fps": 3,
+      "loop": true
+    },
+    "bash_4": {
+      "file": "bash_4.png",
+      "frames": 8,
+      "fps": 5,
+      "loop": true
+    },
+    "search_4": {
+      "file": "search_4.png",
+      "frames": 6,
+      "fps": 6,
+      "loop": true
+    },
+    "web_4": {
+      "file": "web_4.png",
+      "frames": 8,
+      "fps": 5,
+      "loop": true
+    },
+    "task_4": {
+      "file": "task_4.png",
+      "frames": 6,
+      "fps": 6,
+      "loop": true
+    },
+    "todo_4": {
+      "file": "todo_4.png",
+      "frames": 9,
+      "fps": 4,
+      "loop": true
+    },
+    "think_3": {
+      "file": "think_3.png",
+      "frames": 8,
+      "fps": 6,
+      "loop": false
+    },
+    "happy_3": {
+      "file": "happy_3.png",
+      "frames": 8,
+      "fps": 10,
+      "loop": false
+    },
     "book_idle": {
       "file": "book_idle.png",
       "frames": 1,

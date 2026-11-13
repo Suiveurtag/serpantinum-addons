@@ -19,8 +19,8 @@ the hook socket stays, so he knows what your agents are doing when he comes back
 | Right click | ASCII menu: `> sleep` / `> wake` (`> revive` while he is dead), `> dreams` (the journal's dream tab), `> talk` (opens the chat; hidden while dead or chat is off), `> hide` (turns Clawd off), `> settings`. Escape or an outside click closes it |
 
 Left alone he walks along the bottom of his screen (above the bar's reserved
-area), blinks, looks toward the pointer, sits, and falls asleep after the
-configured idle delay. He also lives on your windows and follows the cursor to
+area), blinks, looks toward the pointer, fidgets (a yawn, a stretch, a bubble of gum, a yo-yo…: see Idle fidgets),
+sits, and falls asleep after the configured idle delay. He also lives on your windows and follows the cursor to
 other screens (below). Shell performance mode cuts idle actions and stops
 pointer polling.
 
@@ -39,7 +39,7 @@ quickshell -p … ipc call clawd state       # debug: JSON of his mode, support,
 `fall`, `land`, `spawn`, `think`, `work`, `oops`, `alert`, `happy`, `petpet`, `petpetheart`,
 `read`, `bash`, `search`, `web`, `task`, `todo`, `compact`, `startled`, `edit`, `edit_2`, `work_2`, `read_2`,
 `bash_2`, `search_2`, `web_2`, `task_2`, `todo_2`, `work_3`…`work_5`, `edit_3`, `read_3`, `bash_3`, `search_3`, `web_3`, `task_3`, `todo_3`, `think_2`, `happy_2`, `celebrate`, `sweat`, `coin`, `sad`, `wave`,
-`explode`, `perch`, `perch_look`, `hop`, `stumble`, `teeter`, `peek`, `nuke`, `dead`, `dead_land`, `revive`, `tada`, ...; 59 in all); loops play
+`explode`, `perch`, `perch_look`, `hop`, `stumble`, `teeter`, `peek`, `nuke`, `dead`, `dead_land`, `revive`, `tada`, `yawn`, `bubble`, `work_6`, ...; 155 in all, the idle specials included); loops play
 for about 3 s, then normal behaviour resumes. Scenes: `play explode` previews the singularity (about 37 s), `play nuke` the nuclear
 variant (about 20 s), `play limit` either at random (Escape skips to the end; both leave him dead); `play surge` the superpowered
 weekly variant (about 41 s, he survives it); `play revive` brings him back.
@@ -120,11 +120,11 @@ head in `full` thoughts mode, and stay in memory in the shell only (never writte
 
 | Event | Clawd |
 | --- | --- |
-| Prompt submitted | `think` or `think_2`, then his working loop in place while the turn runs; a new spinner verb |
+| Prompt submitted | `think`, `think_2` or `think_3`, then his working loop in place while the turn runs; a new spinner verb |
 | Tool failed | `oops`, then back to work |
 | Permission request | `alert` (hops) + `⚠ permission · <dir>` until that session moves on |
 | Idle prompt / Codex asks a question | `… waiting · <dir>` for 8 s |
-| Turn finished | `happy` or `happy_2` + `✓ done · <dir>` for 8 s; `celebrate` (confetti) after a turn of 3 min or more |
+| Turn finished | `happy`, `happy_2` or `happy_3` + `✓ done · <dir>` for 8 s; `celebrate` (confetti) after a turn of 3 min or more |
 | Turn failed (Claude `StopFailure`: API error, limit…) | `sad` + `✗ error · <dir>` for 8 s |
 | Session start | `wave`, except when Claude restarts the session after a compaction (and the spinner verbs are re-read, at most every 30 s) |
 | Compaction (Claude) | `compact` (squashed flat) |
@@ -137,14 +137,14 @@ the tool family changes, and switching variant every 8–12 s:
 
 | Tool | Loop |
 | --- | --- |
-| `Read`, `NotebookRead`, `view_image` | `read` (book) / `read_2` (scroll unrolling) / `read_3` (pages flying out of the book) |
-| `Edit`, `Write`, `MultiEdit`, `NotebookEdit`, `apply_patch` | `edit` (pencil on a notepad) / `edit_2` (sheet held up, diff lines) / `edit_3` (hammer and chisel on a block, chips flying) |
-| `Bash`, `BashOutput`, `KillShell`, `exec_command`, `write_stdin`, `shell`, `local_shell` | `bash` (terminal above his head) / `bash_2` (output scrolling) / `bash_3` (a progress bar filling above his head) |
-| `Grep`, `Glob`, `LS`, `ToolSearch` | `search` (magnifier) / `search_2` (crouched, scanning the ground) / `search_3` (binoculars sweeping left and right) |
-| `WebFetch`, `WebSearch`, `web_search` | `web` (globe) / `web_2` (antenna with signal waves) / `web_3` (paper planes taking off) |
-| `Task`, `Agent`, `spawn_agent` | `task` (a mini Clawd) / `task_2` (two mini Clawds hopping) / `task_3` (shouting orders through a megaphone) |
-| `TodoWrite`, `update_plan` | `todo` (checklist) / `todo_2` (ticking boxes) / `todo_3` (kanban cards sliding to done) |
-| anything else (MCP…) | `work` (keyboard) / `work_2` (fast two-hand typing) / `work_3` (juggling) / `work_4` (coffee break) / `work_5` (meshing gears) |
+| `Read`, `NotebookRead`, `view_image` | `read` (book) / `read_2` (scroll unrolling) / `read_3` (pages flying out of the book) / `read_4` (a newspaper held wide, his eyes scanning over the top) |
+| `Edit`, `Write`, `MultiEdit`, `NotebookEdit`, `apply_patch` | `edit` (pencil on a notepad) / `edit_2` (sheet held up, diff lines) / `edit_3` (hammer and chisel on a block, chips flying) / `edit_4` (painting a pink heart on an easel) |
+| `Bash`, `BashOutput`, `KillShell`, `exec_command`, `write_stdin`, `shell`, `local_shell` | `bash` (terminal above his head) / `bash_2` (output scrolling) / `bash_3` (a progress bar filling above his head) / `bash_4` (a little rocket lifting off its pad) |
+| `Grep`, `Glob`, `LS`, `ToolSearch` | `search` (magnifier) / `search_2` (crouched, scanning the ground) / `search_3` (binoculars sweeping left and right) / `search_4` (rummaging through a crate, things flying over his shoulder) |
+| `WebFetch`, `WebSearch`, `web_search` | `web` (globe) / `web_2` (antenna with signal waves) / `web_3` (paper planes taking off) / `web_4` (a cloud download: chevrons falling into a tray that fills up) |
+| `Task`, `Agent`, `spawn_agent` | `task` (a mini Clawd) / `task_2` (two mini Clawds hopping) / `task_3` (shouting orders through a megaphone) / `task_4` (a mini Clawd hopping from side to side on his head) |
+| `TodoWrite`, `update_plan` | `todo` (checklist) / `todo_2` (ticking boxes) / `todo_3` (kanban cards sliding to done) / `todo_4` (sorting his priorities: bars above his head swapping into order) |
+| anything else (MCP…) | `work` (keyboard) / `work_2` (fast two-hand typing) / `work_3` (juggling) / `work_4` (coffee break) / `work_5` (meshing gears) / `work_6` (stacking crates into a tower) |
 
 Hooks fired inside a sub-agent do not override the lead thread's tool while it is busy; once the lead thread
 has been quiet for 5 s (typically waiting on the sub-agent), Clawd plays the sub-agent's tool instead. A
@@ -333,14 +333,14 @@ so the card works in the Settings app and in the integrated `Super+Shift+P` pane
 
 ## Animations
 
-60 strips (plus the idle specials below). Besides the idle life (`idle`, `blink`, `look_*`, `walk`, `turn`, `sit`, `sleep`,
-`drag`, `fall`, `land`, `spawn`), petting (`petpet`, `petpetheart`, `startled`) and the working
+123 strips (plus the 32 idle specials below). Besides the idle life (`idle`, `blink`, `look_*`, `walk`, `turn`, `sit`, `sleep`,
+`drag`, `fall`, `land`, `spawn`), the idle fidgets below, petting (`petpet`, `petpetheart`, `startled`) and the working
 loops above:
 
 | Animation | fps / loop | When | Looks like |
 | --- | --- | --- | --- |
-| `think`, `think_2` | 6 / once | prompt submitted | ✻ thinking; chin tap, `?` then a cream spark |
-| `happy`, `happy_2` | 10 / once | turn finished | hop; jump and spin with arms up |
+| `think`, `think_2`, `think_3` | 6 / once | prompt submitted | ✻ thinking; chin tap, `?` then a cream spark; pondering left and right, then a light bulb |
+| `happy`, `happy_2`, `happy_3` | 10 / once | turn finished | hop; jump and spin with arms up; a fist pump under a pink tick |
 | `celebrate` | 10 / once | turn of 3 min or more finished | big jump, cream and pink confetti |
 | `oops` | 10 / once | tool failed | shakes with a `!` beside his head |
 | `alert` | 6 / loop | permission request | hops with a `!` |
@@ -369,6 +369,38 @@ pixels from the frame's top-left, unmirrored (`perch` and `perch_look`: the seat
 `[10.5, 12]`, so his legs hang below the window edge). Without one it is the bottom centre
 (standing). Missing new animations fall back: `perch`/`perch_look` → `sit`, `hop` → `land`,
 `stumble` → `oops`, `teeter` → `idle`, `peek` → `look_right`, the sleep strips → `sleep` / `idle` / `walk`.
+
+### Idle fidgets
+
+17 strips on his own canvas and palette (cream and pink props only), chosen by `js/fidgets.mjs` (`pick(pose, {mood, sleepy, prev})`, weighted,
+never the same twice in a row). At normal speed about one idle pause in seven on the floor plays one (one in eight on a window top), and half
+of his sits on a calm day use a seated loop. None in performance mode, none while an agent works. Every standing one starts and ends on `idle`'s first
+frame, every perched one on `perch`'s (same `grip`), so nothing jumps.
+
+| Fidget | fps | Pose | Looks like |
+| --- | --- | --- | --- |
+| `yawn` | 6 | standing | eyes shut, stretches up, mouth wide, arms out, sinks back |
+| `stretch` | 6 | standing | arms above his head, leans left then right, lets go with a happy face |
+| `scratch` | 8 | standing | one arm up, the hand tapping his head, one eye shut |
+| `sneeze` | 8 | standing | two breaths in, then squashed flat with a spray of drops |
+| `look_around` | 4 | standing | left, right, up, a blink |
+| `tap` | 8 | standing | bored eyes, arms low, a foot tapping the floor |
+| `shake` | 12 | standing | shakes himself dry, drops flying both ways |
+| `doze` | 4 | standing | nods off, sinks, a `z`, jolts awake with a `!`, shakes his head |
+| `bubble` | 6 | standing | cross-eyed, blows a pink bubble of gum that grows and pops on his face |
+| `butterfly` | 6 | standing | a pink butterfly flies in, lands on his head (he smiles), flies off the other way |
+| `yoyo` | 8 | standing | a cream yo-yo down its string and back, twice, sleeping at the bottom |
+| `whistle` | 6 | standing | happy eyes, bobs, pink notes floating up on both sides |
+| `skip` | 8 | standing | three jumps over a cream skipping rope |
+| `sit_sway` | 4 / loop | seated | rocks from side to side, humming (pink notes) |
+| `sit_gaze` | 2 / loop | seated | looks up at a star twinkling here, then there |
+| `perch_kick` | 8 | perched | happy, swings his legs one side then the other |
+| `perch_yawn` | 6 | perched | the yawn, seated on the ledge |
+
+Moods narrow the choice: `drowsy` and `exhausted` yawn, nod off, stretch or scratch; `rain` shakes, sneezes, looks around or taps;
+`snow` mostly sneezes. Once 60 % of the idle delay has passed with nothing touching him, he is sleepy: mostly yawns and nods, no more games.
+A new fidget: its frames (first and last = the resting pose), a line in `sprites.py` `ANIMS`, its name and weight in `js/fidgets.mjs`.
+`quickshell ipc call clawd play yawn` (any name above) plays one at once.
 
 ### Idle specials
 

@@ -6,6 +6,7 @@ import "js/world.mjs" as World
 import "js/mind.mjs" as Mind
 import "js/acts.mjs" as Acts
 import "js/dreams.mjs" as Dreams
+import "js/fidgets.mjs" as Fidgets
 
 // Clawd himself, in global logical pixels: x/y is his top-left corner, every ClawdOverlay draws him from here.
 // mode: spawn, idle, walk, turn, sit, sleep, drag, fall, land, play, work (an agent session is busy: Clawd.activity,
@@ -18,6 +19,8 @@ import "js/dreams.mjs" as Dreams
 // sleep (classic or under a blanket: sleepKind), dream / nightmare (a dream scene plays over his sleep), sleepwalk (a few sleeping steps);
 // `asleep` is true for all four.
 // act (an idle special on the floor: book, bike, boat, camp... a sequence of strips, js/acts.mjs; some have their own canvas size).
+// Idle fidgets (js/fidgets.mjs) are plain strips played in his resting modes: a one-shot in idle or perch (yawn, stretch, bubble, butterfly...),
+// a seated loop in sit (sit_sway, sit_gaze); they end like a blink does, back in his resting pose.
 // mood: '' | drowsy | exhausted | rain | snow, a lasting state from the shell (dim light, low battery, weather): slower, calmer, sits tired,
 // under an umbrella or shivering.
 // support = what he stands on: null (the floor of `here`) | {kind: "win", id, dx} (dx = contact x - window x;
@@ -61,6 +64,8 @@ Item {
     property var act: null         // {name, steps, i, to, v}: the special in progress (mode act)
     property real actAt: Date.now()  // ms when the last special ended (they are rare)
     property string lastAct: ""
+    property var fidgets: ({})       // pose (stand | sit | perch) -> the last idle fidget played in it (never the same twice in a row)
+    property real touchedAt: Date.now()  // ms of the last touch(): his nap is near once most of sleepAfter has passed
     property bool switching: false
     // Sleep life: sleepKind classic | blanket; sleepAt = ms when this sleep began; dream = {entry, seed} (a registry entry of js/dreams.mjs);
     // dreamPhase "" | bubble (the cloud waits for a click, 30 s) | view (the scene plays; dreamAt = when it began); mumble = a sleep-talk line;
@@ -243,12 +248,22 @@ Item {
         else if (support) {
             if (rest < 0.3) enter("perch", "perch_look", Math.random() < 0.5);
             else if (rest < 0.45) { if (!hopDown(0)) enter("perch", "perch"); }
-            else enter("perch", "perch");
+            else enter("perch", rest < 0.65 && fidget("perch") || "perch");
         }
-        else if (rest < 0.35) enter("idle", "blink");
-        else if (rest < 0.7 && !Clawd.lowMotion) enter("idle", look());
-        else if (rest < 0.85) enter("sit", moodSit());
+        else if (rest < 0.3) enter("idle", "blink");
+        else if (rest < 0.55 && !Clawd.lowMotion) enter("idle", look());
+        else if (rest < 0.78 && fidget("stand")) enter("idle", fidgets.stand);
+        else if (rest < 0.9) enter("sit", moodSit());
         else enter("idle", "idle");
+    }
+    // The next idle fidget for his pose (stand | sit | perch, js/fidgets.mjs), remembered in fidgets[pose]; "" when there is none (performance
+    // mode, a mood that allows none, sprites not regenerated yet).
+    function fidget(pose) {
+        if (Clawd.lowMotion) return "";
+        const sleepy = !mood && Date.now() - touchedAt > sleepAfter * 0.6;
+        const name = Fidgets.pick(pose, { mood, sleepy, prev: fidgets[pose] || "" }, Math.random, has);
+        if (name) fidgets = Object.assign({}, fidgets, { [pose]: name });
+        return name;
     }
     // The idle specials: rare, on the floor, in a calm state; each is a sequence of strips (js/acts.mjs) of their own size.
     function actReady() {
@@ -295,7 +310,8 @@ Item {
     function moodSit() {
         if ((mood === "drowsy" || mood === "exhausted") && has(mood)) return mood;
         const weather = mood === "rain" ? "umbrella" : mood === "snow" ? "shiver" : "";
-        return weather && !Clawd.lowMotion && has(weather) && Math.random() < 0.5 ? weather : "sit";
+        if (weather && !Clawd.lowMotion && has(weather) && Math.random() < 0.5) return weather;
+        return !mood && Math.random() < 0.5 && fidget("sit") || "sit";  // a calm day: half his sits sway or gaze at the sky
     }
     function lookAt(gx, gy) {
         const dx = gx - (x + width / 2), dy = gy - (y + height / 2);
@@ -898,6 +914,7 @@ Item {
     }
     function touch() {
         tired = false;
+        touchedAt = Date.now();
         drowsy.restart();
     }
     function sleepLoop() { return sleepKind === "blanket" && has("sleep_blanket") ? "sleep_blanket" : "sleep"; }

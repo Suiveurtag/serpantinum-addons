@@ -18,6 +18,8 @@ launch, tuck, back view (mid-flip), landing squash, shaka (ClawdDreamSurf.qml pi
 lot 7 (sleep): the blanket clips use SLEEPY (blanket blue 'b', quilting 'n', pink trim 'p', sweat 'y'); a roll's last frame is the mirror
 of its loop's frame 0 (the pet flips `mirrored` when it ends). gemini.png (the nightmare's drawing) is copied as is from scripts/clawd/gemini.png.
 recharge = the 5 h reset poses (ClawdRecharge.qml): drained and dark ('e'), refilling from the feet up in 5 levels, white, cream.
+lot 9 (idle fidgets, js/fidgets.mjs, and one more working loop per family): the base palette only. A standing fidget's first and last frames
+are idle's first frame, a perched one's are perch's (same grip), so the pet enters and leaves them without a jump.
 hand.png (the petpet hand, drawn over Clawd in sync with his frames) is cut out of scripts/clawd/hand-pet.gif.
 An animation may set a grip = its contact point with the support, in frame pixels from the frame's top-left, unmirrored
 (mirrored: W - gx). The pet places him at x = contactX - gx*scale, y = contactY - gy*scale; without one the manifest has no
@@ -82,6 +84,14 @@ ANIMS = {
     # lot 7: sleep (a blanket, turning over, the nightmare's jolt, the groggy wake-up, sleepwalking)
     'sleep_blanket_in': (6, False), 'sleep_blanket': (2, True), 'sleep_roll': (8, False), 'sleep_blanket_roll': (8, False),
     'sleep_blanket_out': (8, False), 'sleep_jolt': (10, False), 'wake_groggy': (5, False), 'sleep_walk': (6, True),
+    # lot 9, idle life: standing fidgets (each starts and ends on idle's first frame), little games, seated loops, two on a window top
+    'yawn': (6, False), 'stretch': (6, False), 'scratch': (8, False), 'sneeze': (8, False), 'look_around': (4, False), 'tap': (8, False),
+    'shake': (12, False), 'doze': (4, False),
+    'bubble': (6, False), 'butterfly': (6, False), 'yoyo': (8, False), 'whistle': (6, False), 'skip': (8, False),
+    'sit_sway': (4, True), 'sit_gaze': (2, True), 'perch_kick': (8, False, (10.5, 12)), 'perch_yawn': (6, False, (10.5, 12)),
+    # lot 9, work: one more loop per tool family, a third way to think and to be done
+    'work_6': (4, True), 'edit_4': (5, True), 'read_4': (3, True), 'bash_4': (5, True), 'search_4': (6, True), 'web_4': (5, True),
+    'task_4': (6, True), 'todo_4': (4, True), 'think_3': (6, False), 'happy_3': (10, False),
 }
 BLAST = {**PALETTE, **{k: tuple(bytes.fromhex(v)) + (255,) for k, v in {
     'a': 'e8946c', 'b': 'f4b68e', 'c': 'fcddc2', 'w': 'ffffff', 'v': '6e3bff'}.items()}}

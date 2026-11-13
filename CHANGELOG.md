@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- Clawd idle fidgets (17 animations), played now and then while he rests: `yawn`, `stretch`, `scratch`, `sneeze`, `look_around`, `tap`, `shake`, `doze`, `bubble` (gum), `butterfly`, `yoyo`, `whistle`, `skip` (rope); seated `sit_sway` and `sit_gaze`; on a window top `perch_kick` and `perch_yawn`. They follow his mood (tired: yawns and nods; rain or snow: sneezes and shakes), favour yawns when his nap is near, never repeat twice in a row and stay off in performance mode.
+- Clawd working loops: one more per tool family (`work_6` stacking crates, `edit_4` easel, `read_4` newspaper, `bash_4` rocket launch, `search_4` rummaging through a crate, `web_4` cloud download, `task_4` a mini Clawd on his head, `todo_4` sorting bars), plus `think_3` (light bulb) and `happy_3` (fist pump under a tick).
+
 ## [2.1.2] - 2026-11-02
 
 ### Added

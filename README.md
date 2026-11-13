@@ -167,6 +167,7 @@ Pixel companion for Claude Code, Codex, OpenCode and Hermes: a flat orange (`#D9
 
 **Autonomous life**
 - Walks along the bottom of his screen (above the bar), blinks, watches the pointer, sits down, falls asleep after the configured delay.
+- Idle fidgets (17): yawns, stretches, scratches his head, sneezes, taps his foot, shakes himself, nods off; blows a bubble of gum, plays with a yo-yo, skips rope, whistles, a butterfly lands on his head; seated he sways or watches a star; on a window he swings his legs. They follow his mood (tired: yawns; rain or snow: sneezes and shakes) and stop in performance mode.
 - Performance mode: no exploring, no following, reduced window refresh.
 
 **Windows and screens** (`world` switch, `windows`)
@@ -187,11 +188,11 @@ Pixel companion for Claude Code, Codex, OpenCode and Hermes: a flat orange (`#D9
 
 | Event | Clawd |
 | --- | --- |
-| Prompt submitted | `think`, then his work loop; new spinner verb |
+| Prompt submitted | `think` (three variants), then his work loop; new spinner verb |
 | Tool failure | `oops`, then recovers |
 | Permission request | `alert` + `⚠ permission · <folder>` |
 | Waiting for an answer | `… waiting · <folder>` for 8 s |
-| Turn finished | `happy` + `✓ done · <folder>`; `celebrate` (confetti) after 3 min |
+| Turn finished | `happy` (three variants) + `✓ done · <folder>`; `celebrate` (confetti) after 3 min |
 | Turn error (API, limit) | `sad` + `✗ error · <folder>` |
 | Session start | `wave` (except after a compaction) |
 | Compaction | `compact` |
@@ -200,16 +201,16 @@ Pixel companion for Claude Code, Codex, OpenCode and Hermes: a flat orange (`#D9
 
 **Work loops by tool**
 
-| Tool | Loop (`_2` variant alternates) |
+| Tool | Loops (picked at random, another one every 8–12 s) |
 | --- | --- |
-| `Read`, `NotebookRead`, `view_image` | reading (book / scroll) |
-| `Edit`, `Write`, `MultiEdit`, `NotebookEdit`, `apply_patch` | writing (pencil / sheet with a diff) |
-| `Bash`, `exec_command`, `shell`… | terminal / scrolling output |
-| `Grep`, `Glob`, `LS`, `ToolSearch` | magnifier / sweeping the ground |
-| `WebFetch`, `WebSearch` | globe / radio antenna |
-| `Task`, `Agent`, `spawn_agent` | mini-Clawd / two mini-Clawds |
-| `TodoWrite`, `update_plan` | task list / ticked boxes |
-| Others (MCP…) | keyboard / fast typing |
+| `Read`, `NotebookRead`, `view_image` | reading (book / scroll / flying pages / newspaper) |
+| `Edit`, `Write`, `MultiEdit`, `NotebookEdit`, `apply_patch` | writing (pencil / sheet with a diff / hammer and chisel / painting on an easel) |
+| `Bash`, `exec_command`, `shell`… | terminal / scrolling output / progress bar / rocket launch |
+| `Grep`, `Glob`, `LS`, `ToolSearch` | magnifier / sweeping the ground / binoculars / rummaging through a crate |
+| `WebFetch`, `WebSearch` | globe / radio antenna / paper planes / cloud download |
+| `Task`, `Agent`, `spawn_agent` | mini-Clawd / two mini-Clawds / megaphone / a mini-Clawd on his head |
+| `TodoWrite`, `update_plan` | task list / ticked boxes / kanban / sorting bars |
+| Others (MCP…) | keyboard / fast typing / juggling / coffee / gears / stacking crates |
 
 - Events from a sub-agent do not replace the main thread's tool; after 5 s of calm on the main thread, he plays the sub-agent's tool.
 - Typing speed depends on effort: low ×0.75, medium ×1, high ×1.25, xhigh and max ×1.5.
@@ -282,7 +283,7 @@ The effort settings are per level and per agent, in the **effort** line of the c
 - After a scene: grey, on his back, crosses in his eyes, smoke. He no longer reacts to anything; his bubbles stay visible.
 - Revives with `> revive`, when a new Claude Code, Codex, OpenCode or Hermes session starts (except after a compaction), or when the shell starts / is activated 3 h or more after his death. Revival takes about 9 s with a halo of light.
 
-**Animations**: 60 strips plus 32 idle "acts" (book, cheering, bike, carrying, broom, rowing, fishing, campfire, binoculars, photo, nap), played rarely on the ground, never twice in a row.
+**Animations**: 123 strips (17 of them idle fidgets, 34 working loops) plus 32 idle "acts" (book, cheering, bike, carrying, broom, rowing, fishing, campfire, binoculars, photo, nap), played rarely on the ground, never twice in a row.
 
 **IPC**
 - `clawd toggle`, `appear`, `hide`, `play <name>` (animations, scenes, dreams), `state` (debug JSON).

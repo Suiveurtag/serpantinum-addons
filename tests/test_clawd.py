@@ -30,6 +30,12 @@ ANIMATIONS = ['idle', 'blink', 'look_left', 'look_right', 'look_up', 'walk', 'tu
               'perch', 'perch_look', 'hop', 'stumble', 'teeter', 'peek', 'nuke', 'dead', 'dead_land', 'revive', 'tada', 'recharge', 'conduct', 'surge',
               'climb', 'climb_top', 'hang', 'shimmy', 'swing', 'drop', 'dance', 'dance_2', 'shush', 'drowsy', 'exhausted', 'umbrella', 'shiver', 'chime', 'vibe', 'twirl', 'wiggle', 'breakdance', 'talk',
               'sleep_blanket_in', 'sleep_blanket', 'sleep_roll', 'sleep_blanket_roll', 'sleep_blanket_out', 'sleep_jolt', 'wake_groggy', 'sleep_walk']
+# lot 9: the idle fidgets (standing one-shots, seated loops, two on a window top), then one more working loop per tool family
+FIDGETS_STAND = ['yawn', 'stretch', 'scratch', 'sneeze', 'look_around', 'tap', 'shake', 'doze', 'bubble', 'butterfly', 'yoyo', 'whistle', 'skip']
+FIDGETS_SIT = ['sit_sway', 'sit_gaze']
+FIDGETS_PERCH = ['perch_kick', 'perch_yawn']
+WORK_LOT_9 = ['work_6', 'edit_4', 'read_4', 'bash_4', 'search_4', 'web_4', 'task_4', 'todo_4']
+ANIMATIONS += FIDGETS_STAND + FIDGETS_SIT + FIDGETS_PERCH + WORK_LOT_9 + ['think_3', 'happy_3']
 SPECIALS = ['book_idle', 'book_blink', 'bike_ride', 'broom_fly', 'boat_idle', 'boat_row_in', 'boat_row', 'boat_row_out', 'boat_row_brief', 'boat_fish_in', 'boat_fish_wait', 'boat_fish_catch', 'boat_fish_out', 'boat_bino', 'carry_walk', 'camp_stand', 'camp_fire_build', 'camp_fire_burn', 'camp_fire_die', 'camp_binoc_raise', 'camp_binoc_look_right', 'camp_binoc_flip_left', 'camp_binoc_look_left', 'camp_binoc_lower', 'camp_camera_raise', 'camp_camera_shoot', 'camp_camera_away', 'camp_lie_down', 'camp_lie_idle', 'camp_stand_up', 'content_idle', 'content_bounce']  # the idle specials: own canvas (w, h) and grip
 ANIMATIONS += SPECIALS
 HOOKS = ROOT/'scripts/clawd/hooks.py'
@@ -132,7 +138,7 @@ class ClawdInstallTests(unittest.TestCase):
         files = sorted(p for p in PAYLOAD.rglob('*') if p.is_file())
         names = {str(p.relative_to(PAYLOAD)) for p in files}
         expected = ({line.split()[-1].removeprefix('clawd/') for line in clawd.TYPES} | {'sprites/clawd.json'} | {f'sprites/{a}.png' for a in ANIMATIONS + ['hand', 'antimatter', 'smoke', 'mushroom', 'orchestra', 'clone', 'gemini']}
-                    | {'js/world.mjs', 'js/mind.mjs', 'js/beat.mjs', 'js/acts.mjs', 'js/dreams.mjs', 'js/effort.mjs', 'shaders/manifest.json'} | {f'shaders/{n}.frag{q}' for n in SHADERS for q in ('', '.qsb')})
+                    | {'js/world.mjs', 'js/mind.mjs', 'js/beat.mjs', 'js/acts.mjs', 'js/dreams.mjs', 'js/effort.mjs', 'js/fidgets.mjs', 'shaders/manifest.json'} | {f'shaders/{n}.frag{q}' for n in SHADERS for q in ('', '.qsb')})
         self.assertEqual(names, expected)  # nothing stray gets installed
         self.assertEqual(len(copied), len(files))
         hashed = {}
@@ -224,9 +230,46 @@ class ClawdSpriteTests(unittest.TestCase):
                                                                                                'climb', 'hang', 'shimmy', 'swing', 'dance', 'dance_2', 'drowsy', 'exhausted', 'umbrella', 'shiver', 'vibe', 'twirl', 'wiggle', 'breakdance',
                                                                                                'book_idle', 'bike_ride', 'broom_fly', 'boat_idle', 'boat_row', 'boat_fish_wait', 'carry_walk',
                                                                                                'camp_stand', 'camp_fire_burn', 'camp_binoc_look_right', 'camp_binoc_look_left', 'camp_lie_idle', 'content_idle', 'talk',
-                                                                                               'sleep_blanket', 'sleep_walk'})
+                                                                                               'sleep_blanket', 'sleep_walk'} | set(FIDGETS_SIT) | set(WORK_LOT_9))
         self.assertEqual(manifest['animations']['perch'].get('grip'), [10.5, 12])  # seated on the ledge, legs below it
         self.assertEqual(manifest['hand']['frames'], manifest['animations']['petpet']['frames'])  # the hand is frame-locked to him
+
+    def test_idle_and_work_lot_strips(self):
+        from PIL import Image
+        manifest = json.loads((SPRITES/'clawd.json').read_text())['animations']
+        body = (0xD9, 0x77, 0x57, 255)
+        def frames(name):
+            with Image.open(SPRITES/f'{name}.png') as image:
+                strip = image.convert('RGBA')
+            return [strip.crop((21 * i, 0, 21 * (i + 1), 14)) for i in range(manifest[name]['frames'])]
+        idle, perch = frames('idle')[0].tobytes(), frames('perch')[0].tobytes()
+        # a fidget plays from his resting pose and hands back to it: no jump on either side
+        for name in FIDGETS_STAND + ['think_3', 'happy_3']:
+            strip = frames(name)
+            self.assertFalse(manifest[name]['loop'], name)
+            self.assertEqual(strip[-1].tobytes(), idle, name)
+            if name in FIDGETS_STAND and name != 'look_around':   # look_around opens on the glance itself, as look_left does
+                self.assertEqual(strip[0].tobytes(), idle, name)
+        for name in FIDGETS_PERCH:
+            strip = frames(name)
+            self.assertEqual((strip[0].tobytes(), strip[-1].tobytes()), (perch, perch), name)
+            self.assertEqual(manifest[name]['grip'], manifest['perch']['grip'], name)   # the same seat line: he does not move on the ledge
+        for name in FIDGETS_STAND + FIDGETS_SIT + FIDGETS_PERCH + WORK_LOT_9 + ['think_3', 'happy_3']:
+            strip = frames(name)
+            self.assertGreaterEqual(len({f.tobytes() for f in strip}), 4, name)   # it moves
+            for i, frame in enumerate(strip):
+                pixels = frame.load()
+                # he is all there (a body of 13x8, less what a prop hides: the newspaper covers most of him), no row dropped
+                self.assertGreaterEqual(sum(pixels[x, y] == body for x in range(21) for y in range(14)), 40, f'{name} frame {i}')
+                self.assertGreaterEqual(sum(pixels[x, y][3] > 0 for x in range(21) for y in range(14)), 90, f'{name} frame {i}')
+                # nothing floats: something of every frame stands on the bottom row (his feet, or what he jumps over)
+                self.assertTrue(any(pixels[x, 13][3] for x in range(21)), f'{name} frame {i} is off the floor')
+        # every working family has its loops numbered without a hole (Clawd.variants stops at the first missing one)
+        for family, count in (('work', 6), ('edit', 4), ('read', 4), ('bash', 4), ('search', 4), ('web', 4), ('task', 4), ('todo', 4), ('think', 3), ('happy', 3)):
+            names = [family] + [f'{family}_{i}' for i in range(2, count + 1)]
+            self.assertTrue(all(n in manifest for n in names) and f'{family}_{count + 1}' not in manifest, family)
+            self.assertEqual({manifest[n]['loop'] for n in names}, {family not in ('think', 'happy')}, family)
+            self.assertEqual(len({b''.join(f.tobytes() for f in frames(n)) for n in names}), count, family)
 
     def test_sleep_lot_strips(self):
         from PIL import Image, ImageOps
@@ -693,6 +736,9 @@ class ClawdJsTests(unittest.TestCase):
 
     def test_idle_specials_plans(self):
         self.node('acts.mjs', 'CLAWD_ACTS_PASS')
+
+    def test_idle_fidgets_pools(self):
+        self.node('fidgets.mjs', 'CLAWD_FIDGETS_PASS')
 
     def test_dreams_registry_and_sleep_events(self):
         self.node('dreams.mjs', 'CLAWD_DREAMS_PASS')

@@ -15,7 +15,7 @@ ShellRoot {
         function expect(c, msg) { if (!c) { console.error("CLAWD_FAIL", step, msg, p ? JSON.stringify({mode: p.mode, anim: p.animation, x: p.x, y: p.y, h: p.height, here: p.here}) : ""); Qt.exit(1); } }
         function wait(c, msg) { if (c) { waits = 0; return true; } if (++waits > 80) expect(false, "timeout: " + msg); step--; return false; }
         function floorY() { return p.here.floor - p.height; }
-        function fam(a) { return String(a).replace(/_2$/, ""); }
+        function fam(a) { return String(a).replace(/_\d+$/, ""); }
         function raw(line) { Clawd.ingest(line); }
         function hook(agent, event, session, extra) { Clawd.ingest(JSON.stringify(Object.assign({ agent, event, session_id: session, dir: "proj" }, extra || {}))); }
         onTriggered: {
@@ -32,7 +32,7 @@ ShellRoot {
                 break;
             case 1:
                 if (!wait(Clawd.instances === Quickshell.screens.length && Clawd.manifest && host.pet, "one overlay per screen")) break;
-                expect(!!Clawd.manifest.animations.explode && Object.keys(Clawd.manifest.animations).length === 128 && Clawd.manifest.frame.w === 21, "manifest loaded");
+                expect(!!Clawd.manifest.animations.explode && Object.keys(Clawd.manifest.animations).length === 155 && Clawd.manifest.frame.w === 21, "manifest loaded");
                 expect(p.mode === "spawn" && Clawd.screenName === Quickshell.screens[0].name, "spawns on a screen");
                 expect(Math.abs(p.y - floorY()) < 1 && p.height === Clawd.manifest.frame.h * 4, "spawn on the floor at x4");
                 break;
@@ -137,7 +137,7 @@ ShellRoot {
                 for (const [tool, anim] of [["Read", "read"], ["Grep", "search"], ["exec_command", "bash"], ["WebSearch", "web"], ["Task", "task"],
                                             ["update_plan", "todo"], ["mcp__x__y", "work"], ["Edit", "edit"], ["apply_patch", "edit"], ["Bash", "bash"]]) {
                     hook("claude", "PreToolUse", "s1", { tool_name: tool });
-                    expect(Clawd.workAnim === anim && (p.animation === anim || p.animation === anim + "_2" && !!Clawd.manifest.animations[p.animation]), "tool " + tool + " -> " + anim + ": " + p.animation);
+                    expect(Clawd.workAnim === anim && fam(p.animation) === anim && !!Clawd.manifest.animations[p.animation], "tool " + tool + " -> " + anim + ": " + p.animation);
                 }
                 expect(Clawd.busyCount === 1, "one busy session");
                 hook("codex", "PreToolUse", "c9", { tool_name: "web_search", pids: [99999, "x", 1, 3.5] });
@@ -291,31 +291,30 @@ ShellRoot {
             case 27:
                 if (!wait(p.mode === "idle", "happy ends")) break;
                 Clawd.dismiss();
-                Clawd.dice = 0.1;  // < 0.5: variants, < 1/3: sweat
+                Clawd.dice = 0.9;  // Clawd.pick: the last of a list (0.1: the first); < 1/3: sweat
                 hook("claude", "UserPromptSubmit", "v");
-                expect(p.animation === "think_2" && Clawd.sessions["claude:v"].verb === Clawd.pick(Clawd.verbs), "think variant, verb rolled");
+                expect(p.animation === "think_3" && Clawd.sessions["claude:v"].verb === Clawd.pick(Clawd.verbs), "think variant, verb rolled: " + p.animation);
                 break;
             case 28: {
                 if (!wait(p.mode === "work", "think, then work")) break;
-                expect(p.animation === "work_2", "work variant");
-                Clawd.dice = 0.9;
+                expect(p.animation === "work_6", "work variant: " + p.animation);
+                Clawd.dice = 0.1;
                 hook("claude", "PreToolUse", "v", { tool_name: "Edit", target: "main.py" });
                 expect(p.animation === "edit" && Clawd.lead.target === "main.py", "edit family, target stored");
-                Clawd.dice = 0.1;
+                Clawd.dice = 0.9;
                 hook("claude", "PreToolUse", "v", { tool_name: "Read", target: "notes.md\u0007x" });
-                expect(p.animation === "read_2" && Clawd.lead.target === "notes.mdx", "read variant, control chars stripped");
+                expect(p.animation === "read_4" && Clawd.lead.target === "notes.mdx", "read variant, control chars stripped: " + p.animation);
                 hook("claude", "PostToolUse", "v", { tool_name: "Read" });
                 expect(Clawd.lead.target === "notes.mdx", "post keeps the target");
-                Clawd.dice = 0.9;
-                p.shuffle(); expect(p.animation === "read", "shuffle: other variant");
-                p.shuffle(); expect(p.animation === "read_2", "shuffle back");
+                p.shuffle(); expect(p.animation === "read_3", "shuffle: another variant, never the one playing: " + p.animation);
+                p.shuffle(); expect(p.animation === "read_4", "shuffle back: " + p.animation);
                 expect(!Clawd.strained && p.speed === 1, "not strained, medium speed");
                 hook("claude", "Status", "v", { ctx: 85, effort: "max" });
                 expect(Clawd.sessions["claude:v"].phase === "work" && Clawd.strained && p.speed === 1.5, "strained, max effort types faster: " + p.speed);
-                p.shuffle(); expect(p.animation === "read", "strained, roll 0.9: no sweat");
+                p.shuffle(); expect(p.animation === "read_3", "strained, roll 0.9: no sweat: " + p.animation);
                 Clawd.dice = 0.1;
                 p.shuffle(); expect(p.animation === "sweat" && p.speed === 1, "strained, roll 0.1: sweat at normal speed");
-                p.shuffle(); expect(p.animation === "read_2", "never two sweats in a row");
+                p.shuffle(); expect(p.animation === "read", "never two sweats in a row: " + p.animation);
                 expect(Clawd.effortStyle && Clawd.effortStyle.mode === 2, "max effort: rainbow body");
                 hook("claude", "Status", "v", { effort: "low" });
                 expect(p.speed === 0.75, "low effort slower");
