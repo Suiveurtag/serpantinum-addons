@@ -1,8 +1,8 @@
 {
   "serpantinum": {
     "policy": "latest",
-    "min": "2.3.2",
-    "tested": "2.3.2"
+    "min": "2.5.1",
+    "tested": "2.5.1"
   },
   "hyprland_min": "0.55",
   "quickshell_min": "0.3.0"
