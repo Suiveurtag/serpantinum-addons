@@ -26,6 +26,7 @@ import bar_outline
 import release_ui
 import seasonal
 import tokens
+import userpath
 import seasonal_surfaces
 from datetime import datetime, timezone
 from pathlib import Path
@@ -205,9 +206,21 @@ def patch_guide(text):
         new = '''                let key = "guide.tabs." + (t.key || t.id).toLowerCase();
                 let label = I18n.t(key);
                 return label && label !== key ? label : (t.name || t.id);'''
+        old_model_title = '''    function tabTitle(model) {
+        return I18n.t("guide.tabs." + (model.key || model.id).toLowerCase());
+    }'''
+        new_model_title = '''    function tabTitle(model) {
+        let key = "guide.tabs." + (model.key || model.id).toLowerCase();
+        let label = I18n.t(key);
+        return label && label !== key ? label : (model.name || model.id);
+    }'''
         if old in text:
             text = text.replace(old, new, 1)
-        elif new not in text and 'return translated === translationKey ? (t.name || t.id) : translated;' not in text and 'return translated && translated !== translationKey ? translated : (t.name || t.id);' not in text:
+        elif old_model_title in text:
+            text = text.replace(old_model_title, new_model_title, 1)
+        elif (new not in text and new_model_title not in text
+              and 'return translated === translationKey ? (t.name || t.id) : translated;' not in text
+              and 'return translated && translated !== translationKey ? translated : (t.name || t.id);' not in text):
             raise InstallError('Guide tab title fallback anchor changed')
         old_subtab = '                        return I18n.t("guide.tabs." + (st.key || st.id).toLowerCase(), st.name || st.id);'
         new_subtab = '''                        let key = "guide.tabs." + (st.key || st.id).toLowerCase();
@@ -215,7 +228,7 @@ def patch_guide(text):
                         return label && label !== key ? label : (st.name || st.id);'''
         if old_subtab in text:
             text = text.replace(old_subtab, new_subtab, 1)
-        elif new_subtab not in text:
+        elif new_subtab not in text and new_model_title not in text:
             raise InstallError('Guide subtab title fallback anchor changed')
         # Earlier deployed patches already used this resolver form.
         text = text.replace(
@@ -670,15 +683,31 @@ LEFT_FACE_UPDATE_ITEM = '''        // BEGIN serpantinum-addons-v2 update button
 
 
 def patch_left_face(text):
+    if "// serpantinum-addons-v2 ordered update delegate" in text:
+        return text
     import re
     pattern = re.compile(r'(?m)^[ \t]*// BEGIN serpantinum-addons-v2 update button\n.*?^[ \t]*// END serpantinum-addons-v2 update button\n\n?', re.S)
     text = pattern.sub('', text)
     component_anchor = '    AxisFlow {\n'
-    item_anchor = '        MenuButton {\n            id: settingsBtn\n'
+    legacy_item_anchor = '        MenuButton {\n            id: settingsBtn\n'
+    repeater_anchor = '        Repeater {\n            id: menuRepeater\n'
+    item_anchor = legacy_item_anchor if text.count(legacy_item_anchor) == 1 else repeater_anchor
     if text.count(component_anchor) != 1 or text.count(item_anchor) != 1:
         raise InstallError('Left menu anchors changed; the update button cannot be placed')
     text = text.replace(component_anchor, LEFT_FACE_UPDATE_COMPONENT + component_anchor, 1)
-    return text.replace(item_anchor, LEFT_FACE_UPDATE_ITEM + item_anchor, 1)
+    if item_anchor == legacy_item_anchor:
+        return text.replace(item_anchor, LEFT_FACE_UPDATE_ITEM + item_anchor, 1)
+    # The new menu uses one delegate per ordered item. Keep the update button in
+    # that same repeater, so its position follows the editor.
+    start = text.index('            MenuButton {\n                id: menuItem\n', text.index(repeater_anchor))
+    end = text.index('\n            }\n        }\n    }', start) + len('\n            }')
+    original = text[start:end]
+    normal = original.replace('id: menuItem\n                required property string modelData\n                readonly property string itemId: modelData', 'id: normalButton\n                readonly property string itemId: menuItem.itemId', 1)
+    update = LEFT_FACE_UPDATE_ITEM.split('        UpdateButton {\n', 1)[1].split('\n        }\n', 1)[0]
+    update = update.replace('            visible: root.showUpdate && (root.isPreview || root.updateState !== "")\n', '')
+    delegate = ("            // serpantinum-addons-v2 ordered update delegate\n            Item {\n                id: menuItem\n                required property string modelData\n                readonly property string itemId: modelData\n                width: root.isVertical ? root.s(root.isCompact ? 28 : 30) : root.s(root.isCompact ? 30 : 32)\n                height: root.s(root.isCompact ? 28 : 30)\n                visible: itemId !== \"update\" || root.isPreview || root.updateState !== \"\"\n                Loader { anchors.fill: parent; sourceComponent: menuItem.itemId === \"update\" ? updateComponent : normalComponent }\n                Component {\n                    id: normalComponent\n" + normal + "\n                }\n                Component {\n                    id: updateComponent\n                    UpdateButton {\n" + update + "\n                    }\n                }\n            }")
+    text = text[:start] + delegate + text[end:]
+    return text.replace('readonly property int menuCount: menuItems ? menuItems.length : 0', 'readonly property int menuCount: menuItems ? menuItems.filter(id => id !== "update" || isPreview || updateState !== "").length : 0', 1)
 
 
 # Settings → Bar → Modules → Actions → "Show update icon": stored as bar.menuShowUpdate (default on).
@@ -755,14 +784,26 @@ def insert_update_setting(text, anchor, block, after=False):
 
 def patch_bar_menu_card(text):
     text = strip_update_setting(text)
-    text = insert_update_setting(text, '            property bool menuShowLauncher: tab.menuShowLauncher\n', UPDATE_SETTING_PROPERTY_CARD, after=True)
-    return insert_update_setting(text, '                card.tab.setMenuShowLauncher(c);\n            }\n        }\n    }\n', UPDATE_SETTING_ROW_CARD, after=True)
+    preview_anchor = '            property bool menuShowLauncher: tab.menuShowLauncher\n'
+    if text.count(preview_anchor) == 1:
+        text = insert_update_setting(text, preview_anchor, UPDATE_SETTING_PROPERTY_CARD, after=True)
+        row_anchor = '                card.tab.setMenuShowLauncher(c);\n            }\n        }\n    }\n'
+    else:
+        text = insert_update_setting(text, '            property var menuItems: tab.menuItems\n', UPDATE_SETTING_PROPERTY_CARD, after=True)
+        text = text.replace('label: I18n.t("guide.bar.menu.items." + (id === "nightlight" ? "night_light" : id))', 'label: id === "update" ? I18n.t("guide.bar.menu.items.update", "Update") : I18n.t("guide.bar.menu.items." + (id === "nightlight" ? "night_light" : id))')
+        return text
+    return insert_update_setting(text, row_anchor, UPDATE_SETTING_ROW_CARD, after=True)
 
 
 def patch_bar_modules_settings(text):
     text = strip_update_setting(text)
     text = insert_update_setting(text, '    property string wifiStyle: {\n', UPDATE_SETTING_PROPERTY_SETTINGS)
-    text = insert_update_setting(text, '        barModulesRoot.menuShowLauncher = (bs && bs.menuShowLauncher !== undefined) ? Boolean(bs.menuShowLauncher) : true;\n', UPDATE_SETTING_LOAD_SETTINGS, after=True)
+    load_anchor = '        barModulesRoot.menuShowLauncher = (bs && bs.menuShowLauncher !== undefined) ? Boolean(bs.menuShowLauncher) : true;\n'
+    if text.count(load_anchor) != 1:
+        load_anchor = '        barModulesRoot.menuItems = BarModuleRegistry.menuItemsFromSettings(bs);\n'
+    text = insert_update_setting(text, load_anchor, UPDATE_SETTING_LOAD_SETTINGS, after=True)
+    if '    function setMenuItems(list) {\n' in text:
+        text = text.replace('        current.menuItems = list;\n', '        current.menuItems = list;\n        current.menuItemsUpdateMigrated = true;\n', 1) if 'current.menuItemsUpdateMigrated = true;' not in text else text
     return insert_update_setting(text, '    function setWifiStyle(styleName) {\n', UPDATE_SETTING_SETTER_SETTINGS)
 
 
@@ -819,8 +860,14 @@ def patch_binding_safe_registry(text, label, insert_before, register_old, regist
 
 
 def patch_bar_module_registry(text):
-    return patch_binding_safe_registry(text, 'registry', '    function getModuleVariant(moduleId) {\n',
+    text = patch_binding_safe_registry(text, 'registry', '    function getModuleVariant(moduleId) {\n',
                                        REGISTRY_REGISTER_OLD, REGISTRY_REGISTER_NEW, REGISTRY_UNREGISTER_OLD, REGISTRY_UNREGISTER_NEW)
+    old = 'readonly property var menuItemIds: [\"settings\", \"launcher\", \"nightlight\", \"caffeine\", \"shuffle\"]'
+    if old in text:
+        text = text.replace(old, old.replace('[\"settings\"', '[\"update\", \"settings\"'), 1)
+        text = text.replace('    function menuItemIcon(id) {\n', '    function menuItemIcon(id) {\n        if (id === \"update\") return \"󰚰\";\n', 1)
+        text = text.replace('        return res.length > 0 ? res : [\"settings\"];', '        if ((!bs || bs.menuItemsUpdateMigrated !== true) && (!bs || bs.menuShowUpdate !== false) && res.indexOf(\"update\") === -1) res.unshift(\"update\");\n        return res.length > 0 ? res : [\"settings\"];', 1)
+    return text
 
 
 WIDGET_REGISTER_OLD = '''    function registerType(typeId, def) {
@@ -909,13 +956,20 @@ def patch_icon_button(text):
     # Restore the Text's visibility first, so re-running the patch is a no-op.
     text = text.replace('            visible: root.buttonIcon.indexOf("file:") !== 0\n            text: root.buttonIcon\n', '            text: root.buttonIcon\n')
     anchor_import = 'import QtQuick.Controls\n'
-    text_anchor = '        Text {\n            anchors.centerIn: parent\n            text: root.buttonIcon\n'
+    legacy_text_anchor = '        Text {\n            anchors.centerIn: parent\n            text: root.buttonIcon\n'
+    offset_text_anchor = ('        Text {\n            anchors.centerIn: parent\n'
+                          '            anchors.horizontalCenterOffset: root.iconOffsetX\n'
+                          '            anchors.verticalCenterOffset: root.iconOffsetY\n'
+                          '            text: root.buttonIcon\n')
+    text_anchor = legacy_text_anchor if text.count(legacy_text_anchor) == 1 else offset_text_anchor
     if text.count(anchor_import) != 1 or text.count(text_anchor) != 1:
         raise InstallError('IconButton anchors changed; image icons cannot be placed')
     import_block = '// BEGIN serpantinum-addons-v2 image import\nimport QtQuick.Effects\n// END serpantinum-addons-v2 image import\n'
     image_block = '''        // BEGIN serpantinum-addons-v2 image icon
         Image {
             anchors.centerIn: parent
+            anchors.horizontalCenterOffset: root.iconOffsetX
+            anchors.verticalCenterOffset: root.iconOffsetY
             visible: root.buttonIcon.indexOf("file:") === 0
             source: visible ? root.buttonIcon : ""
             width: root.iconFontSize * 1.15; height: width
@@ -927,6 +981,8 @@ def patch_icon_button(text):
         // END serpantinum-addons-v2 image icon
 '''
     text = text.replace(anchor_import, anchor_import + import_block, 1)
+    if text_anchor == legacy_text_anchor:
+        image_block = image_block.replace('            anchors.horizontalCenterOffset: root.iconOffsetX\n            anchors.verticalCenterOffset: root.iconOffsetY\n', '')
     text = text.replace(text_anchor, image_block + text_anchor.replace('            text: root.buttonIcon\n', '            visible: root.buttonIcon.indexOf("file:") !== 0\n            text: root.buttonIcon\n'), 1)
     return text
 
@@ -985,6 +1041,8 @@ def patch_theme(text):
 def patch_theme_view(text):
     if '// BEGIN ' + MARK + ' palette editor' in text: return text
     anchor = '            ThemeWallpaperPreview { tab: themeTabRoot }\n'
+    if text.count(anchor) != 1:
+        anchor = '            ThemePresetsSection { tab: themeTabRoot }\n'
     if text.count(anchor) != 1: raise InstallError('Theme wallpaper preview anchor changed')
     return text.replace(anchor, anchor + '''
             // BEGIN serpantinum-addons-v2 palette editor
@@ -1036,7 +1094,6 @@ def patch_matugen_generation(text):
             "-t", selectedType,
             "--source-color-index", "0"
         ];'''
-    if text.count(anchor) != 1: raise InstallError('Matugen command anchor changed')
     replacement = '''        // BEGIN serpantinum-addons-v2 generation
         matugenProcess.command = [
             "nice", "-n", "15",
@@ -1045,7 +1102,22 @@ def patch_matugen_generation(text):
             Config.getSetting("addonsV2ColorMode", "matugen"), Caching.stateDir
         ];
         // END serpantinum-addons-v2 generation'''
-    return text.replace(anchor, replacement, 1)
+    if text.count(anchor) == 1:
+        return text.replace(anchor, replacement, 1)
+
+    # Serpantinum 2.5 moved image generation into _startImageGenerate and
+    # builds its Matugen command through a shell to publish the palette atomically.
+    current = re.compile(r'(function _startImageGenerate\([^\n]*\)\s*\{[\s\S]*?matugenProcess\.command = )\[[\s\S]*?\];')
+    matches = list(current.finditer(text))
+    if len(matches) != 1:
+        raise InstallError('Matugen command anchor changed')
+    current_replacement = '''[
+            "nice", "-n", "15",
+            "python3", Quickshell.env("HOME") + "/.local/share/serpantinum-addons-v2/scripts/colors.py",
+            cleanPath, root.configPath, root.configPath, selectedMode, selectedType,
+            Config.getSetting("addonsV2ColorMode", "matugen"), Caching.stateDir
+        ]; // BEGIN serpantinum-addons-v2 generation'''
+    return current.sub(lambda match: match.group(1) + current_replacement, text, count=1)
 
 
 def patch_shell(text):
@@ -1463,7 +1535,7 @@ PAYLOAD_FILES = {
     'AddonDesktopZoom.qml': 'AddonDesktopZoom.qml', 'AddonMouseSpotlight.qml': 'AddonMouseSpotlight.qml', 'AddonColorPicker.qml': 'AddonColorPicker.qml',
     'AddonsTab.qml': 'guide/AddonsTab.qml', 'AddonsMouseTab.qml': 'guide/AddonsMouseTab.qml', 'AddonsBannersTab.qml': 'guide/AddonsBannersTab.qml',
     'AddonMonitorsTab.qml': 'guide/AddonMonitorsTab.qml', 'AddonKeybindsTab.qml': 'guide/AddonKeybindsTab.qml', 'AddonStartupTab.qml': 'guide/AddonStartupTab.qml',
-    'DnsControl.qml': 'network/DnsControl.qml', 'LegacyCalendar.qml': 'calendar/LegacyCalendar.qml', 'CalendarPopup.qml': 'calendar/CalendarPopup.qml',
+    'DnsControl.qml': 'network/DnsControl.qml', 'CalendarPopup.qml': 'calendar/CalendarPopup.qml',
     **{name + '.qml': 'guide/' + name + '.qml' for name in ('AddonCursorSettings', 'AddonCursorPreview', 'AddonCursorRole', 'AddonCursorTestArea')},
     'AddonPaletteEditor.qml': 'guide/theme/AddonPaletteEditor.qml',
     'AddonGlassSurface.qml': 'reusables/AddonGlassSurface.qml',
@@ -1588,10 +1660,33 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
                            'Restore calendar/NativeCalendar.qml from a backup under ~/.local/share/serpantinum-addons-v2/backups, or run `addons.py uninstall` and reinstall.')
     native_text = read(native_calendar) if wrapped else calendar_text
     clock_transform = seasonal.remove if without_halloween else (lambda text: seasonal_surfaces.calendar(seasonal.patch_calendar(text)))
-    pending[native_calendar] = patch_file(native_calendar, clock_transform, native_text)
+    def calendar_with_keyboard(text):
+        text = clock_transform(text)
+        for direction, delta in (("Left", "-"), ("Right", "+")):
+            old = (f'    Shortcut {{\n        sequence: "{direction}"\n        enabled: window.visible\n        onActivated: {{\n'
+                   f'            if (calHover.hovered) {{\n                window.setMonthOffset(window.targetMonthOffset {delta} 1);\n'
+                   f'            }} else {{\n                window.setWeatherView(window.targetWeatherView {delta} 1);\n            }}\n        }}\n    }}')
+            replacement = (f'    Shortcut {{\n        sequence: "{direction}"\n        enabled: window.visible\n'
+                           f'        onActivated: window.setWeatherView(window.targetWeatherView {delta} 1)\n    }}')
+            if old not in text and replacement not in text:
+                raise InstallError(f'Calendar {direction} shortcut anchor changed')
+            text = text.replace(old, replacement, 1)
+        return text
+    pending[native_calendar] = patch_file(native_calendar, calendar_with_keyboard, native_text)
+    dashboard = QS/'calendar/Dashboard.qml'
+    if dashboard.is_file():
+        def focus_dashboard(text):
+            old = '    focusable: dashboardWindow.isOpen\n'
+            new = '    WlrLayershell.keyboardFocus: dashboardWindow.isOpen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None\n'
+            if old not in text and new not in text:
+                raise InstallError('Dashboard keyboard focus anchor changed')
+            return text.replace(old, new, 1)
+        pending[dashboard] = patch_file(dashboard, focus_dashboard, staged(dashboard))
+
     plan.created.add(native_calendar)
-    legacy = QS/'calendar/LegacyCalendar.qml'
-    pending[legacy] = patch_file(legacy, clock_transform, pending[legacy])
+    retired_calendar = QS/'calendar/LegacyCalendar.qml'
+    # Remove the retired v1 renderer installed by older addon releases.
+    plan.blobs.append((retired_calendar, b'', True))
     # The three companion options live on the Banners subtab (and, for older layouts, the General tab).
     for companion in COMPANIONS:
         if options[companion.option]:
@@ -1703,6 +1798,7 @@ def deploy_ops():
     if dst.is_dir() and not dst.is_symlink():
         for path in sorted(dst.rglob('*')):
             relative = path.relative_to(dst)
+            if '__pycache__' in relative.parts or path.suffix == '.pyc': continue
             if relative not in wanted or (wanted[relative].is_dir() != (path.is_dir() and not path.is_symlink())):
                 if not any(parent in stale for parent in path.parents):
                     stale.append(path)
@@ -1946,9 +2042,12 @@ def ensure_beamer_dependencies():
         packages = list(dict.fromkeys(p[manager] for _, p in missing))
         argv = {'pacman': ['sudo', 'pacman', '-S', '--needed'], 'dnf': ['sudo', 'dnf', 'install'],
                 'xbps': ['sudo', 'xbps-install', '-S']}[manager] + packages
+        if not sys.stdout.isatty():
+            # the manager captures our output: a sudo password prompt would be invisible and hang the install
+            argv.insert(1, '-n')
         print('Beamer: installing missing dependencies: ' + ' '.join(argv), file=sys.stderr)
         if subprocess.run(argv).returncode != 0:
-            raise RuntimeError('installing ' + ' '.join(packages) + ' failed')
+            raise RuntimeError('installing ' + ' '.join(packages) + ' failed (run it yourself: ' + ' '.join(a for a in argv if a != '-n') + ')')
         still = [tool for tool, _ in missing if _beamer_missing(tool)]
         if still:
             raise RuntimeError('still missing after install: ' + ', '.join(still))
@@ -2253,6 +2352,7 @@ def main(argv=None):
     if args.purge and not args.uninstall:
         parser.error('--purge only works together with --uninstall')
     configure_paths()
+    userpath.extend_environ()
     report, errors, code = {}, [], 0
     try:
         if args.uninstall:

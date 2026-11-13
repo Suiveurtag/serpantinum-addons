@@ -10,6 +10,8 @@ TYPES = ['singleton Tokens 1.0 tokens/Tokens.qml'] + [f'{name} 1.0 tokens/{name}
 UNIT = 'serpantinum-tokens.service'
 MODULES_TAB = 'guide/bar/BarModulesTab.qml'
 MODULES_ANCHOR = '            BarMediaCard { tab: barModulesRoot }\n'
+MODULES_SETTINGS = 'guide/bar/modules/BarModulesSettings.qml'
+MEDIA_LOADER_ANCHOR = '                sourceComponent: BarMediaCard { tab: barModulesRoot }\n            }\n'
 
 
 def patch_qmldir(text):
@@ -32,9 +34,26 @@ def patch_modules_tab(text):
     # Settings → Bar → Modules gets the AI Tokens card (preview, hover providers) after the Media card.
     text = remove_blocks(text)
     if text.count(MODULES_ANCHOR) != 1:
-        raise ValueError('Tokens bar modules anchor changed')
+        # Serpantinum 2.5 moved card composition into BarModulesSettings.qml.
+        return text
     block = f'    // BEGIN {MARK} card\n            BarTokensCard {{ tab: barModulesRoot }}\n    // END {MARK} card\n'
     return text.replace(MODULES_ANCHOR, MODULES_ANCHOR + block, 1)
+
+
+def patch_modules_settings(text):
+    text = remove_blocks(text)
+    if text.count(MEDIA_LOADER_ANCHOR) == 0:
+        return text
+    if text.count(MEDIA_LOADER_ANCHOR) != 1:
+        raise ValueError('Tokens bar modules anchor changed')
+    block = (f'\n            // BEGIN {MARK} card\n'
+             '            Loader {\n'
+             '                Layout.fillWidth: true\n'
+             '                active: barModulesRoot.deferredStage >= 10\n'
+             '                sourceComponent: BarTokensCard { tab: barModulesRoot }\n'
+             '            }\n'
+             f'            // END {MARK} card\n')
+    return text.replace(MEDIA_LOADER_ANCHOR, MEDIA_LOADER_ANCHOR + block, 1)
 
 
 def remove_blocks(text):
@@ -46,7 +65,8 @@ def remove(text):
 
 
 def transformations(qs):
-    return {qs/'qmldir': patch_qmldir, qs/'Shell.qml': patch_shell, qs/MODULES_TAB: patch_modules_tab}
+    return {qs/'qmldir': patch_qmldir, qs/'Shell.qml': patch_shell, qs/MODULES_TAB: patch_modules_tab,
+            qs/MODULES_SETTINGS: patch_modules_settings}
 
 
 def resources(payload, qs):

@@ -121,7 +121,7 @@ def atomic(path, data):
 
 
 def generate(image, config, static_config, mode, scheme, addon_mode, state):
-    subprocess.run(['matugen', 'image', image, '-c', config, '-m', mode, '-t', scheme], check=True)
+    subprocess.run(['matugen', 'image', image, '-c', config, '-m', mode, '-t', scheme, '--source-color-index', '0'], check=True)
     state = Path(state)
     colors_path = state / 'qs_colors.json'
     matugen_colors_path = state / 'qs_matugen_colors.json'

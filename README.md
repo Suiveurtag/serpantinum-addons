@@ -556,7 +556,6 @@ Tab **Addons → Mouse** (sub-tab "Mouse").
 - **Themed window outline**: thin Hyprland border in the colours of the active palette, seasonal colours included. Off by default.
 - **Hide weather location**: the city name in the weather widget is continuously scrambled (random characters), without changing the data.
 - **Mullvad DNS**: switch to Mullvad DNS-over-TLS on the active connection (see [Network and idle](#10-network-and-idle)).
-- **Legacy clock design**: restores the v1 calendar and clock.
 - **Animated bar outlines**: the bar button whose panel is open gets a flowing outline in the theme colours (the whole module for the styles that have no button, one shared outline for grouped modules such as clock + weather); the settings and launcher buttons are outlined while open, and the AI Tokens bar item on hover. Off by default.
 - **Passive addons**: list of tools without a switch, with their shortcut (Capri, Clawd, drawing, zoom, colour picker, capture, monitors, shortcuts, Beamer, Vibrant/Vivid).
 - **Halloween**: switch for the seasonal effects (see [Halloween](#3-halloween-seasonal-effects)).

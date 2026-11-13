@@ -86,14 +86,13 @@ class SeasonalIntegrationTests(unittest.TestCase):
                 self.assertNotIn('root["_normal"', result)
                 self.assertEqual(result, seasonal.remove(result))
 
-    def test_both_clock_renderers_keep_the_normal_orbit(self):
-        for name in ('NativeCalendar.qml', 'LegacyCalendar.qml'):
-            with self.subTest(renderer=name):
-                result = seasonal.patch_calendar((install.QS/'calendar'/name).read_text())
-                self.assertEqual(result, seasonal.patch_calendar(result))
-                self.assertEqual(result.count('id: orbitCanvas'), 1)
-                self.assertEqual(result.count('sourceComponent: CelestialDial'), 1)
-                self.assertIn('visible: !Halloween.activeSeason', result)
+    def test_native_clock_keeps_the_normal_orbit(self):
+        source = (install.QS/'calendar/NativeCalendar.qml').read_text()
+        result = seasonal.patch_calendar(source)
+        self.assertEqual(result, seasonal.patch_calendar(result))
+        self.assertEqual(result.count('id: orbitCanvas'), 1)
+        self.assertEqual(result.count('sourceComponent: CelestialDial'), 1)
+        self.assertIn('visible: !Halloween.activeSeason', result)
 
 
 if __name__ == '__main__':

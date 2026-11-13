@@ -12,6 +12,21 @@ const error = message => Object.assign(new Error(message), {
   code: /rate limit|usage limit|429|quota/i.test(message) ? 'busy' : null
 });
 
+// The session PATH misses tools installed since login (npm -g, cargo...): append the usual per-user bin directories.
+function userBinPath(base = process.env.PATH || '') {
+  const home = os.homedir();
+  const e = process.env;
+  const dirs = [e.NPM_CONFIG_PREFIX && path.join(e.NPM_CONFIG_PREFIX, 'bin'), e.PNPM_HOME, e.BUN_INSTALL && path.join(e.BUN_INSTALL, 'bin'), e.VOLTA_HOME && path.join(e.VOLTA_HOME, 'bin'), e.NVM_BIN, path.join(home, '.local/bin'), path.join(home, '.npm-global/bin'), path.join(home, '.npm-packages/bin'), path.join(home, '.local/share/pnpm'), path.join(home, '.bun/bin'), path.join(home, '.volta/bin'), path.join(home, '.cargo/bin'), path.join(home, '.yarn/bin'), path.join(home, '.asdf/shims'), path.join(home, '.local/share/mise/shims'), '/usr/local/bin'];
+  for (const root of [path.join(home, '.nvm/versions/node'), path.join(home, '.local/share/fnm/node-versions'), path.join(home, '.local/share/mise/installs/node')]) {
+    try {
+      for (const v of fs.readdirSync(root).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))) dirs.push(path.join(root, v, root.includes('fnm') ? 'installation/bin' : 'bin'));
+    } catch {}
+  }
+  const have = base.split(':').filter(Boolean);
+  for (const d of dirs) if (d && !have.includes(d) && fs.existsSync(d)) have.push(d);
+  return have.join(':');
+}
+
 // One Codex CLI turn: prompt on stdin, persona as the instructions file, pictures as -i, no tools, no files.
 async function chat({ persona, prompt, images = [], model = DEFAULT_MODEL, timeoutMs = TIMEOUT_MS }, onDelta, signal) {
   signal.throwIfAborted();
@@ -47,7 +62,7 @@ async function chat({ persona, prompt, images = [], model = DEFAULT_MODEL, timeo
     args.push('-m', model, '-');
     // Keep subscription authentication, discard injected API credentials and project/session environment.
     const env = {
-      PATH: process.env.PATH,
+      PATH: userBinPath(),
       HOME: os.homedir(),
       LANG: process.env.LANG || 'C.UTF-8'
     };

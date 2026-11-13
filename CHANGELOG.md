@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- The legacy calendar and its setting have been removed; the native calendar is used.
+- The About page links to the Suiveurtag Serpantinum fork.
+
+### Fixed
+- Compatibility with Serpantinum 2.5: calendar sizing and seasonal effects, bar outlines, and the AI Tokens settings card.
+- AI Tokens number grouping and wallpaper color generation.
+- Clawd idle animation sprites and timing.
+- A tool installed after login (Codex CLI through `npm install -g`, cargo, bun, nvm...) is now found without rebooting: the manager, `install.py` and the Clawd/Capri Codex chat add the usual per-user bin directories to PATH. Before, the addons reported "Codex CLI not found" until the next login.
+- The installer no longer aborts when a system dependency is missing or fails to install (declined sudo, AUR-only or unpackaged tool, no supported package manager): it warns which feature stays off and installs the addons anyway. Node.js is only required when Clawd or Capri is selected, and the addons are chosen before the packages are checked.
+- Beamer's package install no longer waits on an invisible sudo password prompt while the manager captures the output; it fails fast with the command to run yourself.
+
 ### Added
 - Clawd idle fidgets (17 animations), played now and then while he rests: `yawn`, `stretch`, `scratch`, `sneeze`, `look_around`, `tap`, `shake`, `doze`, `bubble` (gum), `butterfly`, `yoyo`, `whistle`, `skip` (rope); seated `sit_sway` and `sit_gaze`; on a window top `perch_kick` and `perch_yawn`. They follow his mood (tired: yawns and nods; rain or snow: sneezes and shakes), favour yawns when his nap is near, never repeat twice in a row and stay off in performance mode.
 - Clawd working loops: one more per tool family (`work_6` stacking crates, `edit_4` easel, `read_4` newspaper, `bash_4` rocket launch, `search_4` rummaging through a crate, `web_4` cloud download, `task_4` a mini Clawd on his head, `todo_4` sorting bars), plus `think_3` (light bulb) and `happy_3` (fist pump under a tick).

@@ -15,7 +15,7 @@ def shadows(text, anchor, name, active, parent=''):
 
 
 def calendar(text):
-    return shadows(text, '                id: centralHub\n', 'calendar shadows', 'window.visible', 'centralHub.parent')
+    return shadows(text, '                id: centralHub\n', 'calendar shadows', 'window.visible', 'window')
 
 
 def guide(text):

@@ -94,6 +94,10 @@ def patch_calendar(text):
     text = text.replace('                    visible: !Halloween.activeSeason\n', '')
     anchor = '                    id: orbitCanvas\n'
     if text.count(anchor) != 1:
+        if text.count('                id: centralHub\n') == 1:
+            # Serpantinum 2.5 uses a different clock face; the seasonal surface
+            # layer still attaches to centralHub, but the old orbit dial has no target.
+            return text
         raise ValueError('Clock orbit anchor changed')
     text = text.replace(anchor, anchor + '                    visible: !Halloween.activeSeason\n', 1)
     return insert(text, '                id: centralHub\n', ('dial', '''                Loader {

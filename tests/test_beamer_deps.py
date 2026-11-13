@@ -15,6 +15,12 @@ class BeamerDependencies(unittest.TestCase):
         os.environ.pop(self.installer.NO_SERVICES, None)
 
     def test_missing_tools_are_installed_with_the_detected_manager(self):
+        self.install_missing(tty=True, prefix=['sudo', 'pacman', '-S', '--needed'])
+
+    def test_captured_output_never_waits_for_an_invisible_sudo_password(self):
+        self.install_missing(tty=False, prefix=['sudo', '-n', 'pacman', '-S'])
+
+    def install_missing(self, tty, prefix):
         missing = {'flatpak', 'wl-paste', 'cc'}
         calls = []
 
@@ -32,9 +38,10 @@ class BeamerDependencies(unittest.TestCase):
 
         with mock.patch.object(self.installer.shutil, 'which', side_effect=which), \
              mock.patch.object(self.installer, '_beamer_missing', side_effect=lambda t: t in missing), \
-             mock.patch.object(self.installer.subprocess, 'run', side_effect=run):
+             mock.patch.object(self.installer.subprocess, 'run', side_effect=run), \
+             mock.patch.object(self.installer.sys, 'stdout', mock.Mock(isatty=lambda: tty)):
             self.installer.ensure_beamer_dependencies()
-        self.assertEqual(calls[0][:4], ['sudo', 'pacman', '-S', '--needed'])
+        self.assertEqual(calls[0][:len(prefix)], prefix)
         self.assertIn('flatpak', calls[0])
         self.assertIn('wl-clipboard', calls[0])
         self.assertIn('gcc', calls[0])

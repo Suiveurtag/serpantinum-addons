@@ -285,25 +285,41 @@ def require_serpantinum(ctx, pre):
         ctx.ui.status("warn", f"Serpantinum {sv} is newer than the tested {tested}; continuing")
 
 
-def ensure_deps(ctx, pre):
+# Dependencies only some addons use: skipped when none of those addons is selected.
+DEP_ADDONS = {"node": {"clawd", "capri"}}
+
+
+def ensure_deps(ctx, pre, without=()):
+    """Install the missing system tools. Never fatal: a tool that stays missing only disables the feature that needs it."""
     ui = ctx.ui
-    miss_req = D.missing(pre.deps, required=True)
-    miss_opt = D.missing(pre.deps, required=False)
+    left_out = set(without)
+    def relevant(results):
+        return [r for r in results if not (r.dep.id in DEP_ADDONS and DEP_ADDONS[r.dep.id] <= left_out)]
+
+    needed = relevant(pre.deps)
+    miss_req = D.missing(needed, required=True)
+    miss_opt = D.missing(needed, required=False)
+    which = getattr(ctx.probe, "which", None)
+    mgr = D.detect_package_manager(which)
     if miss_opt:
         ui.step("Optional tools not found")
         for r in miss_opt:
             ui.child(f"{r.dep.label}: needed for {r.dep.feature}", "dim")
+            how = D.build_plan([r], mgr, which)
+            for argv in how.commands:
+                ui.child("→ " + D.format_command(argv), "dim")
+            for _, text in how.manual:
+                ui.child("→ " + text, "dim")
+        ui.child("Installed just now? Open a new terminal if it is still reported missing.", "dim")
     if not miss_req:
         return
     ui.step("Missing required dependencies")
     for r in miss_req:
         ui.child(f"{r.dep.label} ({r.detail or r.status}): needed for {r.dep.feature}", "warn")
-    which = getattr(ctx.probe, "which", None)
-    mgr = D.detect_package_manager(which)
     if mgr is None:
-        raise Fail("Required dependencies are missing and no supported package manager was found",
-                   "Supported: pacman, dnf, xbps-install.",
-                   "Install: " + ", ".join(r.dep.label for r in miss_req))
+        ui.status("warn", "No supported package manager (pacman, dnf, xbps-install): continuing without these")
+        ui.child("Install by hand: " + ", ".join(r.dep.label for r in miss_req), "dim")
+        return
     plan = D.build_plan(miss_req, mgr, which)
     for dep, how in plan.manual:
         ui.child(f"{dep.label}: {how}", "warn")
@@ -323,18 +339,17 @@ def ensure_deps(ctx, pre):
             ctx.phase = "prepare"  # not reset on Ctrl-C: run() then reports an interrupted change
             ctx.log.write(f"[exit {rc}]\n\n")
             if rc != 0:
-                raise Fail("Installing the dependencies failed", D.format_command(argv) + f" exited with {rc}.",
-                           "Fix the error shown above, or install them manually, then retry.")
+                ui.status("warn", f"{D.format_command(argv)} exited with {rc}: continuing without these")
+                break
         pre.deps = D.check_all(ctx.probe, pre.compat)
-        miss_req = D.missing(pre.deps, required=True)
+        miss_req = D.missing(relevant(pre.deps), required=True)
         if not miss_req:
             ui.status("ok", "Dependencies installed")
             return
-        for r in miss_req:
-            ui.child(f"still missing: {r.dep.label}", "err")
-    raise Fail("Some required dependencies are still missing",
-               ", ".join(r.dep.label for r in miss_req),
-               "Install them manually (see above), then run this again.")
+    ui.status("warn", "Continuing: the addons are installed, but some features stay off until these are installed")
+    for r in miss_req:
+        ui.child(f"{r.dep.label}: {r.dep.feature}", "warn")
+    ui.child("Install them, then run `python3 addons.py doctor` to check.", "dim")
 
 
 def choose_addons(ctx, pre) -> list:
@@ -468,8 +483,8 @@ def action_install(ctx, mode, pre):
     if mode == "update":
         if not update_source(ctx, pre):
             return 0
-    ensure_deps(ctx, pre)
     without = choose_addons(ctx, pre)
+    ensure_deps(ctx, pre, without)
     flags = [f"--without-{a}" for a in without]
     ctx.phase = "prepare"
     rc, out = ctx.step_run("Checking the shell can be patched", install_py_argv(*flags, "--check", "--json"))

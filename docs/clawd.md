@@ -389,9 +389,9 @@ frame, every perched one on `perch`'s (same `grip`), so nothing jumps.
 | `doze` | 4 | standing | nods off, sinks, a `z`, jolts awake with a `!`, shakes his head |
 | `bubble` | 6 | standing | cross-eyed, blows a pink bubble of gum that grows and pops on his face |
 | `butterfly` | 6 | standing | a pink butterfly flies in, lands on his head (he smiles), flies off the other way |
-| `yoyo` | 8 | standing | a cream yo-yo down its string and back, twice, sleeping at the bottom |
+| `yoyo` | 8 | standing | a cream yo-yo down its string and back, three times, sleeping at the bottom |
 | `whistle` | 6 | standing | happy eyes, bobs, pink notes floating up on both sides |
-| `skip` | 8 | standing | three jumps over a cream skipping rope |
+| `skip` | 8 | standing | five jumps over a cream skipping rope |
 | `sit_sway` | 4 / loop | seated | rocks from side to side, humming (pink notes) |
 | `sit_gaze` | 2 / loop | seated | looks up at a star twinkling here, then there |
 | `perch_kick` | 8 | perched | happy, swings his legs one side then the other |

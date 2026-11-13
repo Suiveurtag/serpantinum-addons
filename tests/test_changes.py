@@ -71,7 +71,8 @@ class ChangeTests(unittest.TestCase):
                        'addons_trackpad_typing', 'addons_trackpad_clicks_typing'):
             with self.subTest(option=option):
                 self.assertIn(option, mouse)
-        self.assertIn('addons_legacy_clock', general)
+        self.assertNotIn('addons_legacy_clock', general)
+        self.assertNotIn('addonsV2LegacyClock', general)
         self.assertIn('SettingsGroup {', mouse)
         self.assertIn('spacing: rootObj.s(8)', mouse)
         self.assertIn('Layout.bottomMargin: rootObj.s(6)', banners)

@@ -560,11 +560,11 @@ class InstallsSerpantinum(unittest.TestCase):
         ctx, _ = make_ctx()
         pre = make_pre(ctx)
         with unittest.mock.patch.object(F, "require_serpantinum", lambda c, p: order.append("serpantinum")), \
-                unittest.mock.patch.object(F, "ensure_deps", lambda c, p: order.append("deps")), \
-                unittest.mock.patch.object(F, "choose_addons", lambda c, p: (_ for _ in ()).throw(F.Cancelled())):
+                unittest.mock.patch.object(F, "choose_addons", lambda c, p: order.append("choose") or []), \
+                unittest.mock.patch.object(F, "ensure_deps", lambda c, p, w=(): (order.append("deps"), (_ for _ in ()).throw(F.Cancelled()))):
             with self.assertRaises(F.Cancelled):
                 F.action_install(ctx, "install", pre)
-        self.assertEqual(order, ["serpantinum", "deps"])
+        self.assertEqual(order, ["serpantinum", "choose", "deps"])
 
 
 class InstallsDependencies(unittest.TestCase):
@@ -612,24 +612,36 @@ class InstallsDependencies(unittest.TestCase):
         self.assertEqual(calls, [])
         self.assertIn("Optional tools not found", out.getvalue())
 
-    def test_failing_install_command(self):
-        ctx, _ = make_ctx(system=self.system(), call=lambda cmd: 1)
-        with self.assertRaises(F.Fail) as cm:
-            F.ensure_deps(ctx, make_pre(ctx))
-        self.assertIn("Installing the dependencies failed", cm.exception.what)
+    def test_failing_install_command_does_not_stop_the_install(self):
+        ctx, out = make_ctx(system=self.system(), call=lambda cmd: 1)
+        F.ensure_deps(ctx, make_pre(ctx))  # warns, never raises
+        self.assertIn("exited with 1", out.getvalue())
+        self.assertIn("Continuing", out.getvalue())
 
-    def test_dependency_still_missing_afterwards(self):
-        ctx, _ = make_ctx(system=self.system(), call=lambda cmd: 0)
-        with self.assertRaises(F.Fail) as cm:
-            F.ensure_deps(ctx, make_pre(ctx))
-        self.assertIn("still missing", cm.exception.what)
+    def test_dependency_still_missing_afterwards_only_warns(self):
+        ctx, out = make_ctx(system=self.system(), call=lambda cmd: 0)
+        F.ensure_deps(ctx, make_pre(ctx))
+        self.assertIn("Continuing", out.getvalue())
+        self.assertIn("jq", out.getvalue())
 
-    def test_no_supported_package_manager(self):
-        ctx, _ = make_ctx(system=self.system(manager="pacman"))
+    def test_no_supported_package_manager_only_warns(self):
+        ctx, out = make_ctx(system=self.system(manager="pacman"))
         ctx.probe = self.system(manager="nothing").probe()
-        with self.assertRaises(F.Fail) as cm:
-            F.ensure_deps(ctx, make_pre(ctx))
-        self.assertIn("no supported package manager", cm.exception.what)
+        F.ensure_deps(ctx, make_pre(ctx))
+        self.assertIn("No supported package manager", out.getvalue())
+
+    def test_node_is_not_needed_without_clawd_and_capri(self):
+        calls = []
+        ctx, out = make_ctx(system=self.system(missing=("node",)), call=lambda cmd: calls.append(cmd) or 0)
+        F.ensure_deps(ctx, make_pre(ctx), without=("clawd", "capri"))
+        self.assertEqual(calls, [])
+        F.ensure_deps(ctx, make_pre(ctx), without=("clawd",))  # Capri still needs it
+        self.assertEqual(calls, [["sudo", "pacman", "-S", "--needed", "nodejs"]])
+
+    def test_missing_optional_tool_says_how_to_install_it(self):
+        ctx, out = make_ctx(system=self.system(missing=("codex",)))
+        F.ensure_deps(ctx, make_pre(ctx))
+        self.assertIn("npm install -g @openai/codex", out.getvalue())
 
     def test_ctrl_c_is_reported_as_an_interrupted_change(self):
         def call(cmd):
@@ -639,6 +651,46 @@ class InstallsDependencies(unittest.TestCase):
         with self.assertRaises(KeyboardInterrupt):
             F.ensure_deps(ctx, make_pre(ctx))
         self.assertEqual(ctx.phase, "installing")
+
+
+class UserPath(unittest.TestCase):
+    def test_adds_existing_user_bins_after_the_session_path(self):
+        import userpath
+
+        with tempfile.TemporaryDirectory() as td:
+            home = Path(td)
+            for d in (".npm-global/bin", ".cargo/bin", ".nvm/versions/node/v20.1.0/bin", ".nvm/versions/node/v22.3.0/bin"):
+                (home / d).mkdir(parents=True)
+            got = userpath.augmented_path("/usr/bin:/bin", home=home, environ={}).split(":")
+        self.assertEqual(got[:2], ["/usr/bin", "/bin"])
+        self.assertIn(str(home / ".npm-global/bin"), got)
+        self.assertIn(str(home / ".cargo/bin"), got)
+        self.assertLess(got.index(str(home / ".nvm/versions/node/v22.3.0/bin")),
+                        got.index(str(home / ".nvm/versions/node/v20.1.0/bin")))
+        self.assertNotIn(str(home / ".bun/bin"), got)  # absent directories are left out
+
+    def test_no_duplicates_and_npmrc_prefix(self):
+        import userpath
+
+        with tempfile.TemporaryDirectory() as td:
+            home = Path(td)
+            (home / "tools/bin").mkdir(parents=True)
+            (home / ".npmrc").write_text(f"prefix={home}/tools\n")
+            once = userpath.augmented_path(f"{home}/tools/bin", home=home, environ={}).split(":")
+        self.assertEqual(once.count(str(home / "tools/bin")), 1)
+
+    def test_finds_a_tool_the_session_path_misses(self):
+        import userpath
+
+        with tempfile.TemporaryDirectory() as td:
+            home = Path(td)
+            bindir = home / ".npm-global/bin"
+            bindir.mkdir(parents=True)
+            codex = bindir / "codex"
+            codex.write_text("#!/bin/sh\n")
+            codex.chmod(0o755)
+            self.assertIsNone(shutil.which("codex", path="/nonexistent"))
+            self.assertEqual(shutil.which("codex", path=userpath.augmented_path("/nonexistent", home=home, environ={})), str(codex))
 
 
 class ErrorFormat(unittest.TestCase):

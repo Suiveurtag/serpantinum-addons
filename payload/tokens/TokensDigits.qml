@@ -18,7 +18,7 @@ Item {
     property bool spinning: false
     onAnimateChanged: if (animate && spinIn && !spun) { spun = true; spinning = true; spinEnd.restart(); }
     Timer { id: spinEnd; interval: root.spinDuration + 600; onTriggered: root.spinning = false }
-    readonly property string formatted: Math.round(value).toLocaleString(Qt.locale(), "f", 0)
+    readonly property string formatted: String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, "\u202f")
     readonly property real cell: metrics.advanceWidth
     readonly property real lineHeight: metrics.height
     implicitWidth: row.width
@@ -51,7 +51,7 @@ Item {
                 readonly property int whole: Math.floor(roll)
                 // Bounded: out-of-range values reach Qt.alpha and flood the log with setAlphaF warnings.
                 readonly property real frac: Math.max(0, Math.min(1, roll - whole))
-                width: isDigit ? root.cell : sep.implicitWidth
+                width: isDigit ? root.cell : Math.max(sep.implicitWidth, root.cell * 0.4)
                 height: root.lineHeight
                 clip: isDigit
 

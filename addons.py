@@ -57,6 +57,9 @@ def parse_args(argv=None):
 
 def main(argv=None) -> int:
     args = parse_args(argv)
+    import userpath
+
+    userpath.extend_environ()  # tools installed after the session started (npm -g, cargo...) are found without a reboot
     from manager.flow import run
 
     return run(args)
