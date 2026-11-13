@@ -69,15 +69,6 @@ Item {
                 DnsControl { id: dns; Layout.preferredWidth: root.rootObj.s(170); pollEnabled: root.visible }
             }
             SettingsRow {
-                rootObj: root.rootObj; settingId: "addons_legacy_clock"; searchTab: "addons"; searchKeywords: "calendar clock legacy horloge calendrier"
-                title: "Legacy clock design"; description: "Restore the v1 calendar and clock panel."; icon: "󰥔"
-                Toggle {
-                    checked: Config.getSetting("addonsV2LegacyClock", false)
-                    accentColor: ThemeBackend.mauve
-                    onToggled: { Config.setSetting("addonsV2LegacyClock", checked); }
-                }
-            }
-            SettingsRow {
                 rootObj: root.rootObj; settingId: "addons_bar_outlines"; searchTab: "addons"; searchKeywords: "bar outline panel open contour barre panneau animation effects"
                 title: "Animated bar outlines"; description: "Outline the bar button (or its whole group) while its panel is open, and the AI tokens item on hover."; icon: "󱓼"
                 Toggle {

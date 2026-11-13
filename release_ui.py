@@ -82,7 +82,24 @@ def patch_about(text):
         '}',
         '',
     ])
-    return _insert(text, 'about uninstall', footer_anchor, uninstall, False, 'About GitHub footer')
+    text = _insert(text, 'about uninstall', footer_anchor, uninstall, False, 'About GitHub footer')
+    github_anchor = '                    onTriggered: Quickshell.execDetached(["xdg-open", "https://github.com/ilyamiro/serpantinum"])\n                }\n'
+    github = _block('                ', 'about github fork', [
+        'ClickButton {',
+        '    Layout.preferredWidth: rootObj.s(260)',
+        '    Layout.preferredHeight: rootObj.s(42)',
+        '    horizontalPadding: rootObj.s(14)',
+        '    cornerRadius: ThemeBackend.borderRadius',
+        '    buttonText: "Suiveurtag/serpantinum"',
+        '    textFontSize: rootObj.s(13)',
+        '    buttonIcon: "󰊤"',
+        '    iconFontSize: rootObj.s(16)',
+        '    accentColor: ThemeBackend.surface0',
+        '    textColor: ThemeBackend.text',
+        '    onTriggered: Quickshell.execDetached(["xdg-open", "https://github.com/suiveurtag/serpantinum"])',
+        '}',
+    ])
+    return _insert(text, 'about github fork', github_anchor, github, True, 'About GitHub button')
 
 
 def patch_popup(text):

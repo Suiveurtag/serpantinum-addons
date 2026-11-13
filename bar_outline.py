@@ -145,7 +145,13 @@ def patch_left(text):
         // END {MARK} menu button
 '''
     text = text.replace(anchor, anchor[:-6] + block + '    }\n', 1)
-    if 'property string panel: ""' not in text:
+    current_item = '                readonly property string itemId: modelData\n'
+    if text.count(current_item) == 1 and 'panel: itemId === "settings"' not in text:
+        glyph = '        property string glyph: ""\n        property bool active: false\n'
+        _once(text, glyph, 'LeftFace menu glyph')
+        text = text.replace(glyph, glyph.replace('        property bool active: false\n', '        property string panel: ""\n        property bool active: false\n'), 1)
+        text = text.replace(current_item, current_item + '                panel: itemId === "settings" ? "guide" : (itemId === "launcher" ? "launcher" : "") // ' + MARK + '\n', 1)
+    elif 'property string panel: ""' not in text:
         glyph = '        property string glyph: ""\n        signal clicked()\n\n        width: root.isVertical ? root.s(root.isCompact ? 28 : 30)'
         _once(text, glyph, 'LeftFace menu glyph')
         text = text.replace(glyph, glyph.replace('        signal clicked()', f'        property string panel: "" // {MARK}\n        signal clicked()'), 1)
