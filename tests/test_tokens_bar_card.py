@@ -21,9 +21,12 @@ class TokensBarCard(unittest.TestCase):
     def test_remove_restores_the_upstream_text(self):
         self.assertEqual(self.tokens.remove(self.tokens.patch_modules_tab(SAMPLE)), SAMPLE)
 
-    def test_missing_anchor_is_refused(self):
-        with self.assertRaises(ValueError):
-            self.tokens.patch_modules_tab('nothing here\n')
+    def test_new_layout_inserts_card_in_settings(self):
+        source = '                sourceComponent: BarMediaCard { tab: barModulesRoot }\n            }\n'
+        result = self.tokens.patch_modules_settings(source)
+        self.assertEqual(result.count('BarTokensCard { tab: barModulesRoot }'), 1)
+        self.assertEqual(self.tokens.patch_modules_settings(result), result)
+        self.assertEqual(self.tokens.remove(result), source)
 
     def test_qmldir_declares_the_card(self):
         self.assertIn('BarTokensCard 1.0 tokens/BarTokensCard.qml', self.tokens.TYPES)

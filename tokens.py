@@ -46,7 +46,7 @@ def patch_modules_settings(text):
         return text
     if text.count(MEDIA_LOADER_ANCHOR) != 1:
         raise ValueError('Tokens bar modules anchor changed')
-    block = (f'\n            // BEGIN {MARK} card\n'
+    block = (f'            // BEGIN {MARK} card\n'
              '            Loader {\n'
              '                Layout.fillWidth: true\n'
              '                active: barModulesRoot.deferredStage >= 10\n'

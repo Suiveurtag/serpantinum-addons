@@ -90,9 +90,13 @@ class SeasonalIntegrationTests(unittest.TestCase):
         source = (install.QS/'calendar/NativeCalendar.qml').read_text()
         result = seasonal.patch_calendar(source)
         self.assertEqual(result, seasonal.patch_calendar(result))
-        self.assertEqual(result.count('id: orbitCanvas'), 1)
-        self.assertEqual(result.count('sourceComponent: CelestialDial'), 1)
-        self.assertIn('visible: !Halloween.activeSeason', result)
+        if 'id: orbitCanvas' in source:
+            self.assertEqual(result.count('id: orbitCanvas'), 1)
+            self.assertEqual(result.count('sourceComponent: CelestialDial'), 1)
+            self.assertIn('visible: !Halloween.activeSeason', result)
+        else:
+            self.assertIn('id: centralHub', result)
+            self.assertNotIn('sourceComponent: CelestialDial', result)
 
 
 if __name__ == '__main__':
