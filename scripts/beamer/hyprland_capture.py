@@ -51,7 +51,7 @@ def install():
             if reason is None and timeout is not None and now - started >= timeout:
                 reason = "safety timeout"
             if reason:
-                LOG.warning("Returning input to Hyprland after %s", reason)
+                LOG.warning("Returning input to the local desktop after %s", reason)
                 self._addon_escape = None
                 try:
                     self._home()

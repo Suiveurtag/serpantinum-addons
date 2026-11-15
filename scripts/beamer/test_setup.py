@@ -29,7 +29,7 @@ def context(tmp_path, monkeypatch):
 def test_install_reinstall_and_uninstall(context):
     desktop = setup.install(HERE)
     content = desktop.read_bytes()
-    assert b'Name=Beamer (Hyprland)' in content
+    assert b'Name=Beamer (Serpantinum)' in content
     assert str(HERE / 'launcher.py').encode() in content
     assert setup.install(HERE).read_bytes() == content
     assert setup.uninstall() == []

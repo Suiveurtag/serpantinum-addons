@@ -11,6 +11,7 @@ import time
 
 APP = "uk.co.kalkman.beamer"
 VERSION = "1.5.18"
+SUPPORTED_VERSIONS = {"1.5.18", "1.5.19"}
 ENTRY = "/app/share/beamer/win_app/kvm_bridge_win.py"
 
 
@@ -25,6 +26,9 @@ def main():
         import clipboard_bridge
         import effect_fix
 
+        if os.environ.get('BEAMER_COMPOSITOR') == 'niri':
+            import niri_capture
+            niri_capture.install()
         hyprland_capture.install()
         hyprland_inject.install()
         clipboard_bridge.install()
@@ -42,7 +46,7 @@ def main():
         raise SystemExit(f"Could not check the Beamer Flatpak: {exc}") from exc
     versions = [row.split("\t", 1)[1].strip() for row in installed.splitlines()
                 if row.startswith(APP + "\t")]
-    if versions != [VERSION]:
+    if len(versions) != 1 or versions[0] not in SUPPORTED_VERSIONS:
         raise SystemExit(f"Beamer addon requires user Flatpak {APP} version {VERSION}; found {versions or 'none'}")
     for name in ("hyprland_capture.py", "hyprland_inject.py", "hyprland_clipboard.py", "input_bridge.py", "clipboard_bridge.py", "effect_fix.py", "effect_overlay_helper.py", "overlay_place.py"):
         if not (addon_dir / name).is_file():
@@ -75,7 +79,7 @@ def main():
     command.extend(["--command=python3", APP, str(addon_dir / "launcher.py"),
                     "--inside-flatpak", *sys.argv[1:]])
     bridge = subprocess.Popen([sys.executable, str(addon_dir / "input_bridge.py")])
-    app = clipboard = None
+    app = clipboard = effects = capture = None
     old_term = signal.signal(signal.SIGTERM, lambda *_: sys.exit(128 + signal.SIGTERM))
     try:
         deadline = time.monotonic() + 12
@@ -100,6 +104,26 @@ def main():
             time.sleep(0.05)
         if clipboard.poll() is not None:
             raise SystemExit(f"Beamer clipboard bridge failed (exit {clipboard.returncode})")
+        if os.environ.get('NIRI_SOCKET'):
+            capture = subprocess.Popen([sys.executable, str(addon_dir / 'niri_capture_bridge.py')])
+            capture_socket = socket_path.with_name('capture.sock')
+            deadline = time.monotonic() + 8
+            while not capture_socket.exists():
+                if capture.poll() is not None:
+                    raise SystemExit(f'Beamer native capture failed (exit {capture.returncode})')
+                if time.monotonic() >= deadline:
+                    raise SystemExit('Beamer native capture did not start')
+                time.sleep(.05)
+            effects = subprocess.Popen([sys.executable, str(addon_dir / 'niri_effects.py')])
+            effect_socket = socket_path.with_name('effects.sock')
+            deadline = time.monotonic() + 12
+            while not effect_socket.exists():
+                if effects.poll() is not None:
+                    raise SystemExit(f'Beamer native effects failed (exit {effects.returncode})')
+                if time.monotonic() >= deadline:
+                    raise SystemExit('Beamer native effects did not start')
+                time.sleep(.05)
+            command.insert(3, '--env=BEAMER_COMPOSITOR=niri')
         import overlay_place
         overlay_place.start()
         app = subprocess.Popen(command)
@@ -108,6 +132,10 @@ def main():
                 raise SystemExit(f"Beamer input bridge stopped (exit {bridge.returncode})")
             if clipboard.poll() is not None:
                 raise SystemExit(f"Beamer clipboard bridge stopped (exit {clipboard.returncode})")
+            if capture is not None and capture.poll() is not None:
+                raise SystemExit(f'Beamer native capture stopped (exit {capture.returncode})')
+            if effects is not None and effects.poll() is not None:
+                raise SystemExit(f"Beamer native effects stopped (exit {effects.returncode})")
             time.sleep(0.2)
         return app.returncode
     finally:
@@ -116,7 +144,7 @@ def main():
             overlay_place.clear()
         except (ImportError, OSError):
             pass
-        for process in (app, clipboard, bridge):
+        for process in (app, effects, capture, clipboard, bridge):
             if process is not None and process.poll() is None:
                 process.terminate()
                 try:

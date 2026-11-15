@@ -16,6 +16,7 @@ _launcher_spec = importlib.util.spec_from_file_location('beamer_addon_launcher',
 _launcher = importlib.util.module_from_spec(_launcher_spec)
 _launcher_spec.loader.exec_module(_launcher)
 APP, VERSION = _launcher.APP, _launcher.VERSION
+SUPPORTED_VERSIONS = _launcher.SUPPORTED_VERSIONS
 
 HELPERS = ("clipboard-offer", "wl-paste")
 
@@ -31,7 +32,7 @@ def desktop_quote(value):
 
 def desktop_content(addon_dir):
     cmd = desktop_quote(sys.executable) + ' ' + desktop_quote(str(addon_dir / 'launcher.py'))
-    return ('[Desktop Entry]\nType=Application\nName=Beamer (Hyprland)\n'
+    return ('[Desktop Entry]\nType=Application\nName=Beamer (Serpantinum)\n'
             'Comment=Share keyboard and mouse using Serpantinum addons\n'
             f'Exec={cmd}\nIcon=uk.co.kalkman.beamer\nTerminal=true\n'
             'Categories=Utility;\nStartupWMClass=uk.co.kalkman.beamer\n').encode()
@@ -79,7 +80,7 @@ def owned(path, expected):
 
 
 def check_dependencies():
-    missing = [name for name in ('flatpak', 'hyprctl', 'wl-paste', 'wayland-scanner', 'cc', 'pkg-config')
+    missing = [name for name in ('flatpak', 'wl-paste', 'wayland-scanner', 'cc', 'pkg-config')
                if not shutil.which(name)]
     try:
         import evdev  # noqa: F401
@@ -98,7 +99,7 @@ def check_dependencies():
     except (OSError, subprocess.CalledProcessError) as exc:
         raise RuntimeError('Beamer user Flatpak or Wayland client development files are unavailable') from exc
     versions = [row.split('\t', 1)[1].strip() for row in installed.splitlines() if row.startswith(APP + '\t')]
-    if versions != [VERSION]:
+    if len(versions) != 1 or versions[0] not in SUPPORTED_VERSIONS:
         raise RuntimeError(f'Beamer {VERSION} is required, installed versions: {versions or "none"}')
 
 
@@ -107,7 +108,7 @@ def install(addon_dir):
     state = read_state(state_path)
     if (desktop.exists() or desktop.is_symlink()) and not owned(desktop, state.get('desktop')):
         raise RuntimeError(f'Refusing to overwrite an unowned or modified launcher: {desktop}')
-    for name in HELPERS:
+    for name in (*HELPERS, *(['layershell.so'] if 'layershell.so' in state.get('helpers', {}) else [])):
         path = cache / name
         if path.is_symlink() or (state and path.exists() and not owned(path, state.get('helpers', {}).get(name))):
             raise RuntimeError(f'Refusing to overwrite an unowned or modified helper: {path}')
@@ -119,6 +120,11 @@ def install(addon_dir):
     with tempfile.TemporaryDirectory(prefix='.beamer-build-', dir=cache.parent) as temp:
         subprocess.run([str(addon_dir / 'build-clipboard.sh'), temp], check=True)
         helpers = {name: (Path(temp) / name).read_bytes() for name in HELPERS}
+        native = Path(temp) / 'layershell.so'
+        if native.exists():
+            helpers['layershell.so'] = native.read_bytes()
+        elif os.environ.get('NIRI_SOCKET'):
+            raise RuntimeError('Native Beamer effects require layer-shell-qt, Qt6Widgets and c++')
     for name, data in helpers.items():
         path = cache / name
         if not state and path.exists() and not owned(path, digest(data)):
@@ -149,7 +155,7 @@ def uninstall_plan():
         return [], []
     removable = []
     preserved = []
-    targets = [(desktop, state['desktop'])] + [(cache / name, state['helpers'].get(name)) for name in HELPERS]
+    targets = [(desktop, state['desktop'])] + [(cache / name, digest_) for name, digest_ in state['helpers'].items() if name in (*HELPERS, 'layershell.so')]
     for path, expected in targets:
         if not path.exists() and not path.is_symlink():
             continue

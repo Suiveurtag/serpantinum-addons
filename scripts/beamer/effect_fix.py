@@ -3,9 +3,13 @@
 from pathlib import Path
 import subprocess
 import sys
+import os
 
 
 def install():
+    if os.environ.get('BEAMER_COMPOSITOR') == 'niri':
+        import niri_effect_proxy
+        return niri_effect_proxy.install()
     import effect_overlay_x11
     from PySide6.QtGui import QGuiApplication
 

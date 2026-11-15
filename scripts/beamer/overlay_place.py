@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import threading
+import sys
 import time
 from pathlib import Path
 
@@ -26,10 +27,16 @@ def _hyprctl(*args):
 
 
 def monitors():
+    if os.environ.get('NIRI_SOCKET'):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from niri_ipc import request
+        return [dict(name=name, **output['logical']) for name, output in request('Outputs').items() if output.get('logical')]
     return json.loads(_hyprctl('monitors', '-j'))
 
 
 def place_all(mons=None):
+    if os.environ.get('NIRI_SOCKET'):
+        return  # Native per-output layer surfaces are positioned by Niri.
     mons = mons or monitors()
     origin = min(mons, key=lambda m: (m['x'], m['y']))
     for client in json.loads(_hyprctl('clients', '-j')):

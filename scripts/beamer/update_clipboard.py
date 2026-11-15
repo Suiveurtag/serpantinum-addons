@@ -34,7 +34,7 @@ def update(destination, source, runtime):
     for name in ('input.sock', 'clipboard.sock'):
         path = runtime / 'beamer-addon' / name
         if path.exists() or path.is_symlink():
-            raise RuntimeError('Ferme Beamer (Hyprland) avant la mise à jour.')
+            raise RuntimeError('Ferme Beamer (Serpantinum) avant la mise à jour.')
     launcher, bridge = destination / 'launcher.py', destination / 'clipboard_bridge.py'
     if launcher.is_symlink() or not launcher.is_file():
         raise RuntimeError('Lanceur Beamer introuvable ou symbolique.')

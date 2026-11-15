@@ -1,6 +1,6 @@
 # Beamer avec Hyprland sur un deuxième ordinateur
 
-Cette adaptation est expérimentale ; elle est prévue pour le Flatpak utilisateur Beamer **1.5.18** et ne modifie pas ses réglages ni son appairage. Installe aussi l'adaptation sur l'autre machine avant d'essayer le passage. Les deux postes doivent utiliser le lanceur **Beamer (Hyprland)**.
+Cette adaptation est expérimentale ; elle est prévue pour le Flatpak utilisateur Beamer **1.5.18 ou 1.5.19** et ne modifie pas ses réglages ni son appairage. Installe aussi l'adaptation sur l'autre machine avant d'essayer le passage. Les deux postes doivent utiliser le lanceur **Beamer (Serpantinum)**.
 
 Dans un terminal de la session graphique Hyprland, depuis ce dossier :
 

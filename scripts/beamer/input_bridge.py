@@ -7,6 +7,7 @@ import signal
 import socket
 import stat
 import subprocess
+import sys
 
 from evdev import UInput, ecodes as e
 
@@ -57,6 +58,11 @@ class Input:
             x, y = msg.get('x'), msg.get('y')
             if type(x) is not int or type(y) is not int or max(abs(x), abs(y)) > 100000:
                 raise ValueError('invalid position')
+            if os.environ.get('NIRI_SOCKET'):
+                sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+                from niri_ipc import addon
+                addon('warp', x=x, y=y)
+                return
             result = subprocess.run(
                 ['hyprctl', 'dispatch', f'hl.dsp.cursor.move({{ x = {x}, y = {y} }})'],
                 check=True, capture_output=True, text=True, timeout=2)

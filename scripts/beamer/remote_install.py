@@ -16,7 +16,7 @@ import setup
 FILES = (
     "launcher.py", "setup.py", "hyprland_capture.py", "hyprland_inject.py",
     "hyprland_clipboard.py", "clipboard_bridge.py", "input_bridge.py", "effect_fix.py", "effect_overlay_helper.py", "overlay_place.py",
-    "clipboard_offer.c", "build-clipboard.sh",
+    "clipboard_offer.c", "build-clipboard.sh", "layershell.cpp",
     "REMOTE.md", "remote_install.py", "remote_hyprland.py",
 )
 
@@ -117,7 +117,7 @@ def main():
         else:
             dest, desktop = install()
             print(f"Adaptation copiée dans {dest}\nLanceur créé : {desktop}")
-            print("Utiliser Beamer (Hyprland) sur les deux machines. Aucun lancement n'a été effectué.")
+            print("Utiliser Beamer (Serpantinum) sur les deux machines. Aucun lancement n'a été effectué.")
     except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
         print(f"Installation interrompue : {exc}", file=sys.stderr)
         return 1

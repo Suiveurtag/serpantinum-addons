@@ -17,7 +17,7 @@ def digest(data):
 
 def update(target, source, socket):
     if socket.exists() or socket.is_symlink():
-        raise RuntimeError('Ferme Beamer (Hyprland) avant de mettre à jour le pont.')
+        raise RuntimeError('Ferme Beamer (Serpantinum) avant de mettre à jour le pont.')
     if target.is_symlink() or not target.is_file():
         raise RuntimeError(f'Pont introuvable ou symbolique : {target}')
     old = target.read_bytes()
