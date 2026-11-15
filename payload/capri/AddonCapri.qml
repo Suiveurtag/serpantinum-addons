@@ -22,7 +22,7 @@ Scope {
         function act(name: string, arg: string): string { return Capri.enabled ? Capri.act(name, arg) : "off"; }
         function status(): string {
             return JSON.stringify({ enabled: Capri.enabled, animationEnabled: Capri.animationEnabled, instances: Capri.instances,
-                sidecar: root.sidecarRunning, events: Capri.events, lastEvent: Capri.lastEvent ? Capri.lastEvent.hook_event_name : null });
+                sidecar: root.sidecarRunning, world: root.world ? { clients: root.world.clients.length, pointer: root.world.pointer, displays: root.world.displays.length } : null, events: Capri.events, lastEvent: Capri.lastEvent ? Capri.lastEvent.hook_event_name : null });
         }
     }
 

@@ -46,7 +46,7 @@ PanelWindow {
     property real editProgress: editing ? 1 : 0
     property real swatchRipple: 1
     function cursorScreen() {
-        return Quickshell.cursorScreen ?? Quickshell.screens.find(screen => Hyprland.focusedMonitor && screen.name === Hyprland.focusedMonitor.name) ?? Quickshell.screens[0] ?? null;
+        return Quickshell.cursorScreen ?? Quickshell.screens.find(screen => !Quickshell.env("NIRI_SOCKET") && Hyprland.focusedMonitor && screen.name === Hyprland.focusedMonitor.name) ?? Quickshell.screens[0] ?? null;
     }
     property var targetScreen: cursorScreen()
     screen: targetScreen

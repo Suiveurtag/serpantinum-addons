@@ -2,6 +2,7 @@
 """Persist and apply the shell's themed Hyprland window outline."""
 import re
 import sys
+import niri_config
 
 from control import CONFIG, run, write
 
@@ -14,6 +15,10 @@ def apply(enabled, accent, secondary, muted):
     colors = (accent, secondary, muted)
     if not all(re.fullmatch(r'#[0-9a-fA-F]{6}', color) for color in colors):
         raise ValueError('Invalid shell palette colors')
+    if niri_config.active():
+        content = ('layout { border { on; width 2; active-gradient from="' + accent + 'e6" to="' + secondary + 'c9" angle=45; inactive-color "' + muted + '88"; }; }\n') if enabled else 'layout { border { off; }; }\n'
+        niri_config.update("outline", content)
+        return
     if not enabled and not LUA.exists():
         return
     main = MAIN.read_text()

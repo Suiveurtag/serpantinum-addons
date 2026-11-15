@@ -38,7 +38,7 @@ PanelWindow {
     function s(value) { return Scaler.s(value); }
     function open() {
         if (active) return;
-        targetScreen = Quickshell.cursorScreen ?? Quickshell.screens.find(screen => Hyprland.focusedMonitor && screen.name === Hyprland.focusedMonitor.name) ?? Quickshell.screens[0];
+        targetScreen = Quickshell.cursorScreen ?? Quickshell.screens.find(screen => !Quickshell.env("NIRI_SOCKET") && Hyprland.focusedMonitor && screen.name === Hyprland.focusedMonitor.name) ?? Quickshell.screens[0];
         if (!targetScreen) return;
         // Prevent other modal pointer tools from consuming drawing gestures.
         Quickshell.execDetached(["quickshell", "-p", Caching.mainQml, "ipc", "call", "addonDesktopZoom", "deactivate"]);

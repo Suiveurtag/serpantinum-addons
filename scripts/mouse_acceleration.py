@@ -3,6 +3,7 @@
 import hashlib
 import json
 import sys
+import niri_config
 
 from control import CONFIG, run, write
 
@@ -13,11 +14,16 @@ HOOK = '\n-- Serpantinum addons v2: mouse acceleration\nrequire("config/serpanti
 
 
 def profile():
+    if niri_config.active():
+        from niri_ipc import addon
+        return addon('snapshot')['input']['mouseProfile']
     value = json.loads(run('hyprctl', 'getoption', 'input:accel_profile', '-j'))
     return value.get('str', '')
 
 
 def revision():
+    if niri_config.active():
+        return niri_config.revision()
     digest = hashlib.sha256()
     for path in (MAIN, LUA, SETTINGS):
         digest.update(str(path).encode())
@@ -40,6 +46,10 @@ def save(payload):
         raise ValueError('Invalid mouse acceleration value.')
 
     target_profile = 'adaptive' if enabled else 'flat'
+    if niri_config.active():
+        niri_config.update("mouse", niri_config.input_fragment("mouse", {"accel-profile": json.dumps(target_profile)}), verify=lambda: profile() == target_profile,
+                           extra={SETTINGS: json.dumps(dict(enabled=enabled, profile=target_profile), indent=2) + "\n"})
+        return status()
     old = {path: path.read_text() if path.exists() else None for path in (MAIN, LUA, SETTINGS)}
     main = old[MAIN]
     if 'require("config/serpantinum_mouse_acceleration")' not in main:

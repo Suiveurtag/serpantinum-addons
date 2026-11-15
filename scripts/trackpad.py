@@ -5,6 +5,7 @@ import json
 import math
 import subprocess
 import sys
+import os
 from pathlib import Path
 
 from control import CONFIG, run, write
@@ -40,6 +41,9 @@ def revision():
 
 
 def status():
+    if os.environ.get("NIRI_SOCKET"):
+        import niri_trackpad
+        return niri_trackpad.status()
     devices = touchpads()
     saved = json.loads(SETTINGS.read_text()) if SETTINGS.exists() else None
     dwt = json.loads(run('hyprctl', 'getoption', 'input:touchpad:disable_while_typing', '-j'))['bool']
@@ -65,6 +69,9 @@ def lua_settings(settings, devices):
 
 
 def save(payload):
+    if os.environ.get("NIRI_SOCKET"):
+        import niri_trackpad
+        return niri_trackpad.save(payload)
     current = status()
     if not current['available']:
         raise ValueError('No touchpad detected.')

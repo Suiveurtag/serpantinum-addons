@@ -2,6 +2,9 @@
 # Focus the next monitor and move the mouse to the centre of that monitor.
 # Bound to Super+Tab by serpantinum-addons-v2 (window switching).
 set -euo pipefail
+if [[ -n "${NIRI_SOCKET:-}" ]]; then
+    exec python3 "$(dirname -- "$0")/niri_actions.py" next-monitor
+fi
 
 for tool in hyprctl jq; do
     command -v "$tool" >/dev/null 2>&1 || { echo "mouse-next-monitor-center: '$tool' is required" >&2; exit 1; }

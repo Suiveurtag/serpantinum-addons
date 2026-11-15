@@ -27,7 +27,9 @@ Scope {
     property string game: ""
     property string sentForeground: "-"
     property bool subscribed: false
-    readonly property bool nativeAvailable: Hyprland.requestSocketPath !== ""
+    readonly property bool niri: !!Quickshell.env("NIRI_SOCKET")
+    property var niriMonitors: []
+    readonly property bool nativeAvailable: !niri && Hyprland.requestSocketPath !== ""
     readonly property bool performanceMode: Config.getSetting("general.performance", false)
     readonly property bool pcEnabled: Config.getSetting("addonsV2CapriPcReact", true)
     readonly property var here: displays.find(d => d.id === Capri.screenName) || null
@@ -48,12 +50,12 @@ Scope {
         if (!clientSocket.connected) clientSocket.connected = true;
     }
     function snapshot() {
-        const monitors = nativeAvailable ? Hyprland.monitors.values : [];
+        const monitors = nativeAvailable ? Hyprland.monitors.values : niriMonitors;
         displays = World.monitors(Quickshell.screens, monitors);
         const minimized = {};
         if (nativeAvailable) for (const t of Hyprland.toplevels.values) if (t.wayland && t.wayland.minimized) minimized["0x" + t.address.replace(/^0x/, "")] = true;
-        clients = nativeAvailable ? liveClients.map(c => Object.assign({}, c, { minimized: !!minimized[c.address] })) : [];
-        foreground = Hyprland.activeToplevel ? "0x" + Hyprland.activeToplevel.address.replace(/^0x/, "") : "";
+        clients = nativeAvailable ? liveClients.map(c => Object.assign({}, c, { minimized: !!minimized[c.address] })) : niri ? liveClients : [];
+        foreground = niri ? ((clients.find(c => c.focusHistoryID === 0) || {}).address || "") : Hyprland.activeToplevel ? "0x" + Hyprland.activeToplevel.address.replace(/^0x/, "") : "";
         foregroundClient = clients.find(c => c.address === foreground) || null;
         if (!displays.some(d => d.id === Capri.screenName)) {
             const saved = Config.getSetting("addonsV2CapriPosition", null);
@@ -153,6 +155,23 @@ Scope {
     Component.onCompleted: { subscribe(); snapshot(); refresh(); }
     Component.onDestruction: { if (subscribed) SysData.unsubscribe(); }
 
+    Process {
+        running: world.niri
+        command: ["python3", Quickshell.env("HOME") + "/.local/share/serpantinum-addons-v2/scripts/niri_world.py"]
+        stdout: SplitParser { onRead: data => {
+            try {
+                const state = JSON.parse(data);
+                world.niriMonitors = state.monitors;
+                if (state.pointer !== undefined) {
+                    world.pointer = state.pointer;
+                    const at = world.cursor;
+                    if (at && at.inside && world.engine.capri) world.engine.capri.notice(at.x, at.y);
+                }
+                world.liveClients = state.clients;
+                world.snapshot();
+            } catch (error) { console.warn("Capri Niri:", error); }
+        } }
+    }
     Connections {
         target: Hyprland
         function onRawEvent(event) { world.refresh(); }

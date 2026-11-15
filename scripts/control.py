@@ -30,6 +30,9 @@ def write(path, text):
 
 
 def keybinds():
+    if os.environ.get("NIRI_SOCKET"):
+        import niri_controls
+        return niri_controls.keybinds()
     path = CONFIG / 'hypr/config/keybinds.lua'
     text = path.read_text()
     rows = []
@@ -49,6 +52,9 @@ def keybinds():
 
 
 def save_keys(payload):
+    if os.environ.get("NIRI_SOCKET"):
+        import niri_controls
+        return niri_controls.save_keys(payload)
     path = CONFIG / 'hypr/config/keybinds.lua'
     old = path.read_text()
     if hashlib.sha256(old.encode()).hexdigest() != payload['revision']:
@@ -104,10 +110,16 @@ def save_keys(payload):
 
 
 def monitors():
+    if os.environ.get("NIRI_SOCKET"):
+        import niri_controls
+        return niri_controls.monitors()
     return json.loads(run('hyprctl', 'monitors', '-j'))
 
 
 def save_monitors(rows):
+    if os.environ.get("NIRI_SOCKET"):
+        import niri_controls
+        return niri_controls.save_monitors(rows)
     current = {m['name']: m for m in monitors()}
     if {r['name'] for r in rows} != set(current):
         raise ValueError('Connected monitors changed. Reload before applying.')
@@ -141,6 +153,9 @@ def save_monitors(rows):
 
 
 def keyboard_layouts():
+    if os.environ.get("NIRI_SOCKET"):
+        import niri_controls
+        return niri_controls.keyboard_layouts()
     path = CONFIG / 'hypr/config/settings.lua'
     text = path.read_text()
     setting = re.compile(r'(?m)^([ \t]*kb_layout[ \t]*=[ \t]*)(["\'])([^"\'\r\n]*)\2([ \t]*,?[ \t]*(?:--.*)?)$')
@@ -182,6 +197,9 @@ def keyboard_layouts():
 
 
 def save_keyboard_layout(payload):
+    if os.environ.get("NIRI_SOCKET"):
+        import niri_controls
+        return niri_controls.save_keyboard_layout(payload)
     path = CONFIG / 'hypr/config/settings.lua'
     old = path.read_text()
     revision = hashlib.sha256(old.encode()).hexdigest()

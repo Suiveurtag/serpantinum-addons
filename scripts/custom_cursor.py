@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 import os
+import niri_config
 import re
 import shlex
 import shutil
@@ -434,6 +435,14 @@ def configuration(size, theme=THEME):
     else:
         text = text.rstrip() + '\n\n' + block + '\n'
     files = {ENV_LUA: text}
+    if niri_config.active():
+        main = CONFIG / 'niri/config.kdl'
+        original = main.read_text()
+        include = 'include "serpantinum-cursor.kdl"'
+        if include not in original.splitlines():
+            original = original.rstrip() + '\n' + include + '\n'
+        files = {main: original, main.with_name('serpantinum-cursor.kdl'):
+                 'cursor { xcursor-theme ' + json.dumps(theme) + '; xcursor-size ' + str(size) + '; }\n'}
     for version in ('3.0', '4.0'):
         path = CONFIG / ('gtk-' + version) / 'settings.ini'
         files[path] = update_ini(path.read_text() if path.exists() else '', 'Settings',
@@ -577,11 +586,14 @@ def apply(payload):
                     saved.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(path, saved)
                 atomic_write(path, content.encode())
-            run(['hyprctl', 'reload', 'config-only'], required=True)
-            errors = run(['hyprctl', 'configerrors'], required=True, output=True).strip()
-            if errors:
-                raise ValueError('Hyprland configuration error: ' + errors)
-            run(['hyprctl', 'setcursor', theme, str(settings['size'])], required=True)
+            if niri_config.active():
+                run([niri_config.executable(), 'validate', '-c', str(CONFIG / 'niri/config.kdl')], required=True)
+            else:
+                run(['hyprctl', 'reload', 'config-only'], required=True)
+                errors = run(['hyprctl', 'configerrors'], required=True, output=True).strip()
+                if errors:
+                    raise ValueError('Hyprland configuration error: ' + errors)
+                run(['hyprctl', 'setcursor', theme, str(settings['size'])], required=True)
         except Exception:
             for path, content in snapshot.items():
                 if content is None:
@@ -595,8 +607,9 @@ def apply(payload):
                     shutil.rmtree(destination)
                 if destination in previous:
                     shutil.move(str(previous[destination]), destination)
-            run(['hyprctl', 'reload', 'config-only'])
-            run(['hyprctl', 'setcursor', old.get('runtimeTheme', THEME if (DATA / 'icons' / THEME).exists() else old['baseTheme']), str(old['size'])])
+            if not niri_config.active():
+                run(['hyprctl', 'reload', 'config-only'])
+                run(['hyprctl', 'setcursor', old.get('runtimeTheme', THEME if (DATA / 'icons' / THEME).exists() else old['baseTheme']), str(old['size'])])
             raise
     override = DATA / 'flatpak/overrides/global'
     if override.is_file():

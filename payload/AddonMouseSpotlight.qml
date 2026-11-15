@@ -7,6 +7,7 @@ import Quickshell.Hyprland
 
 Scope {
     id: root
+    readonly property bool niri: !!Quickshell.env("NIRI_SOCKET")
     property bool active: false
     property bool ready: false
     property real pointerX: 0
@@ -38,6 +39,7 @@ Scope {
     function open() {
         if (active) return;
         active = true;
+        if (niri) ready = true;
         if (ready) { spread = 0; reveal = 1; }
     }
     function close() { active = false; spread = 0.06; reveal = 0; }
@@ -55,7 +57,7 @@ Scope {
 
     Process {
         id: cursor
-        running: root.active || root.reveal > 0
+        running: !root.niri && (root.active || root.reveal > 0)
         command: ["python3", "-u", Quickshell.env("HOME") + "/.local/share/serpantinum-addons-v2/scripts/mouse_spotlight.py"]
         stdout: SplitParser {
             onRead: data => {
@@ -94,7 +96,7 @@ Scope {
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: root.active && screen === Quickshell.cursorScreen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             anchors { top: true; bottom: true; left: true; right: true }
-            readonly property var monitor: Hyprland.monitorFor(screen)
+            readonly property var monitor: Quickshell.env("NIRI_SOCKET") ? screen : Hyprland.monitorFor(screen)
             readonly property real cx: root.pointerX - (monitor ? monitor.x : 0)
             readonly property real cy: root.pointerY - (monitor ? monitor.y : 0)
             readonly property real spotRadius: root.radius + root.spread * Math.hypot(width, height)
@@ -104,6 +106,16 @@ Scope {
                 id: input
                 anchors.fill: parent
                 enabled: root.active
+                hoverEnabled: root.niri
+                onPositionChanged: mouse => {
+                    if (!root.niri) return;
+                    root.pointerX = mouse.x + overlay.screen.x;
+                    root.pointerY = mouse.y + overlay.screen.y;
+                }
+                onEntered: if (root.niri) {
+                    root.pointerX = mouseX + overlay.screen.x;
+                    root.pointerY = mouseY + overlay.screen.y;
+                }
                 acceptedButtons: Qt.AllButtons
                 onPressed: mouse => { mouse.accepted = true; root.close(); }
                 onWheel: wheel => {

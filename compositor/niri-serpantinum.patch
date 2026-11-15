@@ -1,0 +1,953 @@
+diff --git a/niri-config/src/input.rs b/niri-config/src/input.rs
+index 9d2c001..3ec718b 100644
+--- a/niri-config/src/input.rs
++++ b/niri-config/src/input.rs
+@@ -194,6 +194,8 @@ impl ScrollFactor {
+ 
+ #[derive(knuffel::Decode, Debug, Default, Clone, PartialEq)]
+ pub struct Touchpad {
++    #[knuffel(child)]
++    pub serpantinum_disable_clicks_while_typing: bool,
+     #[knuffel(child)]
+     pub off: bool,
+     #[knuffel(child)]
+diff --git a/niri-ipc/src/lib.rs b/niri-ipc/src/lib.rs
+index 545c365..66aad8f 100644
+--- a/niri-ipc/src/lib.rs
++++ b/niri-ipc/src/lib.rs
+@@ -65,6 +65,8 @@ pub mod state;
+ #[derive(Debug, Serialize, Deserialize, Clone)]
+ #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+ pub enum Request {
++    /// Versioned, session-local Serpantinum addon API.
++    Serpantinum(serde_json::Value),
+     /// Request the version string for the running niri instance.
+     Version,
+     /// Request information about connected outputs.
+@@ -135,6 +137,8 @@ pub type Reply = Result<Response, String>;
+ #[derive(Debug, Serialize, Deserialize, Clone)]
+ #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+ pub enum Response {
++    /// Response to the Serpantinum addon API.
++    Serpantinum(serde_json::Value),
+     /// A request that does not need a response was handled successfully.
+     Handled,
+     /// The version string for the running niri instance.
+diff --git a/src/backend/tty.rs b/src/backend/tty.rs
+index 22e4940..82809b6 100644
+--- a/src/backend/tty.rs
++++ b/src/backend/tty.rs
+@@ -1943,7 +1943,7 @@ impl Tty {
+             target: RenderTarget::Output,
+             xray: None,
+         };
+-        let mut elements = niri.render_to_vec(ctx, output, true);
++        let mut elements = niri.serpantinum_render(ctx, output);
+ 
+         // Visualize the damage, if enabled.
+         if niri.debug_draw_damage {
+diff --git a/src/backend/winit.rs b/src/backend/winit.rs
+index 9ce0760..351c6c2 100644
+--- a/src/backend/winit.rs
++++ b/src/backend/winit.rs
+@@ -328,7 +328,7 @@ impl Winit {
+             target: RenderTarget::Output,
+             xray: None,
+         };
+-        let mut elements = niri.render_to_vec(ctx, output, true);
++        let mut elements = niri.serpantinum_render(ctx, output);
+ 
+         // Visualize the damage, if enabled.
+         if niri.debug_draw_damage {
+diff --git a/src/input/mod.rs b/src/input/mod.rs
+index 7f5f455..7528dec 100644
+--- a/src/input/mod.rs
++++ b/src/input/mod.rs
+@@ -316,7 +316,11 @@ impl State {
+         }
+     }
+ 
+-    fn on_device_removed(&mut self, device: impl Device) {
++    fn on_device_removed(&mut self, device: impl Device + 'static) {
++        if (&device as &dyn Any).is::<input::Device>() { self.niri.serpantinum.capture.disable(); }
++        self.niri.serpantinum.typing_keys.clear();
++        self.niri.serpantinum.modifiers.clear();
++        self.niri.serpantinum.typing_until = std::time::Instant::now();
+         if device.has_capability(DeviceCapability::TabletTool) {
+             let tablet_seat = self.niri.seat.tablet_seat();
+ 
+@@ -482,6 +486,7 @@ impl State {
+         let serial = SERIAL_COUNTER.next_serial();
+         let time = Event::time(&event);
+         let pressed = event.state() == KeyState::Pressed;
++        self.niri.serpantinum.key(event.key_code().raw(), pressed);
+ 
+         // Stop bind key repeat on any release. This won't work 100% correctly in cases like:
+         // 1. Press Mod
+@@ -544,6 +549,16 @@ impl State {
+             event.key_code(),
+             event.state(),
+             |this, mods, keysym| {
++                if this.serpantinum_capture_active() {
++                    let code=event.key_code().raw().saturating_sub(8);
++                    let c=&mut this.niri.serpantinum.capture;
++                    if code==1 { c.escape=if pressed {Some(std::time::Instant::now())}else{None}; }
++                    let m=mods.serialized;
++                    c.push(serde_json::json!({"kind":"modifiers","depressed":m.depressed,"latched":m.latched,"locked":m.locked,"group":m.layout_effective}));
++                    c.push(serde_json::json!({"kind":"key","code":code,"down":pressed}));
++                    c.push(serde_json::json!({"kind":"frame"}));
++                    return ShouldInterceptResult::InterceptOnly;
++                }
+                 let key_code = keysym.raw_code();
+                 let modifiers = modifiers_from_state(*mods);
+ 
+@@ -888,6 +903,10 @@ impl State {
+ 
+     /// Forgets all held inputs, running the release actions of anything that was still held.
+     pub fn release_held_inputs(&mut self, time: InputTime) {
++        self.niri.serpantinum.capture.disable();
++        self.niri.serpantinum.typing_keys.clear();
++        self.niri.serpantinum.modifiers.clear();
++        self.niri.serpantinum.typing_until = std::time::Instant::now();
+         let mut binds = Vec::new();
+         binds.extend(
+             self.niri
+@@ -2782,6 +2801,7 @@ impl State {
+     }
+ 
+     fn on_pointer_motion<I: InputBackend>(&mut self, event: I::PointerMotionEvent) {
++        if self.serpantinum_capture_motion(event.delta()) { return; }
+         let was_inside_hot_corner = self.niri.pointer_inside_hot_corner;
+         // Any of the early returns here mean that the pointer is not inside the hot corner.
+         self.niri.pointer_inside_hot_corner = false;
+@@ -3147,10 +3167,18 @@ impl State {
+         find_configured_bind(bindings, mod_key, trigger, mods)
+     }
+ 
+-    fn on_pointer_button<I: InputBackend>(&mut self, event: I::PointerButtonEvent) {
++    fn on_pointer_button<I: InputBackend>(&mut self, event: I::PointerButtonEvent)
++    where
++        I::Device: 'static,
++    {
+         let pointer = self.niri.seat.get_pointer().unwrap();
+ 
+         let serial = SERIAL_COUNTER.next_serial();
++        if self.serpantinum_capture_active() {
++            self.niri.serpantinum.capture.push(serde_json::json!({"kind":"button","code":event.button_code(),"down":event.state()==ButtonState::Pressed}));
++            self.niri.serpantinum.capture.push(serde_json::json!({"kind":"frame"}));
++            return;
++        }
+ 
+         let button = event.button();
+ 
+@@ -3177,6 +3205,23 @@ impl State {
+         }
+ 
+         if ButtonState::Pressed == button_state {
++            let device = event.device();
++            let is_touchpad = (&device as &dyn Any)
++                .downcast_ref::<input::Device>()
++                .is_some_and(|d| d.config_tap_finger_count() > 0);
++            if is_touchpad
++                && self
++                    .niri
++                    .config
++                    .borrow()
++                    .input
++                    .touchpad
++                    .serpantinum_disable_clicks_while_typing
++                && self.niri.serpantinum.typing()
++            {
++                self.niri.suppressed_buttons.insert(button_code);
++                return;
++            }
+             self.niri.cancel_interrupted_release_binds();
+ 
+             let mut is_mru_open = false;
+@@ -3494,6 +3539,23 @@ impl State {
+     }
+ 
+     fn on_pointer_axis<I: InputBackend>(&mut self, event: I::PointerAxisEvent) {
++        if self.serpantinum_capture_active() {
++            let discrete = event.amount_v120(Axis::Horizontal).is_some() || event.amount_v120(Axis::Vertical).is_some();
++            let x=if discrete {event.amount_v120(Axis::Horizontal)}else{event.amount(Axis::Horizontal)}.unwrap_or(0.);
++            let y=if discrete {event.amount_v120(Axis::Vertical)}else{event.amount(Axis::Vertical)}.unwrap_or(0.);
++            self.niri.serpantinum.capture.push(serde_json::json!({"kind":if discrete {"scroll_discrete"} else {"scroll"},"dx":x,"dy":y}));
++            self.niri.serpantinum.capture.push(serde_json::json!({"kind":"frame"}));
++            return;
++        }
++        if self.niri.serpantinum.factor() > 1. && self.niri.serpantinum.scroll {
++            let delta = event
++                .amount_v120(Axis::Vertical)
++                .map(|v| v / 120.)
++                .or_else(|| event.amount(Axis::Vertical).map(|v| v / 15.))
++                .unwrap_or(0.);
++            self.niri.serpantinum.scroll_steps -= delta;
++            return;
++        }
+         self.niri.cancel_interrupted_release_binds();
+ 
+         let pointer = &self.niri.seat.get_pointer().unwrap();
+diff --git a/src/ipc/server.rs b/src/ipc/server.rs
+index f165555..d61af3d 100644
+--- a/src/ipc/server.rs
++++ b/src/ipc/server.rs
+@@ -272,6 +272,17 @@ async fn handle_client(ctx: ClientCtx, stream: Async<'static, UnixStream>) -> an
+ 
+ async fn process(ctx: &ClientCtx, request: Request) -> Reply {
+     let response = match request {
++        Request::Serpantinum(request) => {
++            let (tx, rx) = async_channel::bounded(1);
++            ctx.event_loop.insert_idle(move |state| {
++                let _ = tx.send_blocking(crate::serpantinum::request(state, request));
++            });
++            Response::Serpantinum(
++                rx.recv()
++                    .await
++                    .map_err(|_| "addon request cancelled".to_owned())??,
++            )
++        }
+         Request::ReturnError => return Err(String::from("example compositor error")),
+         Request::Version => Response::Version(version()),
+         Request::Outputs => {
+@@ -516,7 +527,7 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
+     Ok(())
+ }
+ 
+-fn make_ipc_window(
++pub(crate) fn make_ipc_window(
+     mapped: &Mapped,
+     workspace_id: Option<WorkspaceId>,
+     layout: WindowLayout,
+@@ -538,6 +549,10 @@ fn make_ipc_window(
+ impl State {
+     pub fn ipc_keyboard_layouts_changed(&mut self) {
+         let keyboard = self.niri.seat.get_keyboard().unwrap();
++        if !self.niri.serpantinum.capture.owner.is_empty() {
++            let text = keyboard.with_xkb_state(self, |ctx| ctx.xkb().lock().unwrap().keymap_as_string());
++            self.niri.serpantinum.capture.push(serde_json::json!({"kind":"keymap","text":text}));
++        }
+         let keyboard_layouts = keyboard.with_xkb_state(self, |context| {
+             let xkb = context.xkb().lock().unwrap();
+             let layouts = xkb.layouts();
+diff --git a/src/layout/mod.rs b/src/layout/mod.rs
+index 13594c7..28a5bd3 100644
+--- a/src/layout/mod.rs
++++ b/src/layout/mod.rs
+@@ -1749,6 +1749,44 @@ impl<W: LayoutElement> Layout<W> {
+         }
+     }
+ 
++    pub fn with_serpantinum_positions(
++        &self,
++        mut f: impl FnMut(&W, &Output, Point<f64, Logical>, Size<f64, Logical>, bool, Option<u64>),
++    ) {
++        if let MonitorSet::Normal { monitors, .. } = &self.monitor_set {
++            for mon in monitors {
++                let zoom = mon.overview_zoom();
++                for (ws, geo) in mon.workspaces_with_render_geo() {
++                    for (tile, pos, visible) in ws.tiles_with_render_positions() {
++                        if visible {
++                            f(
++                                tile.window(),
++                                &mon.output,
++                                geo.loc + pos.upscale(zoom),
++                                tile.animated_tile_size().upscale(zoom),
++                                tile.serpantinum_fullscreen(),
++                                Some(ws.id().get()),
++                            );
++                        }
++                    }
++                }
++            }
++        }
++        if let Some(InteractiveMoveState::Moving(move_)) = &self.interactive_move {
++            let zoom = self
++                .monitor_for_output(&move_.output)
++                .map_or(1., |m| m.overview_zoom());
++            f(
++                move_.tile.window(),
++                &move_.output,
++                move_.tile_render_location(zoom),
++                move_.tile.animated_tile_size().upscale(zoom),
++                move_.tile.serpantinum_fullscreen(),
++                None,
++            );
++        }
++    }
++
+     pub fn with_windows_mut(&mut self, mut f: impl FnMut(&mut W, Option<&Output>)) {
+         if let Some(InteractiveMoveState::Moving(move_)) = &mut self.interactive_move {
+             f(move_.tile.window_mut(), Some(&move_.output));
+diff --git a/src/layout/tile.rs b/src/layout/tile.rs
+index 9894ff8..f48f7e2 100644
+--- a/src/layout/tile.rs
++++ b/src/layout/tile.rs
+@@ -804,6 +804,10 @@ impl<W: LayoutElement> Tile<W> {
+         loc
+     }
+ 
++    pub fn serpantinum_fullscreen(&self) -> bool {
++        self.sizing_mode.is_fullscreen()
++    }
++
+     pub fn tile_size(&self) -> Size<f64, Logical> {
+         let mut size = self.window_size();
+ 
+diff --git a/src/lib.rs b/src/lib.rs
+index d516838..5c3f663 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -21,6 +21,8 @@ pub mod render_helpers;
+ pub mod rubber_band;
+ #[cfg(feature = "xdp-gnome-screencast")]
+ pub mod screencasting;
++pub mod serpantinum;
++pub mod serpantinum_capture;
+ pub mod ui;
+ pub mod utils;
+ pub mod window;
+diff --git a/src/niri.rs b/src/niri.rs
+index f0394fc..e0ca476 100644
+--- a/src/niri.rs
++++ b/src/niri.rs
+@@ -461,6 +461,7 @@ pub struct Niri {
+ 
+     pub debug_draw_opaque_regions: bool,
+     pub debug_draw_damage: bool,
++    pub serpantinum: crate::serpantinum::Addons,
+ 
+     #[cfg(feature = "dbus")]
+     pub dbus: Option<crate::dbus::DBusServers>,
+@@ -3007,6 +3008,7 @@ impl Niri {
+ 
+             debug_draw_opaque_regions: false,
+             debug_draw_damage: false,
++            serpantinum: Default::default(),
+ 
+             #[cfg(feature = "dbus")]
+             dbus: None,
+diff --git a/src/render_helpers/debug.rs b/src/render_helpers/debug.rs
+index ed96d77..5dec782 100644
+--- a/src/render_helpers/debug.rs
++++ b/src/render_helpers/debug.rs
+@@ -50,9 +50,9 @@ pub fn push_opaque_regions<R: NiriRenderer>(
+     }
+ }
+ 
+-pub fn draw_damage<R: NiriRenderer>(
++pub fn draw_damage<E: Element + From<SolidColorRenderElement>>(
+     damage_tracker: &mut OutputDamageTracker,
+-    elements: &mut Vec<OutputRenderElements<R>>,
++    elements: &mut Vec<E>,
+ ) {
+     let _span = tracy_client::span!("draw_damage");
+ 
+@@ -72,6 +72,6 @@ pub fn draw_damage<R: NiriRenderer>(
+             Color32F::from([0.3, 0., 0., 0.3]),
+             Kind::Unspecified,
+         );
+-        elements.insert(0, OutputRenderElements::SolidColor(color));
++        elements.insert(0, color.into());
+     }
+ }
+diff --git a/src/serpantinum.rs b/src/serpantinum.rs
+new file mode 100644
+index 0000000..ad24d17
+--- /dev/null
++++ b/src/serpantinum.rs
+@@ -0,0 +1,292 @@
++//! Session-local compatibility API for Serpantinum addons (version 1).
++//! No configuration or application data is written by this API.
++use crate::niri::{Niri, OutputRenderElements, State};
++use crate::render_helpers::{renderer::NiriRenderer, RenderCtx};
++use serde_json::{json, Value};
++use smithay::backend::renderer::element::utils::RescaleRenderElement;
++use smithay::desktop::layer_map_for_output;
++use smithay::output::Output;
++use smithay::utils::{Logical, Point, Scale};
++use std::collections::HashSet;
++use std::time::{Duration, Instant};
++
++#[derive(Debug)]
++pub struct Addons {
++    pub capture: crate::serpantinum_capture::Capture,
++    pub factor: f64,
++    pub center: Option<Point<f64, Logical>>,
++    pub hide_pointer: bool,
++    pub scroll: bool,
++    pub scroll_steps: f64,
++    pub expires: Instant,
++    pub typing_keys: HashSet<u32>,
++    pub modifiers: HashSet<u32>,
++    pub typing_until: Instant,
++}
++impl Default for Addons {
++    fn default() -> Self {
++        Self {
++            capture: Default::default(),
++            factor: 1.,
++            center: None,
++            hide_pointer: false,
++            scroll: false,
++            scroll_steps: 0.,
++            expires: Instant::now(),
++            typing_keys: HashSet::new(),
++            modifiers: HashSet::new(),
++            typing_until: Instant::now(),
++        }
++    }
++}
++impl Addons {
++    pub fn factor(&self) -> f64 {
++        if Instant::now() < self.expires {
++            self.factor
++        } else {
++            1.
++        }
++    }
++    pub fn typing(&self) -> bool {
++        !self.typing_keys.is_empty() || Instant::now() < self.typing_until
++    }
++    pub fn key(&mut self, code: u32, pressed: bool) {
++        if [37, 105, 64, 108, 133, 134].contains(&code) {
++            if pressed {
++                self.modifiers.insert(code);
++            } else {
++                self.modifiers.remove(&code);
++            }
++            if pressed {
++                self.typing_keys.clear();
++                self.typing_until = Instant::now();
++            }
++            return;
++        }
++        let text = (10..=22).contains(&code)
++            || (24..=36).contains(&code)
++            || (38..=49).contains(&code)
++            || (51..=61).contains(&code)
++            || [65, 94, 104].contains(&code)
++            || (79..=91).contains(&code);
++        if !text {
++            return;
++        }
++        if pressed && self.modifiers.is_empty() {
++            self.typing_keys.insert(code);
++        } else if !pressed {
++            self.typing_keys.remove(&code);
++        }
++        if self.modifiers.is_empty() {
++            self.typing_until = Instant::now() + Duration::from_millis(600);
++        }
++    }
++}
++
++crate::niri_render_elements! {
++    DisplayElements<R> => {
++        Normal = OutputRenderElements<R>,
++        Zoom = RescaleRenderElement<OutputRenderElements<R>>,
++        SolidColor = crate::render_helpers::solid_color::SolidColorRenderElement,
++    }
++}
++impl Niri {
++    pub fn serpantinum_render<R: NiriRenderer>(
++        &self,
++        ctx: RenderCtx<R>,
++        output: &Output,
++    ) -> Vec<DisplayElements<R>> {
++        let factor = self.serpantinum.factor();
++        let pointer = self.seat.get_pointer().unwrap().current_location();
++        let center = self.serpantinum.center.unwrap_or(pointer);
++        let geo = self.global_space.output_geometry(output).unwrap();
++        let applies = factor > 1. && geo.to_f64().contains(center);
++        let scale = Scale::from(output.current_scale().fractional_scale());
++        let origin = (center - geo.loc.to_f64()).to_physical_precise_round(scale);
++        let show_pointer = !(applies && self.serpantinum.hide_pointer);
++        self.render_to_vec(ctx, output, show_pointer)
++            .into_iter()
++            .map(|element| {
++                if applies {
++                    DisplayElements::Zoom(RescaleRenderElement::from_element(
++                        element, origin, factor,
++                    ))
++                } else {
++                    DisplayElements::Normal(element)
++                }
++            })
++            .collect()
++    }
++}
++
++fn number(value: &Value, name: &str) -> Result<f64, String> {
++    value
++        .get(name)
++        .and_then(Value::as_f64)
++        .filter(|v| v.is_finite() && v.abs() <= 100_000.)
++        .ok_or_else(|| format!("invalid {name}"))
++}
++
++pub fn request(state: &mut State, request: Value) -> Result<Value, String> {
++    match request.get("op").and_then(Value::as_str) {
++        Some("capture") => crate::serpantinum_capture::request(state, &request),
++        Some("capabilities") => Ok(
++            json!({"version":1,"zoom":true,"pointer":true,"layers":true,"renderedWindows":true,"trackpadClickGuard":true,"inputCapture":true}),
++        ),
++        Some("zoom") => {
++            let factor = number(&request, "factor")?;
++            if !(1.0..=6.0).contains(&factor) {
++                return Err("factor must be between 1 and 6".into());
++            }
++            let center = if request.get("x").is_some() || request.get("y").is_some() {
++                Some(Point::from((
++                    number(&request, "x")?,
++                    number(&request, "y")?,
++                )))
++            } else {
++                None
++            };
++            let schedule = state.niri.serpantinum.factor <= 1. && factor > 1.;
++            let addons = &mut state.niri.serpantinum;
++            addons.factor = factor;
++            addons.center = center;
++            addons.scroll = request
++                .get("scroll")
++                .and_then(Value::as_bool)
++                .unwrap_or(false);
++            addons.hide_pointer = request
++                .get("hidePointer")
++                .and_then(Value::as_bool)
++                .unwrap_or(false);
++            addons.expires = Instant::now() + Duration::from_secs(2);
++            state.niri.queue_redraw_all();
++            // Restore after an abruptly terminated worker, even on an otherwise idle desktop.
++            if schedule {
++                state
++                    .niri
++                    .event_loop
++                    .insert_source(
++                        calloop::timer::Timer::from_duration(Duration::from_secs(2)),
++                        |_, _, state| {
++                            let remaining = state
++                                .niri
++                                .serpantinum
++                                .expires
++                                .saturating_duration_since(Instant::now());
++                            if !remaining.is_zero() && state.niri.serpantinum.factor > 1. {
++                                calloop::timer::TimeoutAction::ToDuration(remaining)
++                            } else {
++                                state.niri.queue_redraw_all();
++                                calloop::timer::TimeoutAction::Drop
++                            }
++                        },
++                    )
++                    .map_err(|e| e.to_string())?;
++            }
++            Ok(json!({"factor":factor,"scrollSteps":state.niri.serpantinum.scroll_steps}))
++        }
++        Some("warp") => {
++            let location = Point::from((number(&request, "x")?, number(&request, "y")?));
++            if state.niri.output_under(location).is_none() {
++                return Err("position is outside the outputs".into());
++            }
++            state.move_cursor(location);
++            Ok(json!({}))
++        }
++        Some("snapshot") => snapshot(state),
++        _ => Err("unknown Serpantinum operation".into()),
++    }
++}
++
++fn snapshot(state: &State) -> Result<Value, String> {
++    let niri = &state.niri;
++    let p = niri.seat.get_pointer().unwrap().current_location();
++    let mut layers = serde_json::Map::new();
++    let mut reserved = serde_json::Map::new();
++    for output in niri.global_space.outputs() {
++        let map = layer_map_for_output(output);
++        let mut levels = serde_json::Map::new();
++        for layer in map.layers() {
++            if let Some(geo) = map.layer_geometry(layer) {
++                let key = format!("{}", layer.layer() as u32);
++                let entries = levels.entry(key).or_insert_with(|| json!([]));
++                entries.as_array_mut().unwrap().push(json!({"namespace":layer.namespace(),"x":geo.loc.x,"y":geo.loc.y,"w":geo.size.w,"h":geo.size.h}));
++            }
++        }
++        let area = map.non_exclusive_zone();
++        let full = niri.global_space.output_geometry(output).unwrap();
++        reserved.insert(
++            output.name(),
++            json!([
++                area.loc.x,
++                area.loc.y,
++                (full.size.w - area.loc.x - area.size.w).max(0),
++                (full.size.h - area.loc.y - area.size.h).max(0)
++            ]),
++        );
++        layers.insert(output.name(), Value::Object(levels));
++    }
++    let mut windows = Vec::new();
++    niri.layout.with_windows(|mapped, _, ws, layout| {
++        let window = crate::ipc::server::make_ipc_window(mapped, ws, layout);
++        windows.push(serde_json::to_value(window).unwrap());
++    });
++    niri.layout.with_serpantinum_positions(|mapped, output, pos, size, fullscreen, workspace| {
++        if let Some(w) = windows.iter_mut().find(|w| w["id"].as_u64() == Some(mapped.id().get())) {
++            if let Some(geo) = niri.global_space.output_geometry(output) {
++                w["serpantinum_geometry"] = json!({"x":geo.loc.x as f64 + pos.x,"y":geo.loc.y as f64+pos.y,
++                    "w":size.w,"h":size.h,"output":output.name(),"fullscreen":fullscreen,"workspace":workspace});
++            }
++        }
++    });
++    let devices: Vec<_> = niri
++        .devices
++        .iter()
++        .filter(|d| d.config_tap_finger_count() > 0)
++        .map(|d| json!({"name":d.name(),"sysname":d.sysname()}))
++        .collect();
++    Ok(
++        json!({"pointer":{"x":p.x,"y":p.y},"layers":layers,"reserved":reserved,"windows":windows,
++        "devices":devices,"input":{"touchpad":{"speed":niri.config.borrow().input.touchpad.accel_speed.0,
++            "disableWhileTyping":niri.config.borrow().input.touchpad.dwt,
++            "disableClicksWhileTyping":niri.config.borrow().input.touchpad.serpantinum_disable_clicks_while_typing},
++            "mouseProfile":match niri.config.borrow().input.mouse.accel_profile { Some(niri_config::input::AccelProfile::Flat) => "flat", _ => "adaptive" }},
++        "zoomFactor":niri.serpantinum.factor(),"scrollSteps":niri.serpantinum.scroll_steps}),
++    )
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    #[test]
++    fn zoom_lease_restores_without_worker() {
++        let mut addons = Addons::default();
++        addons.factor = 3.;
++        addons.expires = Instant::now() + Duration::from_secs(1);
++        assert_eq!(addons.factor(), 3.);
++        addons.expires = Instant::now() - Duration::from_millis(1);
++        assert_eq!(addons.factor(), 1.);
++    }
++    #[test]
++    fn click_guard_tracks_typing_and_excludes_shortcuts() {
++        let mut addons = Addons::default();
++        addons.key(38, true); // A, raw XKB code.
++        assert!(addons.typing());
++        addons.key(38, false);
++        assert!(addons.typing()); // Quiet interval after key release.
++        addons.key(37, true); // Ctrl cancels typing, matching the Hyprland guard.
++        assert!(!addons.typing());
++        addons.key(38, true);
++        assert!(!addons.typing());
++        addons.key(38, false);
++        addons.key(37, false);
++        addons.key(38, true);
++        assert!(addons.typing());
++    }
++    #[test]
++    fn untrusted_numbers_are_bounded() {
++        assert!(number(&json!({"x":100001}), "x").is_err());
++        assert!(number(&json!({"x":"30"}), "x").is_err());
++        assert_eq!(number(&json!({"x":-1920.5}), "x").unwrap(), -1920.5);
++    }
++}
+diff --git a/src/serpantinum_capture.rs b/src/serpantinum_capture.rs
+new file mode 100644
+index 0000000..3d0de16
+--- /dev/null
++++ b/src/serpantinum_capture.rs
+@@ -0,0 +1,296 @@
++//! Beamer input capture with an explicit owner and a one-second heartbeat lease.
++use crate::niri::State;
++use serde_json::{json, Value};
++use smithay::utils::{Logical, Point};
++use std::time::{Duration, Instant};
++
++#[derive(Debug, Default)]
++pub struct Capture {
++    pub owner: String,
++    pub enabled: bool,
++    pub timer: bool,
++    pub zones: Vec<[i32; 4]>,
++    pub active: bool,
++    pub expires: Option<Instant>,
++    pub escape: Option<Instant>,
++    pub activation: u64,
++    pub barriers: Vec<[f64; 4]>,
++    pub events: Vec<Value>,
++    pub signals: Vec<Value>,
++}
++impl Capture {
++    pub fn disable(&mut self) {
++        if self.active || self.enabled {
++            self.signals.push(json!({"member":"Disabled","options":{}}));
++        }
++        self.enabled = false;
++        self.active = false;
++        self.escape = None;
++        self.events.clear();
++    }
++    pub fn check(&mut self) {
++        if self.expires.is_some_and(|t| Instant::now() >= t)
++            || self
++                .escape
++                .is_some_and(|t| t.elapsed() >= Duration::from_secs(2))
++        {
++            self.disable();
++        }
++    }
++    pub fn push(&mut self, event: Value) {
++        if self.events.len() >= 512 {
++            self.disable();
++            return;
++        }
++        self.events.push(event);
++    }
++    pub fn motion(&mut self, point: Point<f64, Logical>, delta: Point<f64, Logical>) -> bool {
++        self.check();
++        if !self.enabled {
++            return false;
++        }
++        if !self.active {
++            let next = point + delta;
++            let hit = self.barriers.iter().enumerate().find(|(_, b)| {
++                if b[0] == b[2] {
++                    let toward = if point.x < b[0] {
++                        delta.x > 0.
++                    } else {
++                        delta.x < 0.
++                    };
++                    toward
++                        && (point.x - b[0]) * (next.x - b[0]) <= 0.
++                        && point.y >= b[1].min(b[3])
++                        && point.y <= b[1].max(b[3])
++                } else {
++                    let toward = if point.y < b[1] {
++                        delta.y > 0.
++                    } else {
++                        delta.y < 0.
++                    };
++                    toward
++                        && (point.y - b[1]) * (next.y - b[1]) <= 0.
++                        && point.x >= b[0].min(b[2])
++                        && point.x <= b[0].max(b[2])
++                }
++            });
++            let Some((index, _)) = hit else {
++                return false;
++            };
++            self.active = true;
++            self.activation += 1;
++            self.signals.push(json!({"member":"Activated","options":{"activation_id":self.activation,"barrier_id":index+1,"cursor_position":[point.x,point.y]}}));
++            self.push(json!({"kind":"start","activation":self.activation}));
++        }
++        self.push(json!({"kind":"motion","dx":delta.x,"dy":delta.y}));
++        self.push(json!({"kind":"frame"}));
++        true
++    }
++}
++impl State {
++    pub fn serpantinum_capture_active(&mut self) -> bool {
++        if self.niri.is_locked() {
++            self.niri.serpantinum.capture.disable();
++        }
++        self.niri.serpantinum.capture.check();
++        self.niri.serpantinum.capture.active
++    }
++    pub fn serpantinum_capture_motion(&mut self, delta: Point<f64, Logical>) -> bool {
++        if self.niri.is_locked() {
++            self.niri.serpantinum.capture.disable();
++            return false;
++        }
++        let pointer = self.niri.seat.get_pointer().unwrap();
++        if !self.niri.serpantinum.capture.active
++            && (pointer.is_grabbed()
++                || !self
++                    .niri
++                    .seat
++                    .get_keyboard()
++                    .unwrap()
++                    .pressed_keys()
++                    .is_empty())
++        {
++            return false;
++        }
++        let point = pointer.current_location();
++        self.niri.serpantinum.capture.motion(point, delta)
++    }
++}
++
++fn zones(state: &State) -> Vec<[i32; 4]> {
++    state
++        .niri
++        .global_space
++        .outputs()
++        .filter_map(|o| state.niri.global_space.output_geometry(o))
++        .map(|g| [g.loc.x, g.loc.y, g.size.w, g.size.h])
++        .collect()
++}
++
++pub fn request(state: &mut State, value: &Value) -> Result<Value, String> {
++    let owner = value
++        .get("owner")
++        .and_then(Value::as_str)
++        .filter(|s| s.len() == 32 && s.chars().all(|c| c.is_ascii_hexdigit()))
++        .ok_or("invalid capture owner")?;
++    let command = value
++        .get("command")
++        .and_then(Value::as_str)
++        .ok_or("missing capture command")?;
++    let current_zones = zones(state);
++    let c = &mut state.niri.serpantinum.capture;
++    c.check();
++    if !c.owner.is_empty() && c.owner != owner && c.enabled {
++        return Err("capture already owned".into());
++    }
++    match command {
++        "open" => {
++            c.disable();
++            c.signals.clear();
++            c.owner = owner.to_owned();
++            c.zones = current_zones;
++            let keyboard = state.niri.seat.get_keyboard().unwrap();
++            let keymap =
++                keyboard.with_xkb_state(state, |ctx| ctx.xkb().lock().unwrap().keymap_as_string());
++            let zones: Vec<_> = state
++                .niri
++                .global_space
++                .outputs()
++                .filter_map(|o| state.niri.global_space.output_geometry(o))
++                .map(|g| json!([g.loc.x, g.loc.y, g.size.w, g.size.h]))
++                .collect();
++            Ok(json!({"keymap":keymap,"zones":zones}))
++        }
++        "barriers" => {
++            let list = value
++                .get("positions")
++                .and_then(Value::as_array)
++                .filter(|v| v.len() <= 256)
++                .ok_or("invalid barriers")?;
++            let mut barriers = Vec::new();
++            for line in list {
++                let args = line
++                    .as_array()
++                    .filter(|v| v.len() == 4)
++                    .ok_or("invalid barrier")?;
++                let mut b = [0.; 4];
++                for (i, v) in args.iter().enumerate() {
++                    b[i] = v
++                        .as_f64()
++                        .filter(|x| x.is_finite() && x.abs() <= 100_000.)
++                        .ok_or("invalid barrier coordinate")?;
++                }
++                if b[0] != b[2] && b[1] != b[3] {
++                    return Err("barriers must be axis aligned".into());
++                }
++                barriers.push(b);
++            }
++            if c.enabled || c.active {
++                c.disable();
++            }
++            c.barriers = barriers;
++            c.enabled = !c.barriers.is_empty();
++            c.expires = Some(Instant::now() + Duration::from_secs(1));
++            if !c.timer {
++                c.timer = true;
++                state
++                    .niri
++                    .event_loop
++                    .insert_source(
++                        calloop::timer::Timer::from_duration(Duration::from_millis(100)),
++                        |_, _, state| {
++                            let capture = &mut state.niri.serpantinum.capture;
++                            capture.check();
++                            if capture.enabled {
++                                calloop::timer::TimeoutAction::ToDuration(Duration::from_millis(
++                                    100,
++                                ))
++                            } else {
++                                capture.timer = false;
++                                calloop::timer::TimeoutAction::Drop
++                            }
++                        },
++                    )
++                    .map_err(|e| e.to_string())?;
++            }
++            Ok(json!({"failed_barriers":[]}))
++        }
++        "zones" => Ok(json!(zones(state))),
++        "poll" => {
++            let zones = zones(state);
++            if state.niri.is_locked() {
++                state.niri.serpantinum.capture.disable();
++            }
++            let c = &mut state.niri.serpantinum.capture;
++            c.check();
++            if c.zones != zones {
++                c.disable();
++                c.zones = zones;
++                c.signals
++                    .push(json!({"member":"ZonesChanged","options":{}}));
++            }
++            if c.enabled {
++                c.expires = Some(Instant::now() + Duration::from_secs(1));
++            }
++            Ok(
++                json!({"events":std::mem::take(&mut c.events),"signals":std::mem::take(&mut c.signals),"active":c.active}),
++            )
++        }
++        "release" => {
++            c.active = false;
++            c.escape = None;
++            c.events.clear();
++            let activation = c.activation;
++            c.signals
++                .push(json!({"member":"Deactivated","options":{"activation_id":activation}}));
++            if let (Some(x), Some(y)) = (
++                value.get("x").and_then(Value::as_f64),
++                value.get("y").and_then(Value::as_f64),
++            ) {
++                let p = Point::from((x, y));
++                if x.is_finite() && y.is_finite() && state.niri.output_under(p).is_some() {
++                    state.move_cursor(p);
++                }
++            }
++            Ok(json!({}))
++        }
++        "close" => {
++            c.disable();
++            c.owner.clear();
++            Ok(json!({}))
++        }
++        _ => Err("unknown capture command".into()),
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    #[test]
++    fn barrier_activation_and_expiry() {
++        let mut c = Capture::default();
++        c.enabled = true;
++        c.expires = Some(Instant::now() + Duration::from_secs(1));
++        c.barriers.push([100., 0., 100., 200.]);
++        assert!(!c.motion((95., 50.).into(), (-10., 0.).into()));
++        assert!(c.motion((95., 50.).into(), (10., 0.).into()));
++        assert!(c.active);
++        assert_eq!(c.signals[0]["options"]["barrier_id"], 1);
++        c.expires = Some(Instant::now() - Duration::from_millis(1));
++        c.check();
++        assert!(!c.active);
++        assert!(!c.enabled);
++    }
++    #[test]
++    fn overflow_releases_and_discards_input() {
++        let mut c = Capture::default();
++        c.active = true;
++        c.enabled = true;
++        for _ in 0..513 {
++            c.push(json!({"kind":"key","code":30,"down":true}));
++        }
++        assert!(!c.active);
++        assert!(c.events.is_empty());
++    }
++}

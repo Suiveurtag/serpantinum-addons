@@ -50,6 +50,9 @@ def scroll(path, enabled):
 
 
 def main():
+    if os.environ.get("NIRI_SOCKET"):
+        from niri_zoom import main as niri_main
+        return niri_main()
     path = Path(os.environ['XDG_RUNTIME_DIR']) / 'hypr' / os.environ['HYPRLAND_INSTANCE_SIGNATURE'] / '.socket.sock'
     saved = {'cursor': {}, 'binds': {}}
     for section, key, kind in [('cursor', 'zoom_factor', 'float'), ('cursor', 'zoom_rigid', 'bool'),

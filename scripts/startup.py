@@ -3,6 +3,7 @@
 import hashlib
 import json
 import sys
+import niri_config
 
 from control import CONFIG, run, write
 
@@ -13,6 +14,8 @@ HOOK = '\n-- Serpantinum addons v2: startup commands\nrequire("config/serpantinu
 
 
 def revision():
+    if niri_config.active():
+        return niri_config.revision()
     return hashlib.sha256(SETTINGS.read_bytes() if SETTINGS.exists() else b'absent').hexdigest()
 
 
@@ -35,6 +38,10 @@ def save(payload):
             isinstance(command, str) and command.strip() and all(ord(c) >= 32 for c in command) for command in commands):
         raise ValueError('Each startup command must be a single non-empty line.')
     commands = [command.strip() for command in commands]
+    if niri_config.active():
+        niri_config.update("startup", ''.join('spawn-sh-at-startup ' + json.dumps(c, ensure_ascii=False) + '\n' for c in commands),
+                           extra={SETTINGS: json.dumps(dict(commands=commands), indent=2, ensure_ascii=False) + '\n'})
+        return status()
     old = {path: path.read_text() if path.exists() else None for path in (MAIN, LUA, SETTINGS)}
     main = old[MAIN]
     if 'require("config/serpantinum_startup")' not in main:

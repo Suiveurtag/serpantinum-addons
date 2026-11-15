@@ -58,6 +58,7 @@ Scope {
                 try {
                     let state = JSON.parse(data);
                     root.factor = state.factor;
+                    if (state.targetFactor !== undefined && root.ready) root.targetFactor = state.targetFactor;
                     if (state.ready) {
                         root.pointerX = state.x;
                         root.pointerY = state.y;
@@ -71,7 +72,7 @@ Scope {
         onExited: (code, status) => {
             root.active = false;
             root.ready = false;
-            if (code !== 0) Quickshell.execDetached(["notify-send", "-a", "Serpantinum", "Desktop zoom", "Could not zoom the desktop. Check the Hyprland session."]);
+            if (code !== 0) Quickshell.execDetached(["notify-send", "-a", "Serpantinum", "Desktop zoom", "Could not zoom the desktop. This effect requires compositor zoom support."]);
         }
     }
 
@@ -90,7 +91,7 @@ Scope {
             WlrLayershell.namespace: "qs-addon-desktop-zoom"
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: root.active && pointerScreen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
-            readonly property var monitor: Hyprland.monitorFor(screen)
+            readonly property var monitor: Quickshell.env("NIRI_SOCKET") ? screen : Hyprland.monitorFor(screen)
             readonly property bool pointerScreen: pointerX >= 0 && pointerY >= 0 && pointerX < width && pointerY < height
             readonly property real pointerX: root.pointerX - (monitor ? monitor.x : 0)
             readonly property real pointerY: root.pointerY - (monitor ? monitor.y : 0)
