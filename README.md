@@ -554,6 +554,7 @@ Tab **Addons → Mouse** (sub-tab "Mouse").
 ### 12. General settings (Addons → General)
 
 - **Themed window outline**: thin Hyprland border in the colours of the active palette, seasonal colours included. Off by default.
+- **Skip intro at login**: the native Serpantinum welcome plays once when the shell opens after you log in, never on a shell reload. Turn this on to skip it automatically at every login. Any key or click also skips the intro while it is playing. **Preview** plays it now; a second switch mutes its sounds. Off by default.
 - **Hide weather location**: the city name in the weather widget is continuously scrambled (random characters), without changing the data.
 - **Mullvad DNS**: switch to Mullvad DNS-over-TLS on the active connection (see [Network and idle](#10-network-and-idle)).
 - **Animated bar outlines**: the bar button whose panel is open gets a flowing outline in the theme colours (the whole module for the styles that have no button, one shared outline for grouped modules such as clock + weather); the settings and launcher buttons are outlined while open, and the AI Tokens bar item on hover. Off by default.
@@ -611,6 +612,7 @@ quickshell -p "$SHELL_QML" ipc call addonDesktopZoom toggle
 quickshell -p "$SHELL_QML" ipc call addonDesktopZoom zoomIn
 quickshell -p "$SHELL_QML" ipc call addonDesktopZoom zoomOut
 quickshell -p "$SHELL_QML" ipc call addonMouseSpotlight toggle
+quickshell -p "$SHELL_QML" ipc call addonBootIntro play    # also: skip, forget (replay at the next shell start)
 ```
 
 ## Tests and validation

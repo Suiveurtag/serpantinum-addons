@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- Boot intro: the native Serpantinum welcome replayed once per login (wipe, typed time-of-day greeting with your name, the logo filling with colour over "Serpantinum", then the desktop). Addons → General → "Skip intro at login" (off by default, with Preview and a sound switch); IPC `addonBootIntro play|skip|forget`.
+
 ## [2.1.3] - 2026-11-13
 
 ### Changed

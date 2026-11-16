@@ -53,6 +53,37 @@ Item {
                 }
             }
             SettingsRow {
+                rootObj: root.rootObj; settingId: "addons_skip_boot_intro"; searchTab: "addons"; searchKeywords: "skip boot intro startup login logo animation splash démarrage ouverture passer ignorer"
+                title: "Skip intro at login"; description: "Skip the Serpantinum welcome animation whenever you log in."; icon: "󰒭"
+                wrapText: true
+                ClickButton {
+                    buttonText: qsTr("Preview")
+                    accentColor: ThemeBackend.surface1; textColor: ThemeBackend.text
+                    onTriggered: Quickshell.execDetached(["quickshell", "-p", Caching.qsDir + "/Shell.qml", "ipc", "call", "addonBootIntro", "play"])
+                }
+                Toggle {
+                    checked: Config.getSetting("addonsV2BootIntro", true) === false
+                    accentColor: ThemeBackend.mauve
+                    onToggled: {
+                        Config.setSetting("addonsV2BootIntro", !checked);
+                        checked = Qt.binding(function() { return Config.getSetting("addonsV2BootIntro", true) === false; });
+                    }
+                }
+            }
+            SettingsRow {
+                rootObj: root.rootObj; settingId: "addons_boot_intro_sound"; searchTab: "addons"; searchKeywords: "boot intro sound audio son démarrage"
+                title: "Boot intro sound"; description: "Play the welcome sounds with the boot intro."; icon: "󰕾"
+                visible: Config.getSetting("addonsV2BootIntro", true) !== false
+                Toggle {
+                    checked: Config.getSetting("addonsV2BootIntroSound", true) !== false
+                    accentColor: ThemeBackend.mauve
+                    onToggled: {
+                        Config.setSetting("addonsV2BootIntroSound", checked);
+                        checked = Qt.binding(function() { return Config.getSetting("addonsV2BootIntroSound", true) !== false; });
+                    }
+                }
+            }
+            SettingsRow {
                 rootObj: root.rootObj; settingId: "addons_weather_city_obfuscation"; searchTab: "addons"; searchKeywords: "weather city location privacy obfuscated météo ville localisation"
                 title: "Obfuscate weather location"; description: "Scramble the city name in the weather widget."; icon: "󰍑"
                 Toggle {

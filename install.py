@@ -23,6 +23,7 @@ import urllib.request
 import capri
 import clawd
 import bar_outline
+import bootintro
 import release_ui
 import seasonal
 import tokens
@@ -1625,6 +1626,10 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
     for path, transform in bar_outline.transformations(QS).items():
         pending[path] = patch_file(path, transform, staged(path))
 
+    # Boot intro (Addons → General, on by default): always patched, like the bar outlines.
+    for path, transform in bootintro.transformations(QS).items():
+        pending[path] = patch_file(path, transform, staged(path))
+
     # The in-shell update UI is not optional (no --without flag): always patched, always copied.
     for path, transform in release_ui.transformations(QS).items():
         pending[path] = patch_file(path, transform, staged(path))
@@ -1721,12 +1726,13 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
     try:
         clawd_resources = clawd.resources(SOURCE/'payload/clawd', QS)
         tokens_resources = tokens.resources(SOURCE/'payload/tokens', QS)
+        bootintro_resources = bootintro.resources(QS, SOURCE/'payload/bootintro')
     except InstallError:
         raise
     except Exception as error:
         raise InstallError(str(error), 'payload', 'resources', 'Rebuild the generated assets named above (see docs), then run the installer again.') from error
     groups = [(resource_payloads, without_halloween), (capri_resources, without_capri),
-              (clawd_resources, without_clawd), (tokens_resources, without_tokens)]
+              (clawd_resources, without_clawd), (tokens_resources, without_tokens), (bootintro_resources, False)]
     for blobs, removing in groups:
         for path, blob in blobs:
             plan.blobs.append((path, blob, removing))
@@ -1772,7 +1778,7 @@ def shell_ops(plan):
             owned = path.name == stem + '.frag.qsb' or re.fullmatch(stem + r'\.[a-f0-9]{12}\.frag\.qsb', path.name)
             if owned and path.name != keep and ('delete', path) not in ops:
                 ops.append(('delete', path))
-    for path in clawd.stale_shaders(QS, everything=plan.options['without_clawd']):
+    for path in clawd.stale_shaders(QS, everything=plan.options['without_clawd']) + bootintro.stale_shaders(QS):
         if ('delete', path) not in ops:
             ops.append(('delete', path))
     return ops
@@ -2181,6 +2187,7 @@ def sweep_shaders():
         if shader_dir.is_dir():
             found += [p for p in sorted(shader_dir.iterdir()) if p.name == stem + '.frag.qsb' or re.fullmatch(stem + r'\.[a-f0-9]{12}\.frag\.qsb', p.name)]
     found += clawd.stale_shaders(QS, everything=True)
+    found += bootintro.stale_shaders(QS, everything=True)
     return found
 
 
