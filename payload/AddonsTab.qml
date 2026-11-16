@@ -215,7 +215,7 @@ Item {
                                     }
                                 }
                                 wrapText: true
-                                description: "Reads the /metrics of llama-server (start it with --metrics). Counts from when it is first seen."
+                                description: urlField.text.trim() === "dash" ? qsTr("Dashboard settings unlocked below.") : qsTr("Reads the /metrics of llama-server (start it with --metrics). Counts from when it is first seen.")
                                 opacity: tokensSources.stagger(3)
                                 transform: Translate { y: rootObj.s(-8) * (1 - tokensSources.stagger(3)) }
                                 // Ping state: idle | pinging | ok | fail. The probe is a curl on the server's /metrics.
@@ -304,7 +304,7 @@ Item {
                                     textColor: ThemeBackend.text
                                     borderColor: ThemeBackend.surface2
                                     onAccepted: finalText => {
-                                        if (finalText === "dash") return;
+                                        if (finalText.trim() === "dash") return;
                                         Config.setSetting("addonsV2TokensLlamaCppUrl", finalText.trim());
                                         llamaProbe.ping();
                                     }
@@ -315,50 +315,121 @@ Item {
                                     onToggled: { Config.setSetting("addonsV2TokensLlamaCpp", checked); }
                                 }
                             }
-                            SettingsRow {
-                                visible: urlField.text === "dash"
-                                rootObj: root.rootObj; settingId: ""; searchTab: "addons"
-                                title: "Dashboard sync"
-                                description: "Use the dashboard's synchronized total. Refreshes every 3 seconds."
-                                wrapText: true
-                                Toggle {
-                                    checked: Config.getSetting("addonsV2TokensDashboard", false)
-                                    accentColor: ThemeBackend.mauve
-                                    onToggled: Config.setSetting("addonsV2TokensDashboard", checked)
-                                }
-                            }
-                            SettingsRow {
-                                visible: urlField.text === "dash"
-                                rootObj: root.rootObj; settingId: ""; searchTab: "addons"
-                                title: "Dashboard URL"
-                                description: "HTTPS address of your dashboard."
-                                Input {
-                                    Layout.preferredWidth: rootObj.s(240)
-                                    text: Config.getSetting("addonsV2TokensDashboardUrl", "https://dash.brighter-builds.com")
-                                    onAccepted: value => Config.setSetting("addonsV2TokensDashboardUrl", value.trim())
-                                }
-                            }
-                            SettingsRow {
-                                visible: urlField.text === "dash"
-                                rootObj: root.rootObj; settingId: ""; searchTab: "addons"
-                                title: "Dashboard password"
-                                description: "Press Enter to save the password privately."
-                                Input {
-                                    id: dashboardPassword
-                                    Layout.preferredWidth: rootObj.s(200)
-                                    masked: true; revealTyping: false
-                                    placeholderText: "Password"
-                                    onAccepted: value => {
-                                        if (!value) return;
-                                        dashboardPasswordWriter.running = true;
-                                        dashboardPasswordWriter.write(value + "\n");
-                                        dashboardPassword.text = "";
+                            Item {
+                                id: dashboardReveal
+                                readonly property bool unlocked: urlField.text.trim() === "dash"
+                                onUnlockedChanged: if (unlocked && !dashboardPasswordWriter.running) dashboardPasswordCheck.running = true
+                                property real progress: unlocked ? 1 : 0
+                                Behavior on progress { NumberAnimation { duration: dashboardReveal.unlocked ? 380 : 240; easing.type: Easing.OutCubic } }
+                                Layout.fillWidth: true
+                                implicitHeight: dashboardContent.implicitHeight * progress
+                                visible: progress > 0.001
+                                clip: true
+
+                                ColumnLayout {
+                                    id: dashboardContent
+                                    width: parent.width
+                                    spacing: rootObj.s(6)
+                                    opacity: dashboardReveal.progress
+                                    transform: Translate { y: rootObj.s(-8) * (1 - dashboardReveal.progress) }
+
+                                    SettingsRow {
+                                        rootObj: root.rootObj; searchable: false
+                                        icon: "󰒍"
+                                        title: qsTr("Dashboard sync")
+                                        description: Config.getSetting("addonsV2TokensDashboard", false)
+                                            ? qsTr("Enabled · refreshes every 3 seconds") : qsTr("Use the dashboard’s synchronized total")
+                                        wrapText: true
+                                        Toggle {
+                                            checked: Config.getSetting("addonsV2TokensDashboard", false)
+                                            accentColor: ThemeBackend.mauve
+                                            onToggled: Config.setSetting("addonsV2TokensDashboard", checked)
+                                        }
                                     }
-                                }
-                                Process {
-                                    id: dashboardPasswordWriter
-                                    command: ["sh", "-c", "umask 077; d=\"${XDG_CONFIG_HOME:-$HOME/.config}/serpantinum/tokens\"; mkdir -p \"$d\" && chmod 700 \"$d\" && t=$(mktemp \"$d/.password.XXXXXX\") && head -n1 > \"$t\" && mv -f \"$t\" \"$d/dashboard-password\""]
-                                    stdinEnabled: true
+                                    SettingsRow {
+                                        rootObj: root.rootObj; searchable: false
+                                        icon: "󰖟"; title: qsTr("Dashboard URL")
+                                        description: qsTr("Press Enter to save the HTTPS address.")
+                                        wrapText: true
+                                        Input {
+                                            Layout.preferredWidth: rootObj.s(240)
+                                            text: Config.getSetting("addonsV2TokensDashboardUrl", "https://dash.brighter-builds.com")
+                                            accentColor: ThemeBackend.mauve
+                                            onAccepted: value => Config.setSetting("addonsV2TokensDashboardUrl", value.trim())
+                                        }
+                                    }
+                                    SettingsRow {
+                                        id: passwordRow
+                                        rootObj: root.rootObj; searchable: false
+                                        function savePassword() {
+                                            if (dashboardPasswordWriter.running) return;
+                                            if (!dashboardPassword.text) {
+                                                dashboardPasswordWriter.result = -2;
+                                                dashboardPassword.triggerShake();
+                                                return;
+                                            }
+                                            dashboardPasswordWriter.result = 0;
+                                            dashboardPasswordWriter.running = true;
+                                            dashboardPasswordWriter.write(dashboardPassword.text + "\n");
+                                        }
+                                        icon: "󰌾"; title: qsTr("Dashboard password")
+                                        description: dashboardPasswordWriter.running ? qsTr("Saving password…")
+                                            : dashboardPasswordWriter.result === 1 ? qsTr("Password saved on this device.")
+                                            : dashboardPasswordWriter.result === -1 ? qsTr("Could not save. Your entry is still here; try again.")
+                                            : dashboardPasswordWriter.result === -2 ? qsTr("Enter a password before saving.")
+                                            : dashboardPassword.text.length > 0 ? qsTr("Not saved yet. Press Enter or Save.")
+                                            : dashboardPasswordCheck.running || dashboardPasswordCheck.state === -1 ? qsTr("Checking saved password…")
+                                            : dashboardPasswordCheck.state === 1 ? qsTr("Password saved on this device. Enter a new one to replace it.")
+                                            : dashboardPasswordCheck.state === 2 ? qsTr("Cannot read the saved password. Check file permissions.")
+                                            : qsTr("No password saved. Enter one to connect.")
+                                        wrapText: true
+                                        Text {
+                                            readonly property bool error: dashboardPasswordWriter.result < 0 || (!dashboardPassword.text && dashboardPasswordCheck.state === 2)
+                                            readonly property bool saved: dashboardPasswordWriter.result === 1 || (!dashboardPassword.text && dashboardPasswordCheck.state === 1)
+                                            text: dashboardPasswordWriter.running || dashboardPasswordCheck.running ? "󰔟" : error ? "󰀪" : saved ? "󰄬" : "󰌾"
+                                            font.family: ThemeBackend.iconFont; font.pixelSize: rootObj.s(16)
+                                            color: error ? ThemeBackend.red : saved ? ThemeBackend.green : ThemeBackend.subtext0
+                                            Accessible.ignored: true
+                                            Behavior on color { ColorAnimation { duration: 180 } }
+                                        }
+                                        Input {
+                                            id: dashboardPassword
+                                            Layout.preferredWidth: rootObj.s(160)
+                                            masked: true; revealTyping: false
+                                            accentColor: ThemeBackend.mauve
+                                            hasError: dashboardPasswordWriter.result < 0
+                                            isBusy: dashboardPasswordWriter.running
+                                            placeholderText: dashboardPasswordCheck.state === 1 ? qsTr("New password") : qsTr("Password")
+                                            enabled: !dashboardPasswordWriter.running
+                                            onTextEdited: dashboardPasswordWriter.result = 0
+                                            onAccepted: value => passwordRow.savePassword()
+                                        }
+                                        ClickButton {
+                                            buttonText: qsTr("Save")
+                                            accentColor: ThemeBackend.surface1; textColor: ThemeBackend.text
+                                            enabled: !dashboardPasswordWriter.running
+                                            onTriggered: passwordRow.savePassword()
+                                        }
+                                        Process {
+                                            id: dashboardPasswordCheck
+                                            property int state: -1
+                                            command: ["sh", "-c", "p=\"${XDG_CONFIG_HOME:-$HOME/.config}/serpantinum/tokens/dashboard-password\"; if [ ! -e \"$p\" ]; then exit 1; elif [ ! -r \"$p\" ]; then exit 2; elif [ ! -s \"$p\" ]; then exit 1; fi"]
+                                            onExited: code => state = code === 0 ? 1 : code === 1 ? 0 : 2
+                                        }
+                                        Process {
+                                            id: dashboardPasswordWriter
+                                            property int result: 0
+                                            command: ["sh", "-c", "umask 077; d=\"${XDG_CONFIG_HOME:-$HOME/.config}/serpantinum/tokens\"; mkdir -p \"$d\" && chmod 700 \"$d\" && t=$(mktemp \"$d/.password.XXXXXX\") && head -n1 > \"$t\" && mv -f \"$t\" \"$d/dashboard-password\""]
+                                            stdinEnabled: true
+                                            onExited: (exitCode, exitStatus) => {
+                                                result = exitCode === 0 ? 1 : -1;
+                                                if (exitCode === 0) {
+                                                    dashboardPassword.text = "";
+                                                    dashboardPasswordCheck.state = 1;
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             // Separator: the account scope is a setting about Codex, not a fifth provider.
