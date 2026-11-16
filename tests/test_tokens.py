@@ -82,6 +82,45 @@ class TokenTests(unittest.TestCase):
     def write_settings(self, **options):
         collector.SETTINGS.write_text(json.dumps(options))
 
+    def test_dashboard_replaces_local_total_and_keeps_last_value_offline(self):
+        self.write_settings(addonsV2TokensDashboard=True)
+        data = {'total': 12345, 'agents': {'codex': 4000, 'claude': 8345},
+                'synced': time.time(), 'url': 'https://dash.brighter-builds.com'}
+        self.c.db.execute("INSERT INTO meta VALUES('dashboard', ?)", (json.dumps(data),))
+        state = self.c.state()
+        self.assertEqual(state['combined']['total'], 12345)
+        self.assertTrue(state['combined']['complete'])
+        self.assertEqual(state['codex']['total'], 4000)
+        self.assertEqual(state['sources']['opencode']['total'], 0)
+        self.assertEqual(state['sources']['hermes']['status'], 'dashboard')
+        self.c.dashboard_error = 'offline'
+        state = self.c.state()
+        self.assertEqual(state['combined']['total'], 12345)
+        self.assertFalse(state['combined']['complete'])
+        self.write_settings(addonsV2TokensDashboard=False)
+        self.assertFalse(self.c.state()['combined']['dashboard'])
+
+    def test_dashboard_uses_all_time_total(self):
+        class Response:
+            def __init__(self, body): self.body = body
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self): return self.body
+        class Opener:
+            urls = []
+            def open(self, url, timeout):
+                self.urls.append(url)
+                body = {'tokens': 99} if len(self.urls) == 1 else {'totals': {'tokens': 97}, 'breakdown': {'agent': [
+                    {'key': 'claude', 'tokens': 50}, {'key': 'opencode', 'tokens': 30}, {'key': 'hermes', 'tokens': 17}
+                ]}}
+                return Response(json.dumps(body).encode())
+        opener = Opener()
+        result = collector.dashboard_fetch('https://example.test', opener)
+        self.assertEqual(opener.urls, ['https://example.test/api/live/total', 'https://example.test/api/usage?period=all'])
+        self.assertEqual((result['total'], result['agents']['claude'], result['agents']['opencode'], result['agents']['hermes']), (99, 50, 30, 17))
+        with self.assertRaises(ValueError):
+            collector.dashboard_fetch('http://example.test', opener)
+
     def test_opencode_sessions_count_once_and_survive_deletion(self):
         path = Path(self.tmp.name)/'opencode.db'
         db = sqlite3.connect(path)

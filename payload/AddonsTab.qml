@@ -304,6 +304,7 @@ Item {
                                     textColor: ThemeBackend.text
                                     borderColor: ThemeBackend.surface2
                                     onAccepted: finalText => {
+                                        if (finalText === "dash") return;
                                         Config.setSetting("addonsV2TokensLlamaCppUrl", finalText.trim());
                                         llamaProbe.ping();
                                     }
@@ -312,6 +313,52 @@ Item {
                                     checked: Config.getSetting("addonsV2TokensLlamaCpp", false)
                                     accentColor: ThemeBackend.mauve
                                     onToggled: { Config.setSetting("addonsV2TokensLlamaCpp", checked); }
+                                }
+                            }
+                            SettingsRow {
+                                visible: urlField.text === "dash"
+                                rootObj: root.rootObj; settingId: ""; searchTab: "addons"
+                                title: "Dashboard sync"
+                                description: "Use the dashboard's synchronized total. Refreshes every 3 seconds."
+                                wrapText: true
+                                Toggle {
+                                    checked: Config.getSetting("addonsV2TokensDashboard", false)
+                                    accentColor: ThemeBackend.mauve
+                                    onToggled: Config.setSetting("addonsV2TokensDashboard", checked)
+                                }
+                            }
+                            SettingsRow {
+                                visible: urlField.text === "dash"
+                                rootObj: root.rootObj; settingId: ""; searchTab: "addons"
+                                title: "Dashboard URL"
+                                description: "HTTPS address of your dashboard."
+                                Input {
+                                    Layout.preferredWidth: rootObj.s(240)
+                                    text: Config.getSetting("addonsV2TokensDashboardUrl", "https://dash.brighter-builds.com")
+                                    onAccepted: value => Config.setSetting("addonsV2TokensDashboardUrl", value.trim())
+                                }
+                            }
+                            SettingsRow {
+                                visible: urlField.text === "dash"
+                                rootObj: root.rootObj; settingId: ""; searchTab: "addons"
+                                title: "Dashboard password"
+                                description: "Press Enter to save the password privately."
+                                Input {
+                                    id: dashboardPassword
+                                    Layout.preferredWidth: rootObj.s(200)
+                                    masked: true; revealTyping: false
+                                    placeholderText: "Password"
+                                    onAccepted: value => {
+                                        if (!value) return;
+                                        dashboardPasswordWriter.running = true;
+                                        dashboardPasswordWriter.write(value + "\n");
+                                        dashboardPassword.text = "";
+                                    }
+                                }
+                                Process {
+                                    id: dashboardPasswordWriter
+                                    command: ["sh", "-c", "umask 077; d=\"${XDG_CONFIG_HOME:-$HOME/.config}/serpantinum/tokens\"; mkdir -p \"$d\" && chmod 700 \"$d\" && t=$(mktemp \"$d/.password.XXXXXX\") && head -n1 > \"$t\" && mv -f \"$t\" \"$d/dashboard-password\""]
+                                    stdinEnabled: true
                                 }
                             }
                             // Separator: the account scope is a setting about Codex, not a fifth provider.

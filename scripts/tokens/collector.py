@@ -24,6 +24,9 @@ import sys
 import threading
 import time
 import urllib.request
+import urllib.error
+import urllib.parse
+import http.cookiejar
 from pathlib import Path
 
 HOME = Path.home()
@@ -43,6 +46,52 @@ OPENCODE_EVERY = 0.25   # minimum seconds between reads of opencode's session ta
 LLAMA_EVERY = 1       # seconds between llama.cpp /metrics reads (no file to watch: polled)
 HERMES_DB = Path(os.environ.get('TOKENS_HERMES_DB') or HOME/'.hermes/state.db')
 HERMES_EVERY = 0.25  # seconds between reads of Hermes' session database (live indicator only, no totals)
+DASH_EVERY = 3
+
+
+class NoDashboardRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def dashboard_opener():
+    return urllib.request.build_opener(NoDashboardRedirect(), urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+
+
+def dashboard_settings():
+    try:
+        settings = json.loads(SETTINGS.read_text())
+        return settings.get('addonsV2TokensDashboard', False) is True, settings.get('addonsV2TokensDashboardUrl', 'https://dash.brighter-builds.com').strip().rstrip('/')
+    except (OSError, ValueError, AttributeError):
+        return False, 'https://dash.brighter-builds.com'
+
+
+def dashboard_fetch(url, opener):
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme != 'https' or not parts.hostname or parts.username or parts.password or parts.path or parts.query or parts.fragment:
+        raise ValueError('Dashboard URL must be an HTTPS origin')
+    def get(path):
+        with opener.open(url + path, timeout=5) as response:
+            return json.load(response)
+    try:
+        live = get('/api/live/total')
+        data = get('/api/usage?period=all')
+    except urllib.error.HTTPError as error:
+        if error.code != 401:
+            raise
+        password_path = Path(os.environ.get('XDG_CONFIG_HOME') or HOME/'.config')/'serpantinum/tokens/dashboard-password'
+        password = password_path.read_text().rstrip('\n')
+        request = urllib.request.Request(url + '/api/login', data=json.dumps({'password': password}).encode(),
+                                         headers={'Content-Type': 'application/json', 'Origin': url}, method='POST')
+        with opener.open(request, timeout=5):
+            pass
+        live = get('/api/live/total')
+        data = get('/api/usage?period=all')
+    total = live['tokens']
+    if isinstance(total, bool) or not isinstance(total, int) or total < 0:
+        raise ValueError('Invalid dashboard total')
+    agents = {row['key']: row['tokens'] for row in data['breakdown']['agent'] if row.get('key') in ('codex', 'claude', 'opencode', 'hermes') and isinstance(row.get('tokens'), int)}
+    return {'total': total, 'agents': agents, 'synced': time.time(), 'url': url}
 # source -> (shell setting that enables it, default). Codex and Claude were always on; the new sources are opt-in.
 OPTIONS = {'codex': ('addonsV2TokensCodex', True), 'claude': ('addonsV2TokensClaude', True),
            'opencode': ('addonsV2TokensOpencode', False), 'llamacpp': ('addonsV2TokensLlamaCpp', False)}
@@ -215,6 +264,12 @@ class Collector:
         self.opencode_seen_totals = None   # session id -> total at the previous read: a growing total means a running turn
         self.hermes_at = 0.0
         self.hermes_marker = None
+        self.dashboard_at = 0.0
+        self.dashboard_result = None
+        self.dashboard_thread = None
+        self.dashboard_error = None
+        self.dashboard_opener = dashboard_opener()
+        self.dashboard_config = None
 
     def meta(self, key):
         row = self.db.execute('SELECT v FROM meta WHERE k=?', (key,)).fetchone()
@@ -249,8 +304,47 @@ class Collector:
                 continue           # vanished or unreadable: retried on the next change
             self.stat[path] = (st.st_mtime_ns, st.st_size)
         self.poll_sources()
+        self.poll_dashboard()
         self.db.commit()
         return changed
+
+    def poll_dashboard(self):
+        enabled, url = dashboard_settings()
+        if not enabled:
+            return
+        password_path = Path(os.environ.get('XDG_CONFIG_HOME') or HOME/'.config')/'serpantinum/tokens/dashboard-password'
+        try:
+            password_version = password_path.stat().st_mtime_ns
+        except OSError:
+            password_version = None
+        config = (url, password_version)
+        if config != self.dashboard_config:
+            self.dashboard_config = config
+            self.dashboard_at = 0
+            self.dashboard_error = None
+            self.dashboard_opener = dashboard_opener()
+        if self.dashboard_result is not None:
+            result_config, result, error = self.dashboard_result
+            self.dashboard_result = None
+            if result_config == config:
+                self.dashboard_error = error
+                if result:
+                    self.db.execute("INSERT INTO meta VALUES('dashboard', ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", (json.dumps(result),))
+        if self.dashboard_thread and self.dashboard_thread.is_alive():
+            return
+        if time.time() - self.dashboard_at < (60 if self.dashboard_error == 'authentication' else DASH_EVERY):
+            return
+        self.dashboard_at = time.time()
+        opener = self.dashboard_opener
+        def fetch():
+            try:
+                self.dashboard_result = (config, dashboard_fetch(url, opener), None)
+            except urllib.error.HTTPError as error:
+                self.dashboard_result = (config, None, 'authentication' if error.code in (401, 403, 429) else 'offline')
+            except (OSError, ValueError, KeyError, TypeError):
+                self.dashboard_result = (config, None, 'offline')
+        self.dashboard_thread = threading.Thread(target=fetch, daemon=True)
+        self.dashboard_thread.start()
 
     def read(self, path, kind, st):
         row = self.db.execute('SELECT inode, off, hw FROM files WHERE path=?', (path,)).fetchone()
@@ -471,8 +565,27 @@ class Collector:
         # from any source transcript/account snapshot.
         total = codex_total + claude_total + sum(source['total'] for source in sources.values())
         complete = codex['status'] in ('ok', 'local', 'off') and claude['status'] != 'missing' and not any(source['status'] == 'error' for source in sources.values())
+        dashboard_enabled, dashboard_url = dashboard_settings()
+        dashboard = None
+        if dashboard_enabled:
+            sources = {}
+            try:
+                dashboard = json.loads(self.meta('dashboard') or 'null')
+                if dashboard and dashboard.get('url') != dashboard_url:
+                    dashboard = None
+            except (ValueError, AttributeError):
+                dashboard = None
+            total = dashboard['total'] if dashboard else 0
+            complete = bool(dashboard and not self.dashboard_error and time.time() - dashboard['synced'] < 15)
+            if dashboard:
+                codex.update(total=dashboard['agents'].get('codex', 0), status='dashboard')
+                claude.update(total=dashboard['agents'].get('claude', 0), status='dashboard')
+                sources = {
+                    name: {'total': dashboard['agents'].get(name, 0), 'sessions': 0, 'status': 'dashboard', 'error': None}
+                    for name in ('opencode', 'hermes')
+                }
         return {'version': 1, 'codex': codex, 'claude': claude, 'sources': sources, 'periods': periods,
-                'combined': {'total': total, 'complete': complete},
+                'combined': {'total': total, 'complete': complete, 'dashboard': dashboard_enabled},
                 'active': time.time() - self.last_event < ACTIVE, 'importing': self.importing, 'corrupt_lines': self.corrupt}
 
     def publish(self, force=False):
@@ -554,7 +667,7 @@ def main():
             watcher.add_tree(root)           # also picks up directories created since the last pass
         for path in (OPENCODE_DB.parent, HERMES_DB.parent):
             watcher.add(path)
-        wait = min(SCAN, LLAMA_EVERY) if collector.enabled.get('llamacpp') else SCAN
+        wait = min(SCAN, LLAMA_EVERY) if collector.enabled.get('llamacpp') or dashboard_settings()[0] else SCAN
         if time.time() - collector.last_event < ACTIVE:   # wake exactly when the live dot must go out
             wait = min(wait, max(0.05, collector.last_event + ACTIVE - time.time() + 0.05))
         watcher.wait(wait)

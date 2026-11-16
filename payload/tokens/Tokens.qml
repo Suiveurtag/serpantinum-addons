@@ -13,6 +13,7 @@ QtObject {
     readonly property real codex: data && data.codex.total !== null ? data.codex.total : 0
     readonly property real claude: data ? data.claude.total : 0
     readonly property real opencode: data && data.sources && data.sources.opencode ? data.sources.opencode.total : 0
+    readonly property real hermes: data && data.sources && data.sources.hermes ? data.sources.hermes.total : 0
     readonly property real llamacpp: data && data.sources && data.sources.llamacpp ? data.sources.llamacpp.total : 0
     readonly property real total: data ? data.combined.total : 0
 
@@ -22,15 +23,17 @@ QtObject {
         { id: "codex", name: "Codex", tone: ThemeBackend.blue, logo: "assets/logos/codex.svg" },
         { id: "claude", name: "Claude", tone: ThemeBackend.peach, logo: "assets/logos/claudecode.svg" },
         { id: "opencode", name: "OpenCode", tone: ThemeBackend.mauve, logo: "assets/logos/opencode.svg" },
+        { id: "hermes", name: "Hermes", tone: ThemeBackend.peach, logo: "assets/token.svg" },
         { id: "llamacpp", name: "llama.cpp", tone: ThemeBackend.teal, logo: "assets/logos/llamacpp.svg" }
     ]
-    readonly property var defaultHoverProviders: ["codex", "claude"]
+    readonly property var defaultHoverProviders: ["codex", "claude", "opencode", "hermes"]
 
     function valueOf(id) {
         switch (id) {
         case "codex": return codex;
         case "claude": return claude;
         case "opencode": return opencode;
+        case "hermes": return hermes;
         case "llamacpp": return llamacpp;
         }
         return 0;
@@ -51,18 +54,25 @@ QtObject {
     readonly property string codexNote: {
         if (!data) return qsTr("collector not running");
         const c = data.codex;
+        if (c.status === "dashboard") return qsTr("dashboard");
         if (c.status === "local") return qsTr("this PC only");
         if (c.status === "no-baseline") return qsTr("no account total");
         if (c.status === "partial") return qsTr("offline, synced %1").arg(ago(c.synced));
         return qsTr("synced %1").arg(ago(c.synced));
     }
-    readonly property string claudeNote: !data ? "" : data.claude.since ? qsTr("local since %1").arg(data.claude.since) : qsTr("no transcripts found")
+    readonly property string claudeNote: !data ? "" : data.claude.status === "dashboard" ? qsTr("dashboard") : data.claude.since ? qsTr("local since %1").arg(data.claude.since) : qsTr("no transcripts found")
     readonly property string opencodeNote: {
         if (!data) return qsTr("collector not running");
         const s = data.sources ? data.sources.opencode : null;
         if (!s) return qsTr("off");
+        if (s.status === "dashboard") return qsTr("dashboard");
         if (s.status === "error") return qsTr("unreadable");
         return qsTr("%1 sessions").arg(s.sessions);
+    }
+    readonly property string hermesNote: {
+        if (!data) return qsTr("collector not running");
+        const s = data.sources ? data.sources.hermes : null;
+        return s ? qsTr("dashboard") : qsTr("off");
     }
     readonly property string llamacppNote: {
         if (!data) return qsTr("collector not running");
@@ -71,7 +81,7 @@ QtObject {
         if (s.status === "error") return qsTr("not running");
         return qsTr("live");
     }
-    readonly property string status: stale ? qsTr("collector stopped") : !data.combined.complete ? qsTr("partial") : data.importing ? qsTr("importing") : ""
+    readonly property string status: stale ? qsTr("collector stopped") : !data.combined.complete ? (data.combined.dashboard ? qsTr("dashboard offline") : qsTr("partial")) : data.combined.dashboard ? qsTr("dashboard") : data.importing ? qsTr("importing") : ""
 
     property FileView file: FileView {
         path: Caching.stateDir + "/tokens/state.json"

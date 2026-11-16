@@ -8,7 +8,7 @@ Add it from the widgets editor like any other widget; size and position are the 
 
 It is also a **bar module**: Settings → Bar → Modules lists "AI Tokens" under available modules; drag it into any zone. Horizontal bars show
 the odometer total with a live dot; hovering folds it into the split by provider. Vertical bars show the compact total (`5.55B`).
-The "AI Tokens" card in the same Modules page previews the bar item and picks which providers the hover shows (Codex, Claude, OpenCode, llama.cpp; Codex and Claude by default, at least one stays on). The choice is stored as `bar.tokensHoverProviders` in `settings.json`.
+The "AI Tokens" card in the same Modules page previews the bar item and picks which providers the hover shows (Codex, Claude, OpenCode, Hermes, llama.cpp; agent providers are on by default, at least one stays on). The choice is stored as `bar.tokensHoverProviders` in `settings.json`.
 Removing the addon leaves the id in your bar layout; delete it from the bar settings first.
 
 ## How the numbers are built
@@ -38,6 +38,8 @@ State lives in `~/.local/state/serpantinum/tokens/` (dir 0700): `tokens.db` (SQL
 status only) which the widget watches. Idle cost: inotify watches on the Codex and Claude log trees (a 3 s stat pass remains as a safety net), an account sync every 10 min (backoff up to 1 h when failing), and one read-only query per database change for Hermes (`TOKENS_HERMES_DB`, default `~/.hermes/state.db`) and for opencode or llama.cpp when those are on.
 
 The live dot (bar and widget) pulses while any agent is working: Codex and Claude Code when a token event lands in their logs; Hermes when it stores a message or spends tokens; opencode when a session's token count grows; llama.cpp when its counters grow. It stays lit for 8 s after the last change. The Hermes source is always read, since it has no settings toggle; opencode and llama.cpp follow their toggles.
+
+Dashboard sync reads the cumulative observed total from `GET /api/live/total` and the all-time per-agent breakdown from `GET /api/usage?period=all`, every three seconds. The live total therefore includes OpenCode and Hermes as soon as their dashboard tracker has ingested them; their per-agent breakdown is retained too. This is the dashboard's observed tracker total, not an account billing total.
 
 ```sh
 python3 ~/.local/share/serpantinum-addons-v2/scripts/tokens/collector.py status   # last published state
