@@ -195,6 +195,9 @@ Item {
         return base + Math.random() * base * 1.2;
     }
     function next() {
+        // The drag strip may finish while the pointer is momentarily still. The
+        // grab owns Clawd until the overlay reports release; never idle mid-drag.
+        if (mode === "drag" && grab && grab.moved) return;
         if (dead) { if (mode === "dead" && animation !== "dead") enter("dead", "dead"); return; }
         if (mode === "turn" && target !== null) enter("walk", "walk", mirrored);
         else if (mode === "fall") { if (animation !== "fall") enter("fall", "fall"); }  // a startle mid-air is over

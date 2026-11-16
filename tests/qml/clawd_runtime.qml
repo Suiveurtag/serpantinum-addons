@@ -59,6 +59,8 @@ ShellRoot {
                 expect(p.mode !== "drag", "tiny move is not a drag");
                 p.move(p.x + 110, p.y - 290);
                 expect(p.mode === "drag" && p.animation === "drag" && p.y < floorY() - 200, "drag lifts");
+                p.next();  // a finished drag frame must not drop the pet while still grabbed
+                expect(p.mode === "drag" && p.grab && p.grab.moved, "drag survives animation finish");
                 p.release(p.x + 10, p.y + 10);
                 expect(p.mode === "fall", "release falls");
                 break;
