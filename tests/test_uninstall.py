@@ -1,4 +1,4 @@
-"""install -> idempotence -> check -> uninstall round trip against a throw-away copy of Serpantinum 2.3.2.
+"""install -> idempotence -> check -> uninstall round trip against a throw-away copy of Serpantinum 2.5.1.
 
 Nothing here touches the real ~/.local/share/serpantinum, ~/.config or ~/.local/state: HOME and every XDG_* /
 SERPANTINUM_* variable points into a temporary directory, and SERPANTINUM_ADDONS_NO_SERVICES keeps systemctl
@@ -21,7 +21,7 @@ from unittest import mock
 from test_changes import ROOT, load
 
 CACHE = Path(os.environ.get('SERPANTINUM_UPSTREAM_CACHE') or Path.home()/'.cache/serpantinum-installer')
-COMMIT = '68b0222'
+COMMIT = '8814d910'
 SCREENSHOT_BIND = 'hl.bind("SUPER + SHIFT + S", hl.dsp.exec_cmd("serpantinum screenshot"), { locked = true })\n'
 
 
@@ -40,7 +40,7 @@ def snapshot(folder):
     return {str(p.relative_to(folder)): p.read_bytes() for p in sorted(folder.rglob('*')) if p.is_file()}
 
 
-@unittest.skipUnless(has_pristine(), 'pristine Serpantinum clone (~/.cache/serpantinum-installer at 68b0222) is missing')
+@unittest.skipUnless(has_pristine(), 'pristine Serpantinum clone (~/.cache/serpantinum-installer at 8814d910) is missing')
 class RoundTripTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -64,7 +64,7 @@ class RoundTripTests(unittest.TestCase):
         self.shell = self.data/'serpantinum'
         shutil.copytree(self.pristine/'src', self.shell/'src')
         (self.state/'serpantinum').mkdir(parents=True)
-        (self.state/'serpantinum/version').write_text('SERPANTINUM_VERSION="2.3.2"\nSERPANTINUM_COMMIT="%s"\n' % COMMIT)
+        (self.state/'serpantinum/version').write_text('SERPANTINUM_VERSION="2.5.1"\nSERPANTINUM_COMMIT="%s"\n' % COMMIT)
         self.keybind_file = self.config/'hypr/config/keybinds.lua'
         self.keybind_file.parent.mkdir(parents=True)
         self.keybind_file.write_text(self.keybinds)
@@ -299,7 +299,7 @@ class RoundTripTests(unittest.TestCase):
         self.assertGreater(report['changes'], 0)
         self.assertEqual(report['errors'], [])
         self.assertEqual(report['compat'], 'ok')
-        self.assertEqual({k: report['serpantinum'][k] for k in ('version', 'commit')}, {'version': '2.3.2', 'commit': COMMIT})
+        self.assertEqual({k: report['serpantinum'][k] for k in ('version', 'commit')}, {'version': '2.5.1', 'commit': COMMIT})
         self.assertEqual(snapshot(self.shell/'src'), self.before)
         self.assertEqual(self.keybind_file.read_text(), self.keybinds)
         self.assertFalse((self.data/'serpantinum-addons-v2').exists())

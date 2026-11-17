@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 - Clawd no longer intermittently remains attached to the pointer after a drag is released.
 - Bar action panel bindings and the Quick Actions colour picker launch.
+- Reinstalling the addons no longer fails on the bar action panel patch.
 
 ## [2.1.3] - 2026-11-13
 
