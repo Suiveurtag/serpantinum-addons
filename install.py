@@ -1041,7 +1041,7 @@ def patch_theme(text):
 
 def patch_theme_view(text):
     import re
-    text = re.sub(r'            // BEGIN ' + MARK + r' palette editor\n.*?            // END ' + MARK + r' palette editor\n', '', text, flags=re.S)
+    text = re.sub(r'\n            // BEGIN ' + MARK + r' palette editor\n.*?            // END ' + MARK + r' palette editor\n', '', text, flags=re.S)
     anchor = '            ThemeAppearanceSection { id: appearanceSection; tab: themeTabRoot }\n'
     if text.count(anchor) != 1: raise InstallError('Theme appearance section anchor changed')
     return text.replace(anchor, anchor + '''
@@ -1260,7 +1260,8 @@ def patch_screenshot_frozen_validation(text):
 def patch_floating(text):
     marker = '                                // BEGIN serpantinum-addons-v2 picker action\n'
     if marker in text:
-        return text.replace('Quickshell.execDetached(["quickshell", "ipc", "call", "addonColorPicker", "toggle"]);', 'Quickshell.execDetached(["quickshell", "-p", Caching.mainQml, "ipc", "call", "addonColorPicker", "toggle"]);')
+        text = text.replace('Quickshell.execDetached(["quickshell", "ipc", "call", "addonColorPicker", "toggle"]);', 'Quickshell.execDetached(["quickshell", "-p", Caching.qsDir + "/Shell.qml", "ipc", "call", "addonColorPicker", "toggle"]);')
+        return text.replace('Caching.mainQml, "ipc", "call", "addonColorPicker", "toggle"]);', 'Caching.qsDir + "/Shell.qml", "ipc", "call", "addonColorPicker", "toggle"]);')
     anchor = '                                Rectangle {\n                                    id: pinButton'
     if text.count(anchor) != 1: raise InstallError('Quickactions pin anchor changed')
     action = '''                                // BEGIN serpantinum-addons-v2 picker action
@@ -1298,7 +1299,7 @@ def patch_floating(text):
                                         onClicked: {
                                             floatingWidget.isExpanded = false;
                                             floatingWidget.isSidebarVisible = false;
-                                            Quickshell.execDetached(["quickshell", "-p", Caching.mainQml, "ipc", "call", "addonColorPicker", "toggle"]);
+                                            Quickshell.execDetached(["quickshell", "-p", Caching.qsDir + "/Shell.qml", "ipc", "call", "addonColorPicker", "toggle"]);
                                         }
                                     }
                                 }
