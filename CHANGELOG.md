@@ -7,8 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Niri support for Clawd, Capri, desktop tools, settings and Beamer, alongside Hyprland. Some features require the locally built Niri compositor described in `docs/NIRI.md`; physical multi-monitor sessions and Beamer transfers between computers still need real-world validation.
 - Boot intro: the native Serpantinum welcome replayed once per login (wipe, typed time-of-day greeting with your name, the logo filling with colour over "Serpantinum", then the desktop). Addons → General → "Skip intro at login" (off by default, with Preview and a sound switch); IPC `addonBootIntro play|skip|forget`.
 - Clawd reacts to being shaken while dragged: he flails with his eyes squeezed shut (`drag_shake`), hangs limp and dizzy with stars circling his head once the shaking stops (`drag_dizzy`), and lands wobbling (`dizzy`) or, after a hard shake, plops on his bottom before getting up (`dizzy_fall`).
+- AI Tokens: optional dashboard synchronization for the observed total and per-agent breakdown, with settings for its URL and password; the live indicator follows ongoing dashboard sessions.
+
+### Changed
+- Wallpaper accent controls have been reordered in theme settings.
+
+### Fixed
+- Clawd no longer intermittently remains attached to the pointer after a drag is released.
+- Bar action panel bindings and the Quick Actions colour picker launch.
 
 ## [2.1.3] - 2026-11-13
 
