@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 - Boot intro: the native Serpantinum welcome replayed once per login (wipe, typed time-of-day greeting with your name, the logo filling with colour over "Serpantinum", then the desktop). Addons → General → "Skip intro at login" (off by default, with Preview and a sound switch); IPC `addonBootIntro play|skip|forget`.
+- Clawd reacts to being shaken while dragged: he flails with his eyes squeezed shut (`drag_shake`), hangs limp and dizzy with stars circling his head once the shaking stops (`drag_dizzy`), and lands wobbling (`dizzy`) or, after a hard shake, plops on his bottom before getting up (`dizzy_fall`).
 
 ## [2.1.3] - 2026-11-13
 

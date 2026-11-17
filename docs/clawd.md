@@ -11,7 +11,7 @@ the hook socket stays, so he knows what your agents are doing when he comes back
 | Control | Behaviour |
 | --- | --- |
 | `Super+Shift+L` | Toggle Clawd (`addonsV2Clawd`). Search `clawd` in Keybinds to change it; the installer preserves edits |
-| Left drag | Pick him up; he follows the pointer, across monitors |
+| Left drag | Pick him up; he follows the pointer, across monitors. Shake him (quick back-and-forth) and he gets dizzy |
 | Release | Falls onto whatever is under the drop point: a window top (he lands, then perches on it) or the floor of that screen |
 | Left click | Small reaction (none while working); wakes him up; opens / closes the sessions journal (after 250 ms, so a double click does not open it) |
 | Double click | Opens the chat (see Chat) |
@@ -39,7 +39,7 @@ quickshell -p … ipc call clawd state       # debug: JSON of his mode, support,
 `fall`, `land`, `spawn`, `think`, `work`, `oops`, `alert`, `happy`, `petpet`, `petpetheart`,
 `read`, `bash`, `search`, `web`, `task`, `todo`, `compact`, `startled`, `edit`, `edit_2`, `work_2`, `read_2`,
 `bash_2`, `search_2`, `web_2`, `task_2`, `todo_2`, `work_3`…`work_5`, `edit_3`, `read_3`, `bash_3`, `search_3`, `web_3`, `task_3`, `todo_3`, `think_2`, `happy_2`, `celebrate`, `sweat`, `coin`, `sad`, `wave`,
-`explode`, `perch`, `perch_look`, `hop`, `stumble`, `teeter`, `peek`, `nuke`, `dead`, `dead_land`, `revive`, `tada`, `yawn`, `bubble`, `work_6`, ...; 155 in all, the idle specials included); loops play
+`explode`, `perch`, `perch_look`, `hop`, `stumble`, `teeter`, `peek`, `nuke`, `dead`, `dead_land`, `revive`, `tada`, `yawn`, `bubble`, `work_6`, `dizzy`, ...; 159 in all, the idle specials included); loops play
 for about 3 s, then normal behaviour resumes. Scenes: `play explode` previews the singularity (about 37 s), `play nuke` the nuclear
 variant (about 20 s), `play limit` either at random (Escape skips to the end; both leave him dead); `play surge` the superpowered
 weekly variant (about 41 s, he survives it); `play revive` brings him back.
@@ -333,7 +333,7 @@ so the card works in the Settings app and in the integrated `Super+Shift+P` pane
 
 ## Animations
 
-123 strips (plus the 32 idle specials below). Besides the idle life (`idle`, `blink`, `look_*`, `walk`, `turn`, `sit`, `sleep`,
+127 strips (plus the 32 idle specials below). Besides the idle life (`idle`, `blink`, `look_*`, `walk`, `turn`, `sit`, `sleep`,
 `drag`, `fall`, `land`, `spawn`), the idle fidgets below, petting (`petpet`, `petpetheart`, `startled`) and the working
 loops above:
 
@@ -363,6 +363,10 @@ loops above:
 | `sleep_jolt` | 10 / once | a nightmare's jumpscare | leaps up wide-eyed with a `!` and sweat, the quilt flung |
 | `wake_groggy` | 5 / once | wakes after 15 min or more | squints, yawns, arms up on tiptoe, wobbles, shakes it off |
 | `sleep_walk` | 6 / loop | sleepwalking | eyes shut, one arm out ahead, z |
+| `drag_shake` | 12 / loop | shaken while dragged (3 turns back of 16 px or more within 700 ms, either axis) | jerked left and right, eyes squeezed shut, legs trailing, cream speed specks |
+| `drag_dizzy` | 6 / loop | still held once the shaking stops (after 4 shaken turns or more; 3 s, then `drag`) | hangs limp and swings, eyes rolling, two cream stars circling his head |
+| `dizzy` | 8 / once | landing after a shake (4 shaken turns or more) | land's squash, wobbles on planted feet under the stars, shakes it off, blinks |
+| `dizzy_fall` | 8 / once | landing after a hard shake (16 shaken turns or more) | staggers wide, plops on his bottom, sits dazed under the stars, gets up |
 
 An animation may have a `grip` in `clawd.json`: the point that touches the support, in frame
 pixels from the frame's top-left, unmirrored (`perch` and `perch_look`: the seat line

@@ -37,6 +37,32 @@ def warp(path, x, y):
 
 
 def main():
+    if os.environ.get("NIRI_SOCKET"):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from niri_ipc import addon
+        addon('capabilities')
+        original_factor = addon('snapshot')['zoomFactor']
+        print('{"ready":true}', flush=True)
+        def stop(*_):
+            raise KeyboardInterrupt
+        signal.signal(signal.SIGTERM, stop)
+        signal.signal(signal.SIGINT, stop)
+        try:
+            for line in sys.stdin:
+                if len(line) > 65536:
+                    raise ValueError('Oversized surge zoom command')
+                message = json.loads(line)
+                if message.get('close'):
+                    break
+                factor = float(message['f'])
+                if not math.isfinite(factor):
+                    raise ValueError('Invalid zoom factor')
+                addon('zoom', factor=max(1., min(6., factor)), x=float(message['x']), y=float(message['y']), hidePointer=True)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            addon('zoom', factor=original_factor)
+        return
     path = Path(os.environ['XDG_RUNTIME_DIR']) / 'hypr' / os.environ['HYPRLAND_INSTANCE_SIGNATURE'] / '.socket.sock'
     saved = {key: json.loads(request(path, f'j/getoption cursor:{key}'))[kind]
              for key, kind in [('zoom_factor', 'float'), ('zoom_rigid', 'bool'), ('zoom_detached_camera', 'bool'), ('inactive_timeout', 'float')]}

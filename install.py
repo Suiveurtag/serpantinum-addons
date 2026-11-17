@@ -2349,7 +2349,7 @@ def main(argv=None):
     parser.add_argument('--without-capri', action='store_true', help='Remove the Capri desktop pet while retaining other v2 addons')
     parser.add_argument('--without-clawd', action='store_true', help='Remove the Clawd desktop pet while retaining other v2 addons')
     parser.add_argument('--without-tokens', action='store_true', help='Remove the AI token widget and its collector service while retaining other v2 addons')
-    parser.add_argument('--without-beamer', action='store_true', help='Skip the Beamer (KVM) Hyprland integration: launcher, emergency release shortcut and overlay rule')
+    parser.add_argument('--without-beamer', action='store_true', help='Skip the Beamer (KVM) integration: launcher and compositor adapters')
     parser.add_argument('--check', action='store_true', help='Compute everything but write nothing')
     parser.add_argument('--json', action='store_true', help='Print one JSON object instead of prose (with --check, install or --uninstall)')
     parser.add_argument('--uninstall', action='store_true', help='Restore Serpantinum from its upstream commit and remove the addons')

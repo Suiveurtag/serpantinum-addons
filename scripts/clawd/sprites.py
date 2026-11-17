@@ -20,6 +20,8 @@ of its loop's frame 0 (the pet flips `mirrored` when it ends). gemini.png (the n
 recharge = the 5 h reset poses (ClawdRecharge.qml): drained and dark ('e'), refilling from the feet up in 5 levels, white, cream.
 lot 9 (idle fidgets, js/fidgets.mjs, and one more working loop per family): the base palette only. A standing fidget's first and last frames
 are idle's first frame, a perched one's are perch's (same grip), so the pet enters and leaves them without a jump.
+lot 10 (shaken): drag_shake / drag_dizzy keep drag's head row and dangling legs (each leg row one column at most from the one above),
+dizzy / dizzy_fall open on land's squash and end on idle's first frame; base palette only (stars and speed specks are cream 'z').
 hand.png (the petpet hand, drawn over Clawd in sync with his frames) is cut out of scripts/clawd/hand-pet.gif.
 An animation may set a grip = its contact point with the support, in frame pixels from the frame's top-left, unmirrored
 (mirrored: W - gx). The pet places him at x = contactX - gx*scale, y = contactY - gy*scale; without one the manifest has no
@@ -92,6 +94,9 @@ ANIMS = {
     # lot 9, work: one more loop per tool family, a third way to think and to be done
     'work_6': (4, True), 'edit_4': (5, True), 'read_4': (3, True), 'bash_4': (5, True), 'search_4': (6, True), 'web_4': (5, True),
     'task_4': (6, True), 'todo_4': (4, True), 'think_3': (6, False), 'happy_3': (10, False),
+    # lot 10, shaken while dragged: jerked about, then limp and dizzy in the hand; on landing he wobbles under circling stars
+    # (a hard shake: he plops on his bottom first); both landings end on idle's first frame
+    'drag_shake': (12, True), 'drag_dizzy': (6, True), 'dizzy': (8, False), 'dizzy_fall': (8, False),
 }
 BLAST = {**PALETTE, **{k: tuple(bytes.fromhex(v)) + (255,) for k, v in {
     'a': 'e8946c', 'b': 'f4b68e', 'c': 'fcddc2', 'w': 'ffffff', 'v': '6e3bff'}.items()}}
