@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.1.4] - 2026-11-17
 
 ### Added
 - Niri support for Clawd, Capri, desktop tools, settings and Beamer, alongside Hyprland. Some features require the locally built Niri compositor described in `docs/NIRI.md`; physical multi-monitor sessions and Beamer transfers between computers still need real-world validation.
