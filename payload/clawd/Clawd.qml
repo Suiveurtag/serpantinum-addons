@@ -424,6 +424,10 @@ QtObject {
     function focus(key) {
         const s = sessions[key];
         if (!s || !s.pids || !s.pids.length || focusProc.running) return;
+        if (Quickshell.env("NIRI_SOCKET")) {
+            Quickshell.execDetached(["python3", Quickshell.env("HOME") + "/.local/share/serpantinum-addons-v2/scripts/niri_world.py", "focus"].concat(s.pids.map(String)));
+            return;
+        }
         focusProc.pids = s.pids;
         focusProc.running = true;
     }

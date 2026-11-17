@@ -782,6 +782,30 @@
       "fps": 10,
       "loop": false
     },
+    "drag_shake": {
+      "file": "drag_shake.png",
+      "frames": 4,
+      "fps": 12,
+      "loop": true
+    },
+    "drag_dizzy": {
+      "file": "drag_dizzy.png",
+      "frames": 8,
+      "fps": 6,
+      "loop": true
+    },
+    "dizzy": {
+      "file": "dizzy.png",
+      "frames": 18,
+      "fps": 8,
+      "loop": false
+    },
+    "dizzy_fall": {
+      "file": "dizzy_fall.png",
+      "frames": 25,
+      "fps": 8,
+      "loop": false
+    },
     "book_idle": {
       "file": "book_idle.png",
       "frames": 1,

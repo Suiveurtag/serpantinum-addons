@@ -20,7 +20,7 @@ Scope {
         // Debug: what Clawd knows about the agent sessions and the windows around him right now.
         function state(): string {
             return JSON.stringify({ activity: Clawd.activity, mode: pet ? pet.mode : "off", animation: pet ? pet.animation : "", support: pet ? pet.support : null, cover: pet ? pet.cover : null,
-                world: world ? { wins: world.wins.length, ledges: world.ledges.map(l => ({ id: l.id, kind: l.kind, x: Math.round(l.x), y: Math.round(l.y), w: Math.round(l.w) })), refreshes: world.refreshes } : null,
+                world: world ? { wins: world.wins.length, widgets: world.widgets.length, layers: world.layerRects.length, pointer: world.pointer, ledges: world.ledges.map(l => ({ id: l.id, kind: l.kind, x: Math.round(l.x), y: Math.round(l.y), w: Math.round(l.w) })), refreshes: world.refreshes } : null,
                 sessions: Clawd.sessions, bubble: Clawd.bubble });
         }
     }

@@ -32,7 +32,7 @@ ShellRoot {
                 break;
             case 1:
                 if (!wait(Clawd.instances === Quickshell.screens.length && Clawd.manifest && host.pet, "one overlay per screen")) break;
-                expect(!!Clawd.manifest.animations.explode && Object.keys(Clawd.manifest.animations).length === 155 && Clawd.manifest.frame.w === 21, "manifest loaded");
+                expect(!!Clawd.manifest.animations.explode && Object.keys(Clawd.manifest.animations).length === 159 && Clawd.manifest.frame.w === 21, "manifest loaded");
                 expect(p.mode === "spawn" && Clawd.screenName === Quickshell.screens[0].name, "spawns on a screen");
                 expect(Math.abs(p.y - floorY()) < 1 && p.height === Clawd.manifest.frame.h * 4, "spawn on the floor at x4");
                 break;
@@ -59,12 +59,19 @@ ShellRoot {
                 expect(p.mode !== "drag", "tiny move is not a drag");
                 p.move(p.x + 110, p.y - 290);
                 expect(p.mode === "drag" && p.animation === "drag" && p.y < floorY() - 200, "drag lifts");
+                // shaken: quick turns back on one axis; still held, he goes limp and dizzy; dropped, he lands dizzy
+                for (let i = 0, gx = p.x + 10, gy = p.y + 10; i < 8; i++) p.move(gx + (i % 2 ? 40 : -40), gy);
+                expect(p.mode === "drag" && p.animation === "drag_shake" && p.grab.energy >= 4, "a shake: " + (p.grab && p.grab.energy));
+                p.calmed();
+                expect(p.mode === "drag" && p.animation === "drag_dizzy", "the hand stops: dizzy in the hand");
                 p.release(p.x + 10, p.y + 10);
-                expect(p.mode === "fall", "release falls");
+                expect(p.mode === "fall" && p.dizzy === "dizzy", "release falls, dizzy");
                 break;
             case 5:
-                if (!wait(p.mode === "land" || p.mode === "idle", "falls to the floor")) break;
+                if (!wait(p.mode === "land", "falls to the floor")) break;   // dizzy plays ~2 s: never missed at 100 ms
                 expect(Math.abs(p.y - floorY()) < 1, "landed on the floor");
+                expect(p.animation === "dizzy", "a shaken drop lands dizzy");
+                expect(p.dizzy === "", "the dizzy landing is spent");
                 break;
             case 6:
                 if (!wait(p.mode === "idle", "land, then idle")) break;

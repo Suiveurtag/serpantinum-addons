@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Hyprland
 import "../"
 import "js/world.mjs" as World
@@ -18,6 +19,8 @@ import "js/fidgets.mjs" as Fidgets
 // shimmy (hand over hand along the bar), drop (lets go, then falls), dance (music: dance / dance_2 at the beat's pace),
 // sleep (classic or under a blanket: sleepKind), dream / nightmare (a dream scene plays over his sleep), sleepwalk (a few sleeping steps);
 // `asleep` is true for all four.
+// Shaken while dragged (shook: quick back-and-forth on either axis): drag_shake, then drag_dizzy once the hand stops (back to drag
+// after 3 s); the drop lands on `dizzy` (or `dizzy_fall` after a hard shake) instead of land.
 // act (an idle special on the floor: book, bike, boat, camp... a sequence of strips, js/acts.mjs; some have their own canvas size).
 // Idle fidgets (js/fidgets.mjs) are plain strips played in his resting modes: a one-shot in idle or perch (yawn, stretch, bubble, butterfly...),
 // a seated loop in sit (sit_sway, sit_gaze); they end like a blink does, back in his resting pose.
@@ -30,7 +33,7 @@ import "js/fidgets.mjs" as Fidgets
 Item {
     id: pet
     property var world: null       // ClawdWorld: displays, windows, ledges, cursor
-    readonly property bool hypr: Hyprland.requestSocketPath !== ""
+    readonly property bool hypr: !Quickshell.env("NIRI_SOCKET") && Hyprland.requestSocketPath !== ""
     readonly property var displays: world ? world.displays : World.monitors(Quickshell.screens.map(s => ({ name: s.name, x: s.x, y: s.y, width: s.width, height: s.height })),
         hypr ? Hyprland.monitors.values.map(m => ({ name: m.name, x: m.x, y: m.y, lastIpcObject: m.lastIpcObject })) : [])
     readonly property var here: display(Clawd.screenName)
@@ -53,7 +56,8 @@ Item {
     property int sleepAfter: Clawd.sleepMinutes * 60000 / (mood === "drowsy" ? 2 : 1)
     property var target: null      // walk destination x
     property var intent: null      // why he walks there: {kind: edge | peek | out | cross | leave, ...}
-    property var grab: null        // left press: {x, y, dx, dy, moved}
+    property var grab: null        // left press: {x, y, dx, dy, moved, ax, ay, flips, energy} (shook() keeps the last four)
+    property string dizzy: ""      // the landing a shake left him: dizzy | dizzy_fall (settle plays it)
     property var support: null
     property var cover: null       // the window rect he peeks from behind: the overlays clip him there
     property string coverId: ""
@@ -136,7 +140,8 @@ Item {
         const m = Clawd.manifest, alt = { perch: "sit", perch_look: "sit", hop: "land", stumble: "oops", teeter: "idle", peek: "look_right",
             climb: "walk", climb_top: "land", hang: "idle", shimmy: "walk", swing: "idle", drop: "fall",
             dance: "happy", dance_2: "dance", vibe: "dance", twirl: "dance", wiggle: "dance", breakdance: "dance", shush: "idle", drowsy: "sit", exhausted: "sit", umbrella: "sit", shiver: "idle", chime: "happy",
-            sleep_blanket: "sleep", sleep_blanket_in: "sleep", sleep_roll: "sleep", sleep_blanket_roll: "sleep_blanket", sleep_blanket_out: "idle", sleep_jolt: "sleep", wake_groggy: "idle", sleep_walk: "walk" };
+            sleep_blanket: "sleep", sleep_blanket_in: "sleep", sleep_roll: "sleep", sleep_blanket_roll: "sleep_blanket", sleep_blanket_out: "idle", sleep_jolt: "sleep", wake_groggy: "idle", sleep_walk: "walk",
+            drag_shake: "drag", drag_dizzy: "drag", dizzy: "oops", dizzy_fall: "oops" };
         return !m || m.animations[name] || !Object.prototype.hasOwnProperty.call(alt, name) ? name : alt[name];
     }
     function ownGrip(anim) {
@@ -164,6 +169,7 @@ Item {
         if (blasting || dead && ["corpse", "dead", "revive", "carried"].indexOf(m) < 0) return;
         if (["sleep", "dream", "nightmare", "sleepwalk"].indexOf(m) < 0) dreamAbort();
         groggy = "";
+        if (m !== "fall") dizzy = "";
         const name = clipName(anim), was = grip(animation, mirrored);
         if (m !== "act") { if (act) actAt = Date.now(); act = null; }
         mode = m;
@@ -463,6 +469,7 @@ Item {
     }
     // Touchdown on ledge l, his contact at cx.
     function settle(l, cx) {
+        const shaken = dizzy;  // a vanished ledge (falls again) keeps it for the next landing; the bar (hangOn) drops it
         if (l.kind === "bar") { hop = null; vx = 0; const b = barOf(l); if (b) hangOn(b, cx); else { lost = true; enter("fall", "fall"); } return; }  // grabbed the bar
         const win = l.kind !== "floor";
         if (win) {  // clamp onto the ledge, then off any front window; none left: fall again
@@ -471,11 +478,12 @@ Item {
             cx = s;
         }
         support = win ? { kind: l.kind, id: l.id, dx: cx - l.x } : null;
+        dizzy = "";  // spent here, whichever way he lands
         vy = 0; vx = 0; fallTarget = null;
         const hopping = mode === "hop" && !clock.done && animation === clipName("hop");
         hop = null;
         if (hopping) mode = "land";  // the hop strip ends with its own landing squash
-        else enter("land", lost ? "oops" : "land");
+        else enter("land", shaken || (lost ? "oops" : "land"));
         lost = false;
         placeAt(cx, l.y);
         const d = display(l.display);
@@ -1176,7 +1184,23 @@ Item {
         enter("surge", "idle");
     }
     // During his dash: an empty workspace on his screen (away), then the one he left (back).
+    readonly property QtObject niriSurgeWorkspace: Process {
+        command: ["python3", Quickshell.env("HOME") + "/.local/share/serpantinum-addons-v2/scripts/niri_actions.py", "surge", Clawd.screenName]
+        stdinEnabled: true
+        stdout: SplitParser { onRead: data => {
+            try { const state = JSON.parse(data); if (state.ready) pet.surgeHome = state.home; }
+            catch (error) { console.warn("Clawd Niri workspace:", error); }
+        } }
+        stderr: SplitParser { onRead: data => console.warn("Clawd Niri workspace:", data) }
+        onExited: { pet.surgeHome = null; }
+    }
     function surgeWorkspace(away) {
+        if (Quickshell.env("NIRI_SOCKET")) {
+            if (mode !== "surge") return;
+            if (away && !niriSurgeWorkspace.running) { surgeHome = -1; niriSurgeWorkspace.running = true; }
+            else if (!away && niriSurgeWorkspace.running) niriSurgeWorkspace.write('{"close":true}\n');
+            return;
+        }
         if (!hypr || mode !== "surge") return;
         const name = Clawd.screenName, m = Hyprland.monitors.values.find(v => v.name === name);
         if (away) surgeHome = m && m.activeWorkspace ? m.activeWorkspace.id : null;
@@ -1220,7 +1244,8 @@ Item {
             return;
         }
         if (button === Qt.MiddleButton) { petpet(); return; }
-        grab = { x: gx, y: gy, dx: gx - x, dy: gy - y, moved: false };
+        dizzy = "";
+        grab = { x: gx, y: gy, dx: gx - x, dy: gy - y, moved: false, ax: { o: gx, d: 0 }, ay: { o: gy, d: 0 }, flips: [], energy: 0 };
     }
     function move(gx, gy) {
         if (!grab) return;
@@ -1240,12 +1265,46 @@ Item {
         }
         x = gx - grab.dx;
         y = gy - grab.dy;
+        if (mode === "drag") shook(gx, gy);
+    }
+    // Shaking: a turn back of 16 px or more on either axis is a flip; 3 flips within 700 ms and he is being shaken.
+    // Every flip while shaken adds to grab.energy: 4 leaves him dizzy, 16 knocks him over on landing.
+    function shook(gx, gy) {
+        const g = grab;
+        if (!g || !g.ax) return;
+        let flip = false;
+        for (const [a, v] of [[g.ax, gx], [g.ay, gy]]) {
+            const step = v - a.o;
+            if (!a.d || Math.sign(step) === a.d) { if (a.d || Math.abs(step) >= 16) { a.d = a.d || Math.sign(step); a.o = v; } }  // still going: the far point moves on
+            else if (Math.abs(step) >= 16) { a.d = -a.d; a.o = v; flip = true; }
+        }
+        if (!flip) return;
+        const now = Date.now();
+        g.flips = g.flips.filter(t => now - t < 700).concat(now);
+        if (g.flips.length < 3) return;
+        g.energy++;
+        woozy.stop();
+        shakeCalm.restart();
+        if (animation !== clipName("drag_shake")) enter("drag", "drag_shake");
+    }
+    // The hand stopped shaking: limp and dizzy if it lasted, else his plain drag pose; dizzy for 3 s at most.
+    function calmed() {
+        if (mode !== "drag" || !grab || animation !== "drag_shake") return;
+        enter("drag", grab.energy >= 4 ? "drag_dizzy" : "drag");
+        if (animation === "drag_dizzy") woozy.restart();
+    }
+    function unwoozy() {
+        if (mode !== "drag" || !grab || animation !== "drag_dizzy") return;
+        grab.energy = 0;
+        enter("drag", "drag");
     }
     // Dropped: he falls onto whatever is below, a window top included.
     function release(gx, gy) {
         const g = grab, swallow = dbl;
         grab = null;
         dbl = false;
+        shakeCalm.stop();
+        woozy.stop();
         if (!g) return;
         touch();
         if (dead) {  // dropped corpse: it falls to the floor of the screen it was dropped on
@@ -1272,6 +1331,7 @@ Item {
         support = null;
         lost = false;
         fallTarget = null;
+        dizzy = g.energy >= 16 ? "dizzy_fall" : g.energy >= 4 ? "dizzy" : "";
         enter("fall", "fall");
     }
     // A session got busy, needs the user or went quiet: stop wandering (and wake) or go back to normal life.
@@ -1387,6 +1447,8 @@ Item {
         onTriggered: { interval = 8000 + Math.random() * 4000; pet.shuffle(); }
     }
     Timer { id: clickTimer; interval: 250; onTriggered: pet.singleClick() }
+    Timer { id: shakeCalm; interval: 350; onTriggered: pet.calmed() }
+    Timer { id: woozy; interval: 3000; onTriggered: pet.unwoozy() }
     Timer { id: rising; interval: 1500; onTriggered: pet.revive() }
     Timer { id: brain; onTriggered: pet.asleep ? pet.sleepTick() : pet.mode === "idle" || pet.mode === "perch" ? pet.think() : pet.next() }
     Timer { id: bubbleTimer; interval: 30000; onTriggered: if (pet.dreamPhase === "bubble") { pet.dreamPhase = ""; pet.dream = null; } }

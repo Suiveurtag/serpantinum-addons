@@ -36,6 +36,8 @@ FIDGETS_SIT = ['sit_sway', 'sit_gaze']
 FIDGETS_PERCH = ['perch_kick', 'perch_yawn']
 WORK_LOT_9 = ['work_6', 'edit_4', 'read_4', 'bash_4', 'search_4', 'web_4', 'task_4', 'todo_4']
 ANIMATIONS += FIDGETS_STAND + FIDGETS_SIT + FIDGETS_PERCH + WORK_LOT_9 + ['think_3', 'happy_3']
+SHAKEN = ['drag_shake', 'drag_dizzy', 'dizzy', 'dizzy_fall']  # lot 10: shaken while dragged, then the dizzy landings
+ANIMATIONS += SHAKEN
 SPECIALS = ['book_idle', 'book_blink', 'bike_ride', 'broom_fly', 'boat_idle', 'boat_row_in', 'boat_row', 'boat_row_out', 'boat_row_brief', 'boat_fish_in', 'boat_fish_wait', 'boat_fish_catch', 'boat_fish_out', 'boat_bino', 'carry_walk', 'camp_stand', 'camp_fire_build', 'camp_fire_burn', 'camp_fire_die', 'camp_binoc_raise', 'camp_binoc_look_right', 'camp_binoc_flip_left', 'camp_binoc_look_left', 'camp_binoc_lower', 'camp_camera_raise', 'camp_camera_shoot', 'camp_camera_away', 'camp_lie_down', 'camp_lie_idle', 'camp_stand_up', 'content_idle', 'content_bounce']  # the idle specials: own canvas (w, h) and grip
 ANIMATIONS += SPECIALS
 HOOKS = ROOT/'scripts/clawd/hooks.py'
@@ -230,7 +232,7 @@ class ClawdSpriteTests(unittest.TestCase):
                                                                                                'climb', 'hang', 'shimmy', 'swing', 'dance', 'dance_2', 'drowsy', 'exhausted', 'umbrella', 'shiver', 'vibe', 'twirl', 'wiggle', 'breakdance',
                                                                                                'book_idle', 'bike_ride', 'broom_fly', 'boat_idle', 'boat_row', 'boat_fish_wait', 'carry_walk',
                                                                                                'camp_stand', 'camp_fire_burn', 'camp_binoc_look_right', 'camp_binoc_look_left', 'camp_lie_idle', 'content_idle', 'talk',
-                                                                                               'sleep_blanket', 'sleep_walk'} | set(FIDGETS_SIT) | set(WORK_LOT_9))
+                                                                                               'sleep_blanket', 'sleep_walk', 'drag_shake', 'drag_dizzy'} | set(FIDGETS_SIT) | set(WORK_LOT_9))
         self.assertEqual(manifest['animations']['perch'].get('grip'), [10.5, 12])  # seated on the ledge, legs below it
         self.assertEqual(manifest['hand']['frames'], manifest['animations']['petpet']['frames'])  # the hand is frame-locked to him
 
@@ -270,6 +272,43 @@ class ClawdSpriteTests(unittest.TestCase):
             self.assertTrue(all(n in manifest for n in names) and f'{family}_{count + 1}' not in manifest, family)
             self.assertEqual({manifest[n]['loop'] for n in names}, {family not in ('think', 'happy')}, family)
             self.assertEqual(len({b''.join(f.tobytes() for f in frames(n)) for n in names}), count, family)
+
+    def test_shaken_lot_strips(self):
+        from PIL import Image
+        manifest = json.loads((SPRITES/'clawd.json').read_text())['animations']
+        body, cream = (0xD9, 0x77, 0x57, 255), (0xF0, 0xEE, 0xE6, 255)
+        def frames(name):
+            with Image.open(SPRITES/f'{name}.png') as image:
+                strip = image.convert('RGBA')
+            return [strip.crop((21 * i, 0, 21 * (i + 1), 14)) for i in range(manifest[name]['frames'])]
+        def cells(frame):
+            p = frame.load()
+            return {(x, y): p[x, y] for x in range(21) for y in range(14) if p[x, y][3]}
+        idle, land = frames('idle')[0].tobytes(), frames('land')[0].tobytes()
+        drag_top = min(y for (x, y), c in cells(frames('drag')[0]).items() if c == body)
+        for name in SHAKEN:
+            strip = frames(name)
+            self.assertNotIn('grip', manifest[name], name)   # the default contact: the drop and the landing do not jump
+            self.assertGreaterEqual(len({f.tobytes() for f in strip}), 4, name)
+            for i, frame in enumerate(strip):
+                c = cells(frame)
+                own = {k for k, v in c.items() if v == body}
+                # he is all there, in one piece: every body pixel touches another (no stray leg pixel), every prop is a single cream speck or star
+                self.assertGreaterEqual(len(own), 90, f'{name} frame {i}')
+                for (x, y) in own:
+                    self.assertTrue(any((x + a, y + b) in own for a in (-1, 0, 1) for b in (-1, 0, 1) if a or b), f'{name} frame {i} stray at {x},{y}')
+                self.assertLessEqual({v for v in c.values()} - {body, cream}, {(0, 0, 0, 255)}, f'{name} frame {i}')
+                if name.startswith('drag'):  # held up: drag's head row, never on the floor rows
+                    self.assertEqual(min(y for (x, y) in own), drag_top, f'{name} frame {i}')
+                    self.assertFalse(any(y >= 12 for (x, y) in own), f'{name} frame {i}')
+                else:  # on the ground: something on the bottom row
+                    self.assertTrue(any(y == 13 for (x, y) in own), f'{name} frame {i} is off the floor')
+        for name in ('dizzy', 'dizzy_fall'):
+            strip = frames(name)
+            self.assertFalse(manifest[name]['loop'], name)
+            self.assertEqual((strip[0].tobytes(), strip[-1].tobytes()), (land, idle), name)   # lands like land, hands back to idle
+        for name in ('drag_shake', 'drag_dizzy'):
+            self.assertTrue(manifest[name]['loop'], name)
 
     def test_sleep_lot_strips(self):
         from PIL import Image, ImageOps
