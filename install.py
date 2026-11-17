@@ -1040,11 +1040,10 @@ def patch_theme(text):
 
 
 def patch_theme_view(text):
-    if '// BEGIN ' + MARK + ' palette editor' in text: return text
-    anchor = '            ThemeWallpaperPreview { tab: themeTabRoot }\n'
-    if text.count(anchor) != 1:
-        anchor = '            ThemePresetsSection { tab: themeTabRoot }\n'
-    if text.count(anchor) != 1: raise InstallError('Theme wallpaper preview anchor changed')
+    import re
+    text = re.sub(r'            // BEGIN ' + MARK + r' palette editor\n.*?            // END ' + MARK + r' palette editor\n', '', text, flags=re.S)
+    anchor = '            ThemeAppearanceSection { id: appearanceSection; tab: themeTabRoot }\n'
+    if text.count(anchor) != 1: raise InstallError('Theme appearance section anchor changed')
     return text.replace(anchor, anchor + '''
             // BEGIN serpantinum-addons-v2 palette editor
             AddonPaletteEditor { tab: themeTabRoot }

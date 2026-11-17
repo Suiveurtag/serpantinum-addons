@@ -80,6 +80,7 @@ Scope {
         });
         WidgetRegistry.registerType("tokens", {
             name: qsTr("AI Tokens"),
+            category: "info",
             icon: String.fromCodePoint(0xF0A2C),
             toolbarComponent: toolbarButton,
             defaultWidth: 360,
