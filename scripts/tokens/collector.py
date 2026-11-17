@@ -76,6 +76,7 @@ def dashboard_fetch(url, opener):
     try:
         live = get('/api/live/total')
         data = get('/api/usage?period=all')
+        sessions = get('/api/sessions')
     except urllib.error.HTTPError as error:
         if error.code != 401:
             raise
@@ -87,11 +88,14 @@ def dashboard_fetch(url, opener):
             pass
         live = get('/api/live/total')
         data = get('/api/usage?period=all')
+        sessions = get('/api/sessions')
+    if not isinstance(sessions.get('ongoing'), list):
+        raise ValueError('Invalid dashboard sessions')
     total = live['tokens']
     if isinstance(total, bool) or not isinstance(total, int) or total < 0:
         raise ValueError('Invalid dashboard total')
     agents = {row['key']: row['tokens'] for row in data['breakdown']['agent'] if row.get('key') in ('codex', 'claude', 'opencode', 'hermes') and isinstance(row.get('tokens'), int)}
-    return {'total': total, 'agents': agents, 'synced': time.time(), 'url': url}
+    return {'total': total, 'agents': agents, 'active': bool(sessions['ongoing']), 'synced': time.time(), 'url': url}
 # source -> (shell setting that enables it, default). Codex and Claude were always on; the new sources are opt-in.
 OPTIONS = {'codex': ('addonsV2TokensCodex', True), 'claude': ('addonsV2TokensClaude', True),
            'opencode': ('addonsV2TokensOpencode', False), 'llamacpp': ('addonsV2TokensLlamaCpp', False)}
@@ -261,6 +265,7 @@ class Collector:
         self.opencode_error = None
         self.llama_at = 0.0
         self.llama_error = None
+        self.llama_active = False
         self.opencode_seen_totals = None   # session id -> total at the previous read: a growing total means a running turn
         self.hermes_at = 0.0
         self.hermes_marker = None
@@ -471,8 +476,15 @@ class Collector:
             try:
                 prompt, predicted = llama_counters(llama_url())
             except (OSError, ValueError) as error:
+                self.llama_active = False
                 self.llama_error = 'not running'        # server not running: nothing is added until it answers again (no URL in state.json)
                 return
+            try:
+                    with urllib.request.urlopen(llama_url().rstrip('/') + '/metrics', timeout=1) as reply:
+                        metrics = reply.read().decode('utf-8', 'replace')
+                    self.llama_active = any(float(line.split()[-1]) > 0 for line in metrics.splitlines() if line.startswith(('llamacpp:requests_processing ', 'llamacpp:requests_deferred ')))
+            except (OSError, ValueError):
+                self.llama_active = False
             self.llama_error = None
             row = self.db.execute('SELECT prompt, predicted, total FROM llama_seen WHERE id=1').fetchone()
             if row is None:
@@ -586,7 +598,7 @@ class Collector:
                 }
         return {'version': 1, 'codex': codex, 'claude': claude, 'sources': sources, 'periods': periods,
                 'combined': {'total': total, 'complete': complete, 'dashboard': dashboard_enabled},
-                'active': time.time() - self.last_event < ACTIVE, 'importing': self.importing, 'corrupt_lines': self.corrupt}
+                'active': bool(dashboard and complete and dashboard.get('active')) if dashboard_enabled else self.llama_active, 'importing': self.importing, 'corrupt_lines': self.corrupt}
 
     def publish(self, force=False):
         state = self.state()

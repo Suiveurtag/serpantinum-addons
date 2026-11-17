@@ -38,7 +38,7 @@ QtObject {
         }
         return 0;
     }
-    readonly property bool active: !stale && !!data && data.active
+    readonly property bool active: !stale && !!data && (data.combined.dashboard ? !!data.active : (!!data.active || Clawd.sessionChoices.some(session => session.phase === "work")))
     readonly property bool complete: !stale && !!data && data.combined.complete
 
     function compact(n) {

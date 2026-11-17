@@ -110,13 +110,14 @@ class TokenTests(unittest.TestCase):
             urls = []
             def open(self, url, timeout):
                 self.urls.append(url)
-                body = {'tokens': 99} if len(self.urls) == 1 else {'totals': {'tokens': 97}, 'breakdown': {'agent': [
+                body = {'ongoing': [{'agent': 'codex'}]} if len(self.urls) == 3 else {'tokens': 99} if len(self.urls) == 1 else {'totals': {'tokens': 97}, 'breakdown': {'agent': [
                     {'key': 'claude', 'tokens': 50}, {'key': 'opencode', 'tokens': 30}, {'key': 'hermes', 'tokens': 17}
                 ]}}
                 return Response(json.dumps(body).encode())
         opener = Opener()
         result = collector.dashboard_fetch('https://example.test', opener)
-        self.assertEqual(opener.urls, ['https://example.test/api/live/total', 'https://example.test/api/usage?period=all'])
+        self.assertEqual(opener.urls, ['https://example.test/api/live/total', 'https://example.test/api/usage?period=all', 'https://example.test/api/sessions'])
+        self.assertTrue(result['active'])
         self.assertEqual((result['total'], result['agents']['claude'], result['agents']['opencode'], result['agents']['hermes']), (99, 50, 30, 17))
         with self.assertRaises(ValueError):
             collector.dashboard_fetch('http://example.test', opener)
@@ -182,14 +183,14 @@ class TokenTests(unittest.TestCase):
         db.execute("INSERT INTO messages VALUES(2, 'h1', 'assistant')")
         db.commit()
         db.close()
-        self.assertTrue(reading())                  # Hermes stored a message
+        self.assertFalse(reading())                 # Token changes do not establish a live session
         self.c.last_event = 0
         self.assertFalse(reading())
         db = sqlite3.connect(opencode)
         db.execute("UPDATE session SET tokens_output=50 WHERE id='o1'")
         db.commit()
         db.close()
-        self.assertTrue(reading())                  # opencode's token count grew
+        self.assertFalse(reading())                 # Clawd tracks session state separately
 
     def test_llama_cpp_url_comes_from_settings(self):
         seen = []
