@@ -416,7 +416,10 @@ Item {
                         readonly property color tone: GCal.colorOf(ev)
                         readonly property bool current: GCal.now >= modelData.a && GCal.now < modelData.b
                         readonly property bool past: GCal.now >= modelData.b
+                        readonly property color pastTone: Qt.darker(tone, 1.7)
                         readonly property bool compact: width < root.s(120)
+                        // Lanes squeezed by a busy day: title and time share one line instead of leaving a lone centred title.
+                        readonly property bool tight: !compact && height <= root.s(50)
                         readonly property string range: GCal.fmtTime(modelData.a) + "–" + GCal.fmtTime(modelData.b)
                         readonly property bool lit: current || nodeHover.hovered
 
@@ -437,7 +440,7 @@ Item {
                             PauseAnimation { duration: 80 + Math.min(node.index, 10) * 60 }
                             NumberAnimation { target: node; property: "enter"; from: 0; to: 1; duration: 520; easing.type: Easing.OutQuint }
                         }
-                        opacity: enter * (past && !nodeHover.hovered ? 0.55 : 1)
+                        opacity: enter * (past && !nodeHover.hovered ? 0.8 : 1)
                         transform: Translate { y: root.s(14) * (1 - node.enter) }
 
                         Rectangle {
@@ -447,36 +450,6 @@ Item {
                             bottomLeftRadius: 0
                             color: Qt.alpha(node.tone, node.lit ? 0.2 : 0.09)
                             Behavior on color { ColorAnimation { duration: 200 } }
-                            clip: true
-
-                            // Lit blocks (running, or hovered) get a drifting wave.
-                            Canvas {
-                                id: glow
-                                anchors.fill: parent
-                                visible: node.lit
-                                opacity: nodeHover.hovered ? 0.3 : 0.14
-                                Behavior on opacity { NumberAnimation { duration: 200 } }
-                                property real phase: 0
-                                NumberAnimation on phase { from: 0; to: Math.PI * 2; duration: 2200; loops: Animation.Infinite; running: glow.visible && root.active }
-                                onPhaseChanged: requestPaint()
-                                onWidthChanged: requestPaint()
-                                onPaint: {
-                                    const ctx = getContext("2d");
-                                    ctx.clearRect(0, 0, width, height);
-                                    ctx.beginPath();
-                                    ctx.moveTo(0, height);
-                                    const step = Math.max(2, root.s(10));
-                                    for (let x = 0; x <= width; x += step)
-                                        ctx.lineTo(x, height * 0.55 + Math.sin(x / root.s(25) + phase) * root.s(14));
-                                    ctx.lineTo(width, height);
-                                    ctx.closePath();
-                                    const grad = ctx.createLinearGradient(0, 0, width, 0);
-                                    grad.addColorStop(0, String(node.tone));
-                                    grad.addColorStop(1, "transparent");
-                                    ctx.fillStyle = grad;
-                                    ctx.fill();
-                                }
-                            }
                         }
 
                         Rectangle {
@@ -486,40 +459,49 @@ Item {
                             anchors.bottom: parent.bottom
                             width: node.lit ? root.s(4) : root.s(2)
                             radius: ThemeBackend.borderRadius <= 1 ? 0 : root.s(2)
-                            color: node.past ? ThemeBackend.surface2 : node.tone
+                            color: node.past ? Qt.darker(node.tone, 2.1) : node.tone
                             Behavior on width { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
                             Behavior on color { ColorAnimation { duration: 200 } }
                         }
 
                         Column {
                             anchors.left: accentLine.right
-                            anchors.leftMargin: nodeHover.hovered ? root.s(16) : root.s(9)
-                            Behavior on anchors.leftMargin { NumberAnimation { duration: 300; easing.type: Easing.OutBack } }
+                            anchors.leftMargin: root.s(9)
                             anchors.right: parent.right
                             anchors.rightMargin: root.s(6)
                             anchors.verticalCenter: parent.verticalCenter
+                            anchors.verticalCenterOffset: nodeHover.hovered ? -root.s(1) : root.s(1)
+                            Behavior on anchors.verticalCenterOffset { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
                             spacing: root.s(4)
                             visible: node.width > root.s(36)
                             clip: true
 
                             Text {
+                                id: titleText
                                 width: parent.width
-                                text: node.ev.title || GCal.tr("(No title)", "(Sans titre)")
+                                readonly property string label: node.ev.title || GCal.tr("(No title)", "(Sans titre)")
+                                textFormat: node.tight ? Text.StyledText : Text.PlainText
+                                text: node.tight
+                                    ? label.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + "  <font color=\"" + (node.current ? ThemeBackend.text : (node.past ? node.pastTone : ThemeBackend.overlay1)) + "\" size=\"2\"><b>" + node.range + "</b></font>"
+                                    : label
                                 elide: Text.ElideRight
+                                wrapMode: node.compact && node.height > root.s(50) ? Text.WordWrap : Text.NoWrap
+                                maximumLineCount: node.compact && node.height > root.s(50) ? 2 : 1
                                 font.family: ThemeBackend.fontFamily
                                 font.weight: Font.Black
-                                font.pixelSize: root.s(node.compact ? 12 : 14)
-                                color: node.current ? node.tone : (node.past ? ThemeBackend.overlay0 : ThemeBackend.text)
+                                font.pixelSize: root.s(node.compact || node.tight ? 12 : 14)
+                                color: node.current || nodeHover.hovered ? node.tone : (node.past ? node.pastTone : ThemeBackend.text)
+                                Behavior on color { ColorAnimation { duration: 200 } }
                             }
                             Row {
-                                visible: !node.compact && node.height > root.s(50)
+                                visible: node.height > root.s(50) && node.width > root.s(80)
                                 spacing: root.s(4)
                                 Text {
                                     id: clockIcon
                                     text: GCal.icon.clock
                                     font.family: ThemeBackend.iconFont
                                     font.pixelSize: root.s(11)
-                                    color: node.current ? node.tone : ThemeBackend.overlay1
+                                    color: node.current ? node.tone : (node.past ? node.pastTone : ThemeBackend.overlay1)
                                 }
                                 Text {
                                     width: node.width - root.s(30) - clockIcon.width - root.s(4)
@@ -528,18 +510,18 @@ Item {
                                     font.family: ThemeBackend.fontFamily
                                     font.weight: Font.Bold
                                     font.pixelSize: root.s(11)
-                                    color: node.current ? ThemeBackend.text : ThemeBackend.overlay1
+                                    color: node.current ? ThemeBackend.text : (node.past ? node.pastTone : ThemeBackend.overlay1)
                                 }
                             }
                             Row {
-                                visible: !node.compact && !!node.ev.location && node.height > root.s(68)
+                                visible: !!node.ev.location && node.width > root.s(80) && node.height > root.s(68) + (titleText.lineCount > 1 ? root.s(14) : 0)
                                 spacing: root.s(4)
                                 Text {
                                     id: placeIcon
                                     text: GCal.icon.place
                                     font.family: ThemeBackend.iconFont
                                     font.pixelSize: root.s(11)
-                                    color: node.past ? ThemeBackend.surface2 : ThemeBackend.peach
+                                    color: node.past ? Qt.darker(ThemeBackend.peach, 1.9) : ThemeBackend.peach
                                 }
                                 Text {
                                     width: node.width - root.s(30) - placeIcon.width - root.s(4)
@@ -584,23 +566,42 @@ Item {
                     }
                 }
 
-                // Now.
+                // Now: the line draws down from the top once the blocks are in, its dot appears with it.
                 Rectangle {
+                    id: nowLine
                     readonly property bool inRange: root.isToday && GCal.now >= root.plan.t0 && GCal.now <= root.plan.t1
+                    property real draw: 0
                     visible: inRange
                     x: Math.round((GCal.now - root.plan.t0) * root.ppm) - width / 2
                     y: 0
                     width: root.s(2)
-                    height: timeline.height - timeline.axisH
+                    height: (timeline.height - timeline.axisH) * draw
                     radius: width / 2
                     color: ThemeBackend.red
-                    opacity: 0.8
+                    opacity: 0.85 * Math.min(1, draw * 3)
                     z: 30
                     Behavior on x { NumberAnimation { duration: 800; easing.type: Easing.OutCubic } }
+
+                    SequentialAnimation {
+                        id: nowIntro
+                        PauseAnimation { duration: 420 }
+                        NumberAnimation { target: nowLine; property: "draw"; from: 0; to: 1; duration: 650; easing.type: Easing.OutQuint }
+                    }
+                    Connections {
+                        target: root
+                        function onActiveChanged() { if (root.active) { nowLine.draw = 0; nowIntro.restart(); } else nowIntro.stop(); }
+                    }
+                    Connections {
+                        target: stream
+                        function onVisibleChanged() { if (stream.visible) { nowLine.draw = 0; nowIntro.restart(); } }
+                    }
+                    Component.onCompleted: nowIntro.start()
+
                     Rectangle {
                         x: -width / 2 + parent.width / 2; y: -height / 2
                         width: root.s(8); height: width; radius: width / 2
                         color: ThemeBackend.red
+                        scale: Math.min(1, nowLine.draw * 4)
                     }
                 }
 
