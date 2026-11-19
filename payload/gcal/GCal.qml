@@ -16,6 +16,11 @@ QtObject {
     readonly property bool enabled: Config.getSetting("addonsV2Calendar", true) !== false
     readonly property bool previewEnabled: Config.getSetting("addonsV2CalendarPreview", true) !== false
     function setPreviewEnabled(on) { Config.setSetting("addonsV2CalendarPreview", on); }
+    // Event badge under the clock: "never", "ahead" (starts within chipHours) or "ongoing" (only while it runs).
+    readonly property string chipMode: Config.getSetting("addonsV2CalendarChipMode", "ahead")
+    readonly property real chipHours: Number(Config.getSetting("addonsV2CalendarChipHours", 24)) || 24
+    function setChipMode(m) { Config.setSetting("addonsV2CalendarChipMode", m); }
+    function setChipHours(h) { Config.setSetting("addonsV2CalendarChipHours", h); }
     readonly property string unit: "serpantinum-gcal.service"
     function setEnabled(on) {
         Config.setSetting("addonsV2Calendar", on);
@@ -95,11 +100,12 @@ QtObject {
         return index;
     }
 
-    // First event that is happening now or starts next (timed events, not declined), within a week.
+    // First event that is happening now or starts next (timed events, not declined), within the chosen window.
     readonly property var nextEvent: {
         let best = null;
-        if (!root.enabled) return best;
-        const limit = root.now + 7 * 86400000;
+        if (!root.enabled || root.chipMode === "never") return best;
+        const ongoingOnly = root.chipMode === "ongoing";
+        const limit = ongoingOnly ? root.now : root.now + root.chipHours * 3600000;
         for (const e of root.events) {
             if (e.allDay || e.rsvp === "declined" || e.end <= root.now || e.start > limit) continue;
             if (!best || e.start < best.start) best = e;

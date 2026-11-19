@@ -58,6 +58,35 @@ Item {
 
             SettingsRow {
                 visible: GCal.enabled
+                rootObj: root.rootObj; settingId: "addon_calendar_chip"; searchTab: "addon_calendar"
+                searchKeywords: "calendar event badge chip pill next event clock never ongoing badge événement prochain horloge jamais pendant"
+                title: "Event badge under the clock"; icon: "󰃰"; wrapText: true
+                description: "When the next-event pill appears beneath the time."
+                GCalSegmented {
+                    Layout.preferredWidth: root.s(300); Layout.preferredHeight: root.s(30)
+                    accent: ThemeBackend.mauve
+                    options: [{ id: "never", label: GCal.tr("Never", "Jamais") }, { id: "ahead", label: GCal.tr("Ahead", "À l'avance") }, { id: "ongoing", label: GCal.tr("During", "Pendant") }]
+                    current: GCal.chipMode
+                    onSelected: (id) => GCal.setChipMode(id)
+                }
+            }
+            SettingsRow {
+                visible: GCal.enabled && GCal.chipMode === "ahead"
+                rootObj: root.rootObj; settingId: "addon_calendar_chip_hours"; searchTab: "addon_calendar"
+                searchKeywords: "calendar event badge chip hours days window avance heures jours"
+                title: "Show it up to"; icon: "󰔟"; wrapText: true
+                description: "How long before the event starts the badge shows up."
+                GCalSegmented {
+                    Layout.preferredWidth: root.s(420); Layout.preferredHeight: root.s(30)
+                    accent: ThemeBackend.mauve
+                    options: [{ id: "1", label: "1 h" }, { id: "3", label: "3 h" }, { id: "6", label: "6 h" }, { id: "24", label: "24 h" }, { id: "72", label: "3 d" }, { id: "168", label: "7 d" }]
+                    current: String(GCal.chipHours)
+                    onSelected: (id) => GCal.setChipHours(parseInt(id))
+                }
+            }
+
+            SettingsRow {
+                visible: GCal.enabled
                 rootObj: root.rootObj; settingId: "addon_calendar_google"; searchTab: "addon_calendar"
                 searchKeywords: "calendar google agenda account oauth connect sync compte connexion"
                 title: "Google Calendar"; icon: "󰊭"; wrapText: true
