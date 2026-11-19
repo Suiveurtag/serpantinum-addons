@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Install only v2 addons, preserving upstream files and unrelated v1 work.
 
-Usage: install.py [--without-halloween|--without-capri|--without-clawd|--without-tokens|--without-beamer]
+Usage: install.py [--without-halloween|--without-capri|--without-clawd|--without-tokens|--without-calendar|--without-beamer]
                   [--check] [--json] [--force] | --uninstall [--purge]
 Exit codes: 0 ok, 2 incompatible Serpantinum version or patch/anchor error, 3 another install is running.
 """
 import argparse
+import textwrap
 import fcntl
 import hashlib
 import importlib.util
@@ -20,6 +21,7 @@ import sys
 import tempfile
 import urllib.error
 import urllib.request
+import agenda
 import capri
 import clawd
 import bar_outline
@@ -1310,6 +1312,187 @@ def patch_floating(text):
     return text.replace('property real controlAreaHeight: buttonSize * 2 + s(10)', 'property real controlAreaHeight: buttonSize * 3 + s(16)', 1)
 
 
+def patch_brightness_command(text):
+    old = '        exec serpantinum-core brightness "$@"'
+    legacy = '''        # serpantinum-addons-v2 brightness step
+        if [[ $# == 1 && ( $1 == lower || $1 == raise ) ]]; then
+            exec 9>"${XDG_RUNTIME_DIR:-/run/user/$UID}/serpantinum-brightness.lock" || exit 1
+            flock 9 || exit 1
+            current=$(serpantinum-core brightness get) || exit $?
+            [[ $current =~ ^(0|[1-9][0-9]?|100)$ ]] || exit 1
+            delta=-1
+            [[ $1 == raise ]] && delta=1
+            target=$((current + delta))
+            (( target < 0 || target > 100 )) && exit 0
+            serpantinum-core brightness set "$target"
+            exit $?
+        fi
+'''
+    marker = '# serpantinum-addons-v2 brightness shortcut'
+    lock = '    flock 9 || exit 1'
+    repeat_lock = '''    if [[ ${SERPANTINUM_BRIGHTNESS_REPEAT:-} == 1 ]]; then
+        flock -n 9 || exit 0
+    else
+        flock 9 || exit 1
+    fi'''
+    read_brightness = '    current=$(serpantinum-core brightness get) || exit $?'
+    fast_backlight = '''    backlights=(/sys/class/backlight/*)
+    if [[ ${SERPANTINUM_BRIGHTNESS_REPEAT:-} == 1 ]] && (( ${#backlights[@]} == 1 )) && [[ -d ${backlights[0]} ]] && command -v brightnessctl >/dev/null; then
+        relative=1%-
+        [[ $1 == raise ]] && relative=+1%
+        if brightnessctl -q -c backlight -d "${backlights[0]##*/}" --min-value=0 set "$relative" 2>/dev/null; then
+            exit 0
+        fi
+    fi
+'''
+    legacy_fast_backlight = fast_backlight
+    fast_backlight = fast_backlight.replace('relative=1%-', 'relative=3%-').replace('relative=+1%', 'relative=+3%')
+    old_target = '''    target=$((current + delta))
+    (( target < 0 || target > 100 )) && exit 0'''
+    new_target = '''    if [[ ${SERPANTINUM_BRIGHTNESS_REPEAT:-} == 1 ]]; then
+        delta=$((delta * 3))
+    fi
+    target=$((current + delta))
+    (( target < 0 )) && target=0
+    (( target > 100 )) && target=100
+    (( target == current )) && exit 0'''
+    if marker in text:
+        text = text.replace(legacy_fast_backlight, fast_backlight, 1).replace(old_target, new_target, 1)
+        if repeat_lock not in text:
+            text = text.replace(lock, repeat_lock, 1)
+        return text if fast_backlight in text else text.replace(read_brightness, fast_backlight + read_brightness, 1)
+    anchor = '#!/usr/bin/env bash\n'
+    if not text.startswith(anchor) or text.count(old) != 1:
+        raise InstallError('Brightness command anchor changed')
+    handler = textwrap.dedent(legacy).replace(
+        '# serpantinum-addons-v2 brightness step', marker
+    ).replace(
+        '[[ $# == 1 && ( $1 == lower || $1 == raise ) ]]; then',
+        '[[ $# == 2 && $1 == brightness && ( $2 == lower || $2 == raise ) ]]; then\n    shift'
+    )
+    handler = handler.replace(lock, repeat_lock).replace(read_brightness, fast_backlight + read_brightness)
+    handler = handler.replace(old_target, new_target)
+    return text.replace(legacy + old, old, 1).replace(anchor, anchor + '\n' + handler, 1)
+
+
+def patch_brightness_slider(text, path):
+    if path == 'reusables/behavior/Draggable.qml':
+        old = '    Behavior on animPosition {\n        enabled: !root.isDragging\n        NumberAnimation {\n            duration: 250'
+        old += '\n            easing.type: Easing.OutCubic'
+        legacy = '    property int positionAnimationDuration: 250\n\n' + old.replace('duration: 250', 'duration: root.positionAnimationDuration')
+        new = legacy.replace('    Behavior on animPosition', '    property bool continuousPositionAnimation: false\n\n    Behavior on animPosition')
+        new = new.replace('easing.type: Easing.OutCubic', 'easing.type: root.continuousPositionAnimation ? Easing.Linear : Easing.OutCubic')
+        if legacy in text and new not in text:
+            return text.replace(legacy, new, 1)
+    elif path == 'popouts/Osd.qml':
+        old = '                    value: osdWindow.currentVal\n'
+        new = old + '                    positionAnimationDuration: osdWindow.kind === "brightness" ? 40 : 250\n'
+        text = text.replace(new.replace('? 40', '? 80'), new)
+        legacy = new
+        new = old + '                    continuousPositionAnimation: osdWindow.kind === "brightness"\n' + new[len(old):].replace('? 40', '? 64')
+        text = text.replace(legacy, new)
+        text = text.replace('duration: osdWindow.isVisible ? 450 : 300',
+                            'duration: osdWindow.isVisible ? (osdWindow.kind === "brightness" ? 150 : 450) : 300')
+    else:
+        old = '                value: panel.sysBrightness\n'
+        new = old + '                positionAnimationDuration: 40\n'
+        text = text.replace(new.replace(': 40', ': 80'), new)
+        legacy = new
+        new = old + '                continuousPositionAnimation: true\n' + new[len(old):].replace(': 40', ': 64')
+        text = text.replace(legacy, new)
+    expected = 2 if path == 'popouts/Osd.qml' else 1
+    if text.count(new) == expected:
+        return text
+    if new in text or text.count(old) != expected:
+        raise InstallError('Brightness slider anchor changed')
+    return text.replace(old, new)
+
+
+def patch_brightness_keybinds(text, remove=False):
+    for key, action in (('Down', 'lower'), ('Up', 'raise')):
+        keysym = 'XF86MonBrightness' + key
+        original = f'hl.bind("{keysym}", hl.dsp.exec_cmd("serpantinum brightness {action}"), {{ locked = true }})'
+        legacy = original.replace('locked = true', 'locked = true, repeating = true') + ' -- serpantinum-addons-v2 brightness repeat'
+        block = f'''-- BEGIN serpantinum-addons-v2 brightness {action}
+do
+    local step = hl.dsp.exec_cmd("serpantinum brightness {action}")
+    local repeatStep = hl.dsp.exec_cmd("SERPANTINUM_BRIGHTNESS_REPEAT=1 serpantinum brightness {action}")
+    local ticks = 0
+    local timer
+    timer = hl.timer(function()
+        ticks = ticks + 1
+        if ticks >= 8 then
+            hl.dispatch(repeatStep)
+        end
+        if ticks >= 107 then
+            timer:set_enabled(false)
+        end
+    end, {{ timeout = 16, type = "repeat" }})
+    timer:set_enabled(false)
+
+    hl.bind("{keysym}", function()
+        ticks = 0
+        hl.dispatch(step)
+        timer:set_enabled(true)
+    end, {{ locked = true }})
+    hl.bind("{keysym}", function()
+        timer:set_enabled(false)
+    end, {{ locked = true, release = true }})
+end
+-- END serpantinum-addons-v2 brightness {action}'''
+        previous = block.replace('>= 8', '>= 4').replace('>= 107', '>= 103').replace('timeout = 16', 'timeout = 32')
+        pulse_block = f'''-- BEGIN serpantinum-addons-v2 brightness {action}
+do
+    local step = hl.dsp.exec_cmd("serpantinum brightness {action}")
+    local repeatStep = hl.dsp.exec_cmd("SERPANTINUM_BRIGHTNESS_REPEAT=1 serpantinum brightness {action}")
+    local held = false
+    local ticks = 0
+    local pulseAge
+    local burstTicks = 0
+    local timer
+    timer = hl.timer(function()
+        ticks = ticks + 1
+        if pulseAge then
+            pulseAge = pulseAge + 1
+        end
+        if (held and ticks >= 8) or burstTicks > 0 then
+            hl.dispatch(repeatStep)
+            burstTicks = math.max(0, burstTicks - 1)
+        end
+        if ticks >= 107 or (not held and pulseAge and pulseAge >= 34) then
+            pulseAge = nil
+            timer:set_enabled(false)
+        end
+    end, {{ timeout = 16, type = "repeat" }})
+    timer:set_enabled(false)
+
+    hl.bind("{keysym}", function()
+        held = true
+        ticks = 0
+        burstTicks = 0
+        hl.dispatch(step)
+        timer:set_enabled(true)
+    end, {{ locked = true }})
+    hl.bind("{keysym}", function()
+        held = false
+        -- Some laptop firmware reports each Fn repeat as an immediate key-up.
+        if ticks == 0 then
+            burstTicks = pulseAge and 12 or 0
+            pulseAge = 0
+        else
+            pulseAge = nil
+            timer:set_enabled(false)
+        end
+    end, {{ locked = true, release = true }})
+end
+-- END serpantinum-addons-v2 brightness {action}'''
+        candidates = (pulse_block, block, previous, legacy) if remove else (block, previous, legacy, original)
+        replacement = original if remove else pulse_block
+        for candidate in candidates:
+            text = re.sub(r'^' + re.escape(candidate) + r'$', lambda _: replacement, text, flags=re.M)
+    return text
+
+
 def patch_keybinds(text):
     marker = '-- BEGIN serpantinum-addons-v2 color picker'
     command = 'quickshell -p ' + shlex.quote(str(QS/'Shell.qml')) + ' ipc call addonColorPicker toggle'
@@ -1529,6 +1712,7 @@ COMPANIONS = [
     Companion('capri', capri, 'without_capri'),
     Companion('clawd', clawd, 'without_clawd'),
     Companion('tokens', tokens, 'without_tokens'),
+    Companion('calendar', agenda, 'without_calendar'),
 ]
 
 PAYLOAD_FILES = {
@@ -1560,10 +1744,11 @@ class Plan:
         self.keybinds = keybinds_path()
 
 
-def build_plan(without_halloween=False, without_capri=False, without_clawd=False, without_tokens=False, restore_retired=True, without_beamer=False):
+def build_plan(without_halloween=False, without_capri=False, without_clawd=False, without_tokens=False, restore_retired=True, without_beamer=False, without_calendar=False):
     """Compute every change in memory. Fail closed: any unknown upstream shape raises InstallError, nothing is written."""
     options = {'without_halloween': without_halloween, 'without_capri': without_capri,
-               'without_clawd': without_clawd, 'without_tokens': without_tokens, 'without_beamer': without_beamer}
+               'without_clawd': without_clawd, 'without_tokens': without_tokens, 'without_beamer': without_beamer,
+               'without_calendar': without_calendar}
     plan = Plan()
     pending = plan.pending
     theme_state = QS/'guide/theme/ThemeTabState.qml'
@@ -1597,8 +1782,16 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
     text = patch_file(plan.screenshot, patch_screenshot_cleanup, text)
     pending[plan.screenshot] = patch_file(plan.screenshot, patch_screenshot_frozen_validation, text)
 
+    client = QS.parent.parent/'bin/serpantinum'
+    if client.is_file():
+        pending[client] = patch_file(client, patch_brightness_command)
+    if (QS/'reusables/behavior/Draggable.qml').is_file():
+        for name in ('reusables/behavior/Draggable.qml', 'popouts/Osd.qml', 'syspanel/SystemPanelSliders.qml'):
+            path = QS/name
+            pending[path] = patch_file(path, lambda value, name=name: patch_brightness_slider(value, name))
+
     kb = plan.keybinds
-    text = read(kb)
+    text = patch_file(kb, patch_brightness_keybinds)
     for transform in (patch_keybinds, patch_window_keybinds, patch_spotlight_keybind, patch_zoom_keybind, patch_draw_keybind):
         text = patch_file(kb, transform, text)
     for transform in ((remove_beamer_blocks,) if without_beamer else (remove_retired_release, patch_beamer_overlay_rule)):
@@ -1678,6 +1871,11 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
             text = text.replace(old, replacement, 1)
         return text
     pending[native_calendar] = patch_file(native_calendar, calendar_with_keyboard, native_text)
+    # Calendar addon hooks in the clock panel: the wrapper hosts its layer, the native panel gets the day dots
+    # and the next-event pill. Applied after the wrapper copy and the native capture above.
+    wrapper = QS/'calendar/CalendarPopup.qml'
+    pending[wrapper] = patch_file(wrapper, agenda.remove if without_calendar else agenda.patch_wrapper, pending[wrapper])
+    pending[native_calendar] = patch_file(native_calendar, agenda.remove if without_calendar else agenda.patch_native, pending[native_calendar])
     dashboard = QS/'calendar/Dashboard.qml'
     if dashboard.is_file():
         def focus_dashboard(text):
@@ -1687,6 +1885,7 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
                 raise InstallError('Dashboard keyboard focus anchor changed')
             return text.replace(old, new, 1)
         pending[dashboard] = patch_file(dashboard, focus_dashboard, staged(dashboard))
+        pending[dashboard] = patch_file(dashboard, agenda.remove if without_calendar else agenda.patch_dashboard, pending[dashboard])
 
     plan.created.add(native_calendar)
     retired_calendar = QS/'calendar/LegacyCalendar.qml'
@@ -1726,13 +1925,15 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
     try:
         clawd_resources = clawd.resources(SOURCE/'payload/clawd', QS)
         tokens_resources = tokens.resources(SOURCE/'payload/tokens', QS)
+        calendar_resources = agenda.resources(SOURCE/'payload/gcal', QS)
         bootintro_resources = bootintro.resources(QS, SOURCE/'payload/bootintro')
     except InstallError:
         raise
     except Exception as error:
         raise InstallError(str(error), 'payload', 'resources', 'Rebuild the generated assets named above (see docs), then run the installer again.') from error
     groups = [(resource_payloads, without_halloween), (capri_resources, without_capri),
-              (clawd_resources, without_clawd), (tokens_resources, without_tokens), (bootintro_resources, False)]
+              (clawd_resources, without_clawd), (tokens_resources, without_tokens), (calendar_resources, without_calendar),
+              (bootintro_resources, False)]
     for blobs, removing in groups:
         for path, blob in blobs:
             plan.blobs.append((path, blob, removing))
@@ -1833,6 +2034,7 @@ def write_atomic(path, data, mode):
 
 def backup_name(path, plan_keybinds):
     if path == plan_keybinds: return Path('hypr/keybinds.lua')
+    if path == QS.parent.parent/'bin/serpantinum': return Path('bin/serpantinum')
     try: return path.relative_to(QS)
     except ValueError: return Path(os.path.relpath(path, QS.parent))
 
@@ -1945,7 +2147,8 @@ def say(report, message):
 
 
 # --------------------------------------------------------------------------- install
-def install(without_halloween=False, without_capri=False, without_clawd=False, without_tokens=False, check=False, force=False, quiet=False, without_beamer=False):
+def install(without_halloween=False, without_capri=False, without_clawd=False, without_tokens=False, check=False, force=False, quiet=False, without_beamer=False,
+            without_calendar=False):
     """Install (or, with check=True, only compute) the addons. Raises InstallError; returns a report dict."""
     report = {'quiet': quiet, 'changes': 0, 'changed_files': [], 'warnings': [], 'backup': None}
     configure_paths()
@@ -1953,14 +2156,14 @@ def install(without_halloween=False, without_capri=False, without_clawd=False, w
     for warning in report['warnings']:
         say(report, f'warning: {warning}')
     if check:
-        return _install_locked(report, state, check, without_halloween, without_capri, without_clawd, without_tokens, without_beamer)
+        return _install_locked(report, state, check, without_halloween, without_capri, without_clawd, without_tokens, without_beamer, without_calendar)
     with Lock():
-        return _install_locked(report, state, check, without_halloween, without_capri, without_clawd, without_tokens, without_beamer)
+        return _install_locked(report, state, check, without_halloween, without_capri, without_clawd, without_tokens, without_beamer, without_calendar)
 
 
-def _install_locked(report, state, check, without_halloween, without_capri, without_clawd, without_tokens, without_beamer):
+def _install_locked(report, state, check, without_halloween, without_capri, without_clawd, without_tokens, without_beamer, without_calendar=False):
     # Calculate all transformations first. Never partly apply an unknown upstream revision.
-    plan = build_plan(without_halloween, without_capri, without_clawd, without_tokens, without_beamer=without_beamer)
+    plan = build_plan(without_halloween, without_capri, without_clawd, without_tokens, without_beamer=without_beamer, without_calendar=without_calendar)
     ops = shell_ops(plan)
     extra = deploy_ops()
     report['changes'] = len(ops) + len(extra)
@@ -2002,6 +2205,7 @@ def _install_locked(report, state, check, without_halloween, without_capri, with
     say(report, f"v2 installed: {len(ops)} shell files changed; backups: {backup}")
     message = tokens.service(DEPLOY, HOME, remove=without_tokens)
     say(report, message)
+    say(report, agenda.service(DEPLOY, HOME, remove=without_calendar))
     say(report, beamer_launcher(without_beamer))
     return report
 
@@ -2137,6 +2341,7 @@ KEYBIND_BLOCK = re.compile(r'\n*^-- BEGIN (serpantinum-[\w-]*v2) ([^\n]+)\n.*?^-
 def strip_keybind_blocks(text):
     """Remove every managed `-- BEGIN serpantinum-*-v2 <name>` ... `-- END ... <name>` block, one at a time
     so adjacent blocks do not leave blank lines behind. The rest of the user's file is untouched."""
+    text = patch_brightness_keybinds(text, remove=True)
     while KEYBIND_BLOCK.search(text):
         text = KEYBIND_BLOCK.sub('\n', text, count=1)
     return text
@@ -2299,6 +2504,7 @@ def _uninstall_locked(report, purge, check):
         report['removed'].append(f'managed blocks in {keybinds}')
     report['kept'].append(f'everything else in {keybinds}' if keybinds.exists() else str(keybinds))
     say(report, tokens.service(DEPLOY, HOME, remove=True))
+    say(report, agenda.service(DEPLOY, HOME, remove=True))
     stop_wallpaper_unit(report)
     for leftover in ('scripts', 'install.py', 'payload'):
         if SOURCE == DEPLOY.resolve(): break    # the checkout itself lives at DEPLOY: never delete it
@@ -2349,6 +2555,7 @@ def main(argv=None):
     parser.add_argument('--without-capri', action='store_true', help='Remove the Capri desktop pet while retaining other v2 addons')
     parser.add_argument('--without-clawd', action='store_true', help='Remove the Clawd desktop pet while retaining other v2 addons')
     parser.add_argument('--without-tokens', action='store_true', help='Remove the AI token widget and its collector service while retaining other v2 addons')
+    parser.add_argument('--without-calendar', action='store_true', help='Remove the calendar (Google Calendar / iCal) addon and its sync service while retaining other v2 addons')
     parser.add_argument('--without-beamer', action='store_true', help='Skip the Beamer (KVM) Hyprland integration: launcher, emergency release shortcut and overlay rule')
     parser.add_argument('--check', action='store_true', help='Compute everything but write nothing')
     parser.add_argument('--json', action='store_true', help='Print one JSON object instead of prose (with --check, install or --uninstall)')
@@ -2366,7 +2573,8 @@ def main(argv=None):
             report = uninstall(purge=args.purge, check=args.check, quiet=args.json)
         else:
             report = install(without_halloween=args.without_halloween, without_capri=args.without_capri, without_clawd=args.without_clawd,
-                             without_tokens=args.without_tokens, without_beamer=args.without_beamer, check=args.check, force=args.force, quiet=args.json)
+                             without_tokens=args.without_tokens, without_beamer=args.without_beamer, without_calendar=args.without_calendar,
+                             check=args.check, force=args.force, quiet=args.json)
     except InstallError as error:
         errors, code = [error], error.code
         if not args.json: print_error(error)

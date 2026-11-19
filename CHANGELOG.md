@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Calendar: Google Calendar (read/write) and iCal subscriptions. The clock panel (Super+S) gains a *Today* column, event dots in its mini calendar and a next-event countdown under the clock; it morphs into a full agenda (Super+G) with month, week, day and list views, search, drag to move or resize, an event editor (repeat, reminders, Meet link, colour), RSVP, offline edits and reminder notifications. Synced by the `serpantinum-gcal` user service; `--without-calendar` removes it. Super+I also opens the agenda directly.
 - Boot intro: the native Serpantinum welcome replayed once per login (wipe, typed time-of-day greeting with your name, the logo filling with colour over "Serpantinum", then the desktop). Addons → General → "Skip intro at login" (off by default, with Preview and a sound switch); IPC `addonBootIntro play|skip|forget`.
 
 ## [2.1.3] - 2026-11-13

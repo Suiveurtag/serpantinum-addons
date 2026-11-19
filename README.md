@@ -31,6 +31,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-a
    11. [Startup](#11-startup)
    12. [General settings (Addons → General)](#12-general-settings-addons--general)
    13. [Beamer (KVM across two PCs)](#13-beamer-kvm-across-two-pcs-on-hyprland)
+   14. [Calendar (Google Calendar and iCal)](#14-calendar-google-calendar-and-ical)
 7. [Keyboard shortcuts added](#keyboard-shortcuts-added)
 8. [IPC commands](#ipc-commands)
 9. [Tests and validation](#tests-and-validation)
@@ -116,6 +117,7 @@ python3 install.py --without-halloween   # seasonal effects
 python3 install.py --without-capri       # Capri
 python3 install.py --without-clawd       # Clawd (also removes its agent hooks and the status relay)
 python3 install.py --without-tokens      # AI Tokens widget and its service (the database stays)
+python3 install.py --without-calendar    # Calendar: clock panel hooks, agenda, Super+G and its sync service (account and cache stay)
 python3 install.py --without-beamer      # Beamer integration (launcher, overlay rule)
 serpantinum reload
 ```
@@ -573,6 +575,30 @@ Makes the Flatpak [Beamer](https://flathub.org/apps/uk.co.kalkman.beamer) 1.5.18
 - **Crossing effects with two screens**: the transparent overlay is click-through, drawn in the right coordinates and anchored to the leftmost monitor by a window rule (no blur, pinned).
 - **Second PC**: `scripts/beamer/REMOTE.md` (bundle built by `package_remote.py`). Clipboard details: `scripts/beamer/CLIPBOARD.md`.
 
+### 14. Calendar (Google Calendar and iCal)
+
+A full calendar inside the clock panel. Google Calendar is read/write (your own OAuth client, set up from the agenda in about three minutes); any iCal / webcal link (Outlook, iCloud, school timetables, public holidays…) is added read only.
+
+**Clock panel (Super+S)**
+- A fourth column, *Today*: the day's events then tomorrow's, with live progress on the ongoing one, video-call and pending-sync markers. Click an event to open it in the agenda.
+- Colour dots under each day of the mini calendar; click a day to list its events in the column (click again to come back to today).
+- A *next event* pill under the clock: title and a rolling countdown ("in 25 min", "now · 20 min left"), breathing dot when it is close.
+
+**Agenda (expand button, Super+G, or a reminder's *Open*)**
+- The clock panel morphs into the agenda; the back arrow (or Super+S) morphs it back.
+- Month, week, day and list views; search across titles, places and notes (`/`).
+- Create (button, `N`, double click, or drag across empty hours), edit, duplicate, delete with *Undo*. Drag an event to move it, drag its bottom edge to resize it (15 min snapping); recurring events ask *this event* or *the whole series*.
+- Editor: calendar, all-day, dates and times, repeat presets, popup reminders, location, Google Meet link, event colour, busy/free, notes.
+- Event card: time, recurrence, place (opens maps), *Join* for Meet / Zoom / Teams links, guests with their answers, RSVP (yes / maybe / no), notes with links.
+- Sidebar: mini month, calendar toggles, account and sync state. Keys: ←/→ period, `T` today, `M` `W` `D` `L` views, Esc closes the topmost card.
+
+**Sync and reminders**
+- `scripts/gcal/gcal.py` (standard library only) as the user service `serpantinum-gcal.service`: syncs every 5 minutes (3 months back, 13 ahead, extended when you browse further), replays edits made offline, and sends reminder notifications (with *Join* and *Open* actions).
+- Edits are shown immediately and written to Google in the background; an edit Google refuses is reported and rolled back at the next sync.
+- Refresh token and client secret in the keyring (`secret-tool`), with a 0600 file fallback; cache in `~/.local/state/serpantinum/gcal/`.
+
+**Documentation**: [`docs/calendar.md`](docs/calendar.md).
+
 ---
 
 ## Keyboard shortcuts added
@@ -586,6 +612,8 @@ Makes the Flatpak [Beamer](https://flathub.org/apps/uk.co.kalkman.beamer) 1.5.18
 | `Super+Shift+Z` | Desktop zoom |
 | `Super+Shift+M` | Mouse spotlight |
 | `Super+Shift+C` | Colour picker |
+| `Super+G` | Calendar agenda (Super+S opens the clock panel and its *Today* column) |
+| `Super+I` | Opens the calendar agenda directly (same as Super+G) |
 | `Super+Shift+S` | Screenshot (frozen, corrected version) |
 | `Super+Tab` | Next screen, pointer to its centre |
 | `Alt+Tab` | Next window on the current screen |
@@ -613,6 +641,7 @@ quickshell -p "$SHELL_QML" ipc call addonDesktopZoom zoomIn
 quickshell -p "$SHELL_QML" ipc call addonDesktopZoom zoomOut
 quickshell -p "$SHELL_QML" ipc call addonMouseSpotlight toggle
 quickshell -p "$SHELL_QML" ipc call addonBootIntro play    # also: skip, forget (replay at the next shell start)
+quickshell -p "$SHELL_QML" ipc call addonCalendar toggle   # also: open, newEvent, sync, openEvent <id>
 ```
 
 ## Tests and validation
@@ -655,4 +684,5 @@ python3 scripts/clawd/sprites.py --check                  # Clawd sprites up to 
 - [`docs/capri.md`](docs/capri.md) — Capri: controls, hooks, providers, validation
 - [`docs/halloween.md`](docs/halloween.md) — Halloween effects: design and validation
 - [`docs/tokens.md`](docs/tokens.md) — AI Tokens: sources, calculation, recovery
+- [`docs/calendar.md`](docs/calendar.md) — Calendar: Google setup, iCal, sync, troubleshooting
 - [`docs/releasing.md`](docs/releasing.md) — Releasing: versions, changelog, compatibility, rollback
