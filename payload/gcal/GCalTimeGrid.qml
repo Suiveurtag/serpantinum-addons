@@ -311,6 +311,7 @@ Item {
                         function snapMin(y, step) { return Math.max(0, Math.min(1440, Math.round(y / root.hourH * 60 / step) * step)); }
                         onPressed: (m) => { y0 = m.y; y1 = m.y; drawing = false; }
                         onPositionChanged: (m) => {
+                            if (!pressed) return;
                             y1 = m.y;
                             if (!drawing && Math.abs(y1 - y0) > root.s(8)) { drawing = true; grid.busy = true; }
                         }
@@ -327,29 +328,6 @@ Item {
                             root.agenda.newEvent(base + a * 60000, base + b * 60000, false);
                         }
                         onCanceled: { drawing = false; grid.busy = false; }
-                    }
-                    // Hover ghost: the half-hour slot a click would create, sliding with the pointer.
-                    Rectangle {
-                        readonly property real slot: drawMa.snapMin(drawMa.mouseY - root.hourH / 4, 30)
-                        readonly property bool on: drawMa.containsMouse && !drawMa.drawing && !drawMa.pressed
-                        x: root.s(3); width: parent.width - root.s(8)
-                        y: root.yOf(slot)
-                        height: root.yOf(60) - root.s(2)
-                        radius: root.s(8)
-                        color: Qt.alpha(root.agenda.accent, 0.1)
-                        border.width: 1
-                        border.color: Qt.alpha(root.agenda.accent, 0.45)
-                        opacity: on ? 1 : 0
-                        scale: on ? 1 : 0.94
-                        Behavior on opacity { NumberAnimation { duration: 180 } }
-                        Behavior on scale { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
-                        Behavior on y { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
-                        Text {
-                            x: root.s(8); y: root.s(4)
-                            text: "+  " + GCal.fmtTime(column.date.getTime() + parent.slot * 60000)
-                            font.family: ThemeBackend.fontFamily; font.weight: Font.Black; font.pixelSize: root.s(10.5)
-                            color: root.agenda.accent
-                        }
                     }
                     Rectangle {
                         visible: drawMa.drawing
