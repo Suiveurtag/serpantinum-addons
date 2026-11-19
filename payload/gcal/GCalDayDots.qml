@@ -10,6 +10,11 @@ Row {
     property int delay: 0
     readonly property var colors: date ? GCal.dayColors(date) : []
     spacing: Scaler.s(2)
+    signal replay()
+    onVisibleChanged: if (visible) replay()
+    // `colors` is a fresh array on every re-evaluation (clock tick, sync): only replay when its content changes.
+    readonly property string colorKey: colors.join(",")
+    onColorKeyChanged: replay()
 
     Repeater {
         model: root.colors
@@ -22,7 +27,12 @@ Row {
             opacity: root.dimmed ? 0.4 : 0.95
             scale: 0
             Behavior on opacity { NumberAnimation { duration: 200 } }
+            Connections {
+                target: root
+                function onReplay() { dot.scale = 0; dotAnim.restart(); }
+            }
             SequentialAnimation {
+                id: dotAnim
                 running: true
                 PauseAnimation { duration: root.delay + dot.index * 55 }
                 NumberAnimation { target: dot; property: "scale"; from: 0; to: 1; duration: 460; easing.type: Easing.OutBack; easing.overshoot: 2.6 }
