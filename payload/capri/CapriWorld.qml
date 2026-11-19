@@ -21,6 +21,7 @@ Scope {
     property string cursorBuffer: ""
     property var liveClients: []     // j/clients straight from Hyprland: its toplevel model keeps closed windows
     property string clientBuffer: ""
+    property string lastClientReply: ""
     property int awayChecks: 0
     property string awayScreen: ""
     property var pc: null
@@ -30,8 +31,19 @@ Scope {
     readonly property bool niri: !!Quickshell.env("NIRI_SOCKET")
     property var niriMonitors: []
     readonly property bool nativeAvailable: !niri && Hyprland.requestSocketPath !== ""
+    readonly property var monitorLayout: World.monitors(Quickshell.screens, nativeAvailable ? Hyprland.monitors.values : niriMonitors)
+    readonly property var minimized: {
+        const addresses = {};
+        if (nativeAvailable) {
+            for (const t of Hyprland.toplevels.values) {
+                if (t.wayland && t.wayland.minimized) addresses["0x" + t.address.replace(/^0x/, "")] = true;
+            }
+        }
+        return addresses;
+    }
     readonly property bool performanceMode: Config.getSetting("general.performance", false)
     readonly property bool pcEnabled: Config.getSetting("addonsV2CapriPcReact", true)
+    readonly property bool followEnabled: !performanceMode && displays.length > 1 && Config.getSetting("addonsV2CapriFollow", true)
     readonly property var here: displays.find(d => d.id === Capri.screenName) || null
     readonly property var surface: surfaces[Capri.screenName] || null
     readonly property var cursor: World.cursor(displays, here, pointer)
@@ -44,16 +56,11 @@ Scope {
         const next = Object.assign({}, surfaces); delete next[name]; surfaces = next;
     }
     function refresh() {
-        if (!nativeAvailable) return;
-        Hyprland.refreshMonitors();
         // Snapshot once the window list has arrived (readClients).
-        if (!clientSocket.connected) clientSocket.connected = true;
+        if (nativeAvailable && !clientSocket.connected) clientSocket.connected = true;
     }
     function snapshot() {
-        const monitors = nativeAvailable ? Hyprland.monitors.values : niriMonitors;
-        displays = World.monitors(Quickshell.screens, monitors);
-        const minimized = {};
-        if (nativeAvailable) for (const t of Hyprland.toplevels.values) if (t.wayland && t.wayland.minimized) minimized["0x" + t.address.replace(/^0x/, "")] = true;
+        if (JSON.stringify(monitorLayout) !== JSON.stringify(displays)) displays = monitorLayout;
         clients = nativeAvailable ? liveClients.map(c => Object.assign({}, c, { minimized: !!minimized[c.address] })) : niri ? liveClients : [];
         foreground = niri ? ((clients.find(c => c.focusHistoryID === 0) || {}).address || "") : Hyprland.activeToplevel ? "0x" + Hyprland.activeToplevel.address.replace(/^0x/, "") : "";
         foregroundClient = clients.find(c => c.address === foreground) || null;
@@ -129,9 +136,9 @@ Scope {
         else if (!pcEnabled && subscribed) { SysData.unsubscribe(); subscribed = false; }
     }
     function follow() {
-        if (performanceMode) { awayChecks = 0; return; }
+        if (!followEnabled) return;
         const c = engine.capri;
-        const elsewhere = Config.getSetting("addonsV2CapriFollow", true) && cursor && !cursor.inside && cursor.display !== null;
+        const elsewhere = cursor && !cursor.inside && cursor.display !== null;
         awayChecks = elsewhere ? (awayScreen === cursor.display ? awayChecks + 1 : 1) : 0;
         awayScreen = elsewhere ? cursor.display : "";
         if (awayChecks < 2 || !c || !c.free || c.pointing || c.mode === "sleep" || c.mode === "alert") return;
@@ -150,9 +157,17 @@ Scope {
         if (!pcEnabled) { if (pc && pc.game && pc.game.put && engine.capri.stowed) engine.capri.unstow(); pc = null; game = ""; }
         else { attach(); sentForeground = "-"; sendForeground(); }
     }
-    onPerformanceModeChanged: { awayChecks = 0; pointer = null; }
+    onFollowEnabledChanged: awayChecks = 0
+    onPerformanceModeChanged: pointer = null
+    onMonitorLayoutChanged: Qt.callLater(snapshot)
+    onMinimizedChanged: Qt.callLater(snapshot)
     onHereChanged: sync()
-    Component.onCompleted: { subscribe(); snapshot(); refresh(); }
+    Component.onCompleted: {
+        subscribe();
+        snapshot();
+        refresh();
+        if (nativeAvailable) Hyprland.refreshMonitors();
+    }
     Component.onDestruction: { if (subscribed) SysData.unsubscribe(); }
 
     Process {
@@ -168,26 +183,36 @@ Scope {
                     if (at && at.inside && world.engine.capri) world.engine.capri.notice(at.x, at.y);
                 }
                 world.liveClients = state.clients;
-                world.snapshot();
+                Qt.callLater(world.snapshot);
             } catch (error) { console.warn("Capri Niri:", error); }
         } }
     }
     Connections {
         target: Hyprland
-        function onRawEvent(event) { world.refresh(); }
-        function onActiveToplevelChanged() { world.snapshot(); }
+        function onRawEvent(event) {
+            if (!world.nativeAvailable) return;
+            if (!clientsDebounce.running) clientsDebounce.start();
+            if (/^(monitor|workspace|focusedmon|activespecial|configreloaded|openlayer|closelayer)/.test(event.name))
+                monitorsDebounce.restart();
+        }
+        function onActiveToplevelChanged() { Qt.callLater(world.snapshot); }
     }
-    Connections { target: Quickshell; function onScreensChanged() { world.snapshot(); world.refresh(); } }
+    Timer { id: clientsDebounce; interval: 40; onTriggered: world.refresh() }
+    Timer { id: monitorsDebounce; interval: 80; onTriggered: Hyprland.refreshMonitors() }
     Connections { target: engine; function onCapriChanged() { world.attach(); } }
-    // faster while she rides a window, so she keeps up with it (upstream polls every 150 ms)
+    // Hyprland doesn't emit continuous geometry events while a window is dragged.
     Timer {
         property int ticks: 0
-        interval: 60; repeat: true; running: world.nativeAvailable
-        // her stance is a JS field (no QML notification): checked on each tick
-        onTriggered: if (++ticks % 4 === 0 || (world.engine.capri && world.engine.capri.stance === "sit")) world.refresh()
+        interval: world.performanceMode ? 240 : 60
+        repeat: true; running: world.nativeAvailable
+        onTriggered: {
+            const c = world.engine.capri;
+            if (++ticks % 4 === 0 || (c && c.stance === "sit" && c.perch && c.perch.id !== "taskbar"))
+                world.refresh();
+        }
     }
     Timer { interval: 1000; repeat: true; running: world.pcEnabled; onTriggered: world.samplePc() }
-    Timer { interval: 2000; repeat: true; running: !world.performanceMode; onTriggered: world.follow() }
+    Timer { interval: 2000; repeat: true; running: world.followEnabled; onTriggered: world.follow() }
     Timer { interval: 5000; repeat: true; running: true; onTriggered: world.savePosition() }
 
     Process {
@@ -202,13 +227,20 @@ Scope {
     }
 
     function readClients() {
-        try {
-            const list = JSON.parse(clientBuffer);
+        if (clientBuffer === lastClientReply) {
             clientBuffer = "";
             clientSocket.connected = false;
-            if (!Array.isArray(list)) return;
-            liveClients = list;
-            snapshot();
+            return;
+        }
+        try {
+            const list = JSON.parse(clientBuffer);
+            if (Array.isArray(list)) {
+                lastClientReply = clientBuffer;
+                liveClients = list;
+                Qt.callLater(snapshot);
+            }
+            clientBuffer = "";
+            clientSocket.connected = false;
         } catch (error) {} // The JSON may be split across reads.
     }
     Socket {
@@ -225,7 +257,7 @@ Scope {
         try {
             const p = JSON.parse(cursorBuffer);
             if (Number.isFinite(p.x) && Number.isFinite(p.y)) {
-                pointer = p;
+                if (!pointer || pointer.x !== p.x || pointer.y !== p.y) pointer = p;
                 const at = cursor;
                 if (at && at.inside && engine.capri) engine.capri.notice(at.x, at.y);
             }

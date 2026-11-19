@@ -93,6 +93,7 @@ Item {
         id: dot
         width: root.s(8)
         height: width
+        readonly property bool pulsing: dot.visible && root.isFaceVisible && Tokens.active
         Rectangle {
             id: ring
             anchors.fill: parent
@@ -100,9 +101,10 @@ Item {
             color: "transparent"
             border.width: 1
             border.color: ThemeBackend.green
+            visible: dot.pulsing
             opacity: 0
             ParallelAnimation {
-                running: Tokens.active && root.visible && root.live
+                running: dot.pulsing
                 loops: Animation.Infinite
                 ScaleAnimator { target: ring; from: 0.8; to: 2.2; duration: 1300; easing.type: Easing.OutCubic }
                 OpacityAnimator { target: ring; from: 0.8; to: 0; duration: 1300; easing.type: Easing.OutCubic }

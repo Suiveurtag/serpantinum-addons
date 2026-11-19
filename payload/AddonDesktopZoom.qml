@@ -87,7 +87,7 @@ Scope {
             exclusionMode: ExclusionMode.Ignore
             anchors { top: true; bottom: true; left: true; right: true }
             focusable: root.active && pointerScreen
-            mask: Region { item: input; intersection: Intersection.Xor }
+            mask: Region { item: input; intersection: root.active && !Quickshell.env("NIRI_SOCKET") ? Intersection.Intersect : Intersection.Xor }
             WlrLayershell.namespace: "qs-addon-desktop-zoom"
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: root.active && pointerScreen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
@@ -100,6 +100,21 @@ Scope {
             Item {
                 id: input
                 anchors.fill: parent
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.NoButton
+                    property real scrollRemainder: 0
+                    onWheel: event => {
+                        const delta = event.pixelDelta.y !== 0 ? event.pixelDelta.y / 40 : event.angleDelta.y / 120;
+                        scrollRemainder += delta;
+                        const steps = Math.trunc(scrollRemainder);
+                        if (steps !== 0) {
+                            scrollRemainder -= steps;
+                            root.adjust(steps);
+                        }
+                        event.accepted = true;
+                    }
+                }
             }
 
         }
