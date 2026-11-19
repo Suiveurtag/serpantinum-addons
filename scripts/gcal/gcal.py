@@ -408,8 +408,38 @@ def to_ms(moment, all_day):
 WEEKDAYS = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']
 
 
+def month_days(year, month, byday, bymonthday, bysetpos, default_day):
+    """Days of one month picked by BYDAY (with an optional ordinal), BYMONTHDAY and BYSETPOS; the start's day when none is given."""
+    last = calmod.monthrange(year, month)[1]
+    listed = {d if d > 0 else last + d + 1 for d in bymonthday}
+    if byday:
+        days = set()
+        for token in byday:
+            match = re.match(r'([+-]?\d*)(MO|TU|WE|TH|FR|SA|SU)', token)
+            if not match:
+                continue
+            nth, wd = int(match.group(1) or 0), WEEKDAYS.index(match.group(2))
+            same = [d for d in range(1, last + 1) if date(year, month, d).weekday() == wd]
+            if nth == 0:
+                days.update(same)
+            elif 0 < nth <= len(same):
+                days.add(same[nth - 1])
+            elif -len(same) <= nth < 0:
+                days.add(same[nth])
+        if listed:
+            days &= listed
+    elif listed:
+        days = listed
+    else:
+        days = {default_day}
+    picks = sorted(d for d in days if 1 <= d <= last)
+    if bysetpos:
+        picks = sorted({picks[p - 1 if p > 0 else p] for p in bysetpos if 0 < abs(p) <= len(picks)})
+    return picks
+
+
 def expand_rrule(start, rule, lo, hi, exdates, limit=3000):
-    """Occurrence starts of an RRULE (common subset: FREQ, INTERVAL, COUNT, UNTIL, BYDAY, BYMONTHDAY, BYMONTH)."""
+    """Occurrence starts of an RRULE: FREQ, INTERVAL, COUNT, UNTIL, BYDAY (with ordinals), BYMONTHDAY, BYMONTH, BYSETPOS, WKST."""
     parts = dict(p.split('=', 1) for p in rule.split(';') if '=' in p)
     freq = parts.get('FREQ', 'DAILY')
     interval = max(1, int(parts.get('INTERVAL', '1') or 1))
@@ -421,6 +451,8 @@ def expand_rrule(start, rule, lo, hi, exdates, limit=3000):
     byday = [d for d in parts.get('BYDAY', '').split(',') if d]
     bymonthday = [int(d) for d in parts.get('BYMONTHDAY', '').split(',') if d.lstrip('-').isdigit()]
     bymonth = [int(m) for m in parts.get('BYMONTH', '').split(',') if m.isdigit()]
+    bysetpos = [int(d) for d in parts.get('BYSETPOS', '').split(',') if d.lstrip('-').isdigit()]
+    wkst = WEEKDAYS.index(parts['WKST']) if parts.get('WKST') in WEEKDAYS else 0
     out, produced, step = [], 0, 0
     if count is None:
         # Jump close to the window so a long-running series (daily since years) never exhausts the iteration budget.
@@ -433,33 +465,22 @@ def expand_rrule(start, rule, lo, hi, exdates, limit=3000):
     while step < limit:
         candidates = []
         if freq == 'DAILY':
-            candidates = [start + timedelta(days=step * interval)]
+            moment = start + timedelta(days=step * interval)
+            if not byday or WEEKDAYS[moment.weekday()] in [d[-2:] for d in byday]:
+                candidates = [moment]
         elif freq == 'WEEKLY':
-            week = start - timedelta(days=start.weekday()) + timedelta(weeks=step * interval)
+            week = start - timedelta(days=(start.weekday() - wkst) % 7) + timedelta(weeks=step * interval)
             days = [WEEKDAYS.index(d[-2:]) for d in byday if d[-2:] in WEEKDAYS] or [start.weekday()]
-            candidates = [week + timedelta(days=d) for d in sorted(days)]
+            candidates = [week + timedelta(days=(d - wkst) % 7) for d in days]
         elif freq == 'MONTHLY':
             base = add_months(date(start.year, start.month, 1), step * interval)
-            last = calmod.monthrange(base.year, base.month)[1]
-            if byday:
-                for token in byday:
-                    match = re.match(r'([+-]?\d*)(MO|TU|WE|TH|FR|SA|SU)', token)
-                    if not match:
-                        continue
-                    nth, wd = int(match.group(1) or 0), WEEKDAYS.index(match.group(2))
-                    days = [d for d in range(1, last + 1) if date(base.year, base.month, d).weekday() == wd]
-                    picks = days if nth == 0 else ([days[nth - 1]] if 0 < nth <= len(days) else ([days[nth]] if -len(days) <= nth < 0 else []))
-                    candidates += [start.replace(year=base.year, month=base.month, day=d) for d in picks]
-            else:
-                for d in (bymonthday or [start.day]):
-                    d = d if d > 0 else last + d + 1
-                    if 1 <= d <= last:
-                        candidates.append(start.replace(year=base.year, month=base.month, day=d))
+            candidates = [start.replace(year=base.year, month=base.month, day=d)
+                          for d in month_days(base.year, base.month, byday, bymonthday, bysetpos, start.day)]
         elif freq == 'YEARLY':
             year = start.year + step * interval
             for month in (bymonth or [start.month]):
-                with contextlib.suppress(ValueError):
-                    candidates.append(start.replace(year=year, month=month))
+                candidates += [start.replace(year=year, month=month, day=d)
+                               for d in month_days(year, month, byday, bymonthday, bysetpos, start.day)]
         else:
             break
         for moment in sorted(candidates):
@@ -1160,14 +1181,18 @@ def notify(event, minutes):
 
 def check_reminders():
     now = now_ms()
-
-    def pick(store):
+    with locked():
+        if not STORE_FILE.exists():
+            return
+        store = load_store()
         due = due_reminders(store, now)
+        sent = {k: v for k, v in store['sent'].items() if v > now - 3 * 86400000}
         for key, _, _ in due:
-            store['sent'][key] = now
-        store['sent'] = {k: v for k, v in store['sent'].items() if v > now - 3 * 86400000}
-        return due
-    for _, event, minutes in mutate(pick) if (STORE_FILE.exists()) else []:
+            sent[key] = now
+        if sent != store['sent']:
+            store['sent'] = sent
+            write_json(STORE_FILE, store)
+    for _, event, minutes in due:
         notify(event, minutes)
 
 

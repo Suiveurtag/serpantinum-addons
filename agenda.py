@@ -30,16 +30,31 @@ DAY_BLOCK = f'''    // BEGIN {MARK} day
                                 id: gcalDay
                                 readonly property var gcalDate: {{ const m = new Date(window.currentTime.getFullYear(), window.currentTime.getMonth() + window.monthOffset, 1); return new Date(m.getFullYear(), m.getMonth(), 1 - ((m.getDay() + 6) % 7) + index); }}
                                 readonly property bool gcalSelected: GCal.selectedDay !== null && GCal.sameDay(GCal.selectedDay, gcalDate)
-                                enabled: GCal.available
-                                onClicked: GCal.selectDay(gcalSelected ? null : gcalDate)
+                                // Hover as in the original Imperative Dots clock (grow with a bounce, soft fill, outline), layered with
+                                // the selected-day ring and the today pill through one overlay so their outlines never stack.
+                                readonly property bool gcalLive: GCal.enabled && GCal.available
+                                readonly property bool gcalLit: gcalSelected || isHoveredOrHighlighted
+                                acceptedButtons: gcalLive ? Qt.LeftButton : Qt.NoButton
+                                onClicked: if (gcalLive) GCal.selectDay(gcalSelected ? null : gcalDate)
+                                z: isHoveredOrHighlighted ? 5 : (gcalSelected ? 2 : 0)
+                                scale: isHoveredOrHighlighted ? 1.2 : (gcalSelected ? 1.06 : 1.0)
+                                Behavior on scale {{ NumberAnimation {{ duration: 250; easing.type: Easing.OutBack }} }}
                                 Rectangle {{
+                                    // The ring of a selected today sits outside its accent pill, otherwise it would vanish into it.
+                                    readonly property real grow: isToday && gcalDay.gcalSelected ? Scaler.s(2) : 0
                                     anchors.fill: parent
-                                    radius: Scaler.s(5)
-                                    color: "transparent"
-                                    border.width: Scaler.s(1.5)
-                                    border.color: window.textAccent
-                                    opacity: gcalDay.gcalSelected ? 1 : 0
-                                    scale: gcalDay.gcalSelected ? 1 : 0.6
+                                    anchors.margins: -grow
+                                    Behavior on anchors.margins {{ NumberAnimation {{ duration: 200 }} }}
+                                    radius: Scaler.s(7) + grow
+                                    color: isToday ? "transparent"
+                                         : gcalDay.gcalSelected ? Qt.alpha(window.textAccent, gcalDay.isHoveredOrHighlighted ? 0.24 : 0.14)
+                                         : gcalDay.isHoveredOrHighlighted ? Qt.alpha(ThemeBackend.surface2, 0.4) : "transparent"
+                                    border.width: gcalDay.gcalSelected ? Scaler.s(1.5) : (gcalDay.isHoveredOrHighlighted && !isToday ? 1 : 0)
+                                    border.color: gcalDay.gcalSelected ? (isToday ? ThemeBackend.text : window.textAccent) : ThemeBackend.overlay0
+                                    opacity: gcalDay.gcalLit ? 1 : 0
+                                    scale: gcalDay.gcalLit ? 1 : 0.6
+                                    Behavior on color {{ ColorAnimation {{ duration: 150 }} }}
+                                    Behavior on border.color {{ ColorAnimation {{ duration: 150 }} }}
                                     Behavior on opacity {{ NumberAnimation {{ duration: 200 }} }}
                                     Behavior on scale {{ NumberAnimation {{ duration: 340; easing.type: Easing.OutBack; easing.overshoot: 2 }} }}
                                 }}
@@ -126,6 +141,21 @@ def patch_dashboard(text):
     return text.replace(ESCAPE_ANCHOR, '        enabled: dashboardWindow.isOpen\n' + ESCAPE_BLOCK, 1)
 
 
+TAB_ANCHOR = re.compile(r'(?m)^[ \t]*\{ id: "About", key: "about", name: "About", icon: "[^"]+"(?:, separatorBefore: true)?, file: "AboutTab\.qml"(?:, iconOffsetX: 0)? \},?$')
+TAB_BLOCK = (f'        // BEGIN {MARK} tab\n'
+             '        { id: "Calendar", key: "addon_calendar", name: "Calendar", icon: "󰃭", file: "AddonCalendarTab.qml", iconOffsetX: 0 },\n'
+             f'        // END {MARK} tab\n')
+
+
+def patch_guide(text):
+    """Settings → Calendar, just before About."""
+    text = remove_blocks(text)
+    matches = list(TAB_ANCHOR.finditer(text))
+    if len(matches) != 1:
+        raise ValueError('Calendar settings tab anchor changed')
+    return text[:matches[0].start()] + TAB_BLOCK + text[matches[0].start():]
+
+
 def patch_keybind(text, shell_qml):
     # Preserve user edits inside the managed blocks on reinstall; the second bind is added to installs that predate it.
     base = 'quickshell -p ' + shlex.quote(str(shell_qml)) + ' ipc call addonCalendar '
@@ -142,11 +172,13 @@ def patch_keybind(text, shell_qml):
 
 
 def transformations(qs):
-    return {qs/'qmldir': patch_qmldir, qs/'Shell.qml': patch_shell}
+    return {qs/'qmldir': patch_qmldir, qs/'Shell.qml': patch_shell, qs/'guide/GuidePopup.qml': patch_guide}
 
 
 def resources(payload, qs):
-    return [(qs/'gcal'/p.relative_to(payload), p.read_bytes()) for p in sorted(payload.rglob('*')) if p.is_file()]
+    files = [(qs/'gcal'/p.relative_to(payload), p.read_bytes()) for p in sorted(payload.rglob('*')) if p.is_file()]
+    # The settings tab is loaded by the Guide, so it lives in guide/ rather than gcal/.
+    return files + [(qs/'guide/AddonCalendarTab.qml', (payload.parent/'AddonCalendarTab.qml').read_bytes())]
 
 
 def unit(script):

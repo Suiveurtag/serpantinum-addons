@@ -3,100 +3,106 @@ import QtQuick.Layouts
 import "../"
 import "../reusables"
 
-// Event card shown next to the clicked event: grows out of it (scale from the event side), rows cascade in.
+// Event card shown next to the clicked event. Placed from its real height, kept filled while it fades out.
 Item {
     id: root
     required property Item agenda
     property var ev: null
+    property rect anchorRect: Qt.rect(0, 0, 0, 0)
     readonly property bool open: !!ev
     function s(v) { return Scaler.s(v); }
 
-    readonly property var live: ev ? (GCal.find(ev.id) || ev) : null
+    // Last opened event: keeps the card content during the close animation.
+    property var shown: null
+    onEvChanged: if (ev) { shown = ev; generation++; }
+
+    readonly property var live: shown ? (GCal.find(shown.id) || shown) : null
     readonly property color tone: live ? GCal.colorOf(live) : ThemeBackend.blue
     readonly property var cal: live ? GCal.calendarMap[live.calendarId] : null
     readonly property var me: live && live.attendees ? live.attendees.find(a => a.self) : null
     readonly property bool canRsvp: !!me && !(live && live.organizerSelf) && cal && cal.writable
 
-    width: s(380)
-    implicitHeight: content.implicitHeight + s(36)
-    height: Math.min(implicitHeight, parent ? parent.height - s(24) : implicitHeight)
+    readonly property real pad: s(16)
+    readonly property real gutter: s(12)
+    width: s(360)
+    implicitHeight: content.implicitHeight + pad * 2
+    height: Math.min(implicitHeight, parent ? parent.height - gutter * 2 : implicitHeight)
+
+    // Right of the event, or left when it does not fit; vertically clamped with the real height.
+    x: {
+        const W = parent ? parent.width : 0;
+        let px = anchorRect.x + anchorRect.width + s(8);
+        if (px + width > W - gutter) px = anchorRect.x - width - s(8);
+        return Math.max(gutter, Math.min(W - width - gutter, px));
+    }
+    y: {
+        const H = parent ? parent.height : 0;
+        return Math.max(gutter, Math.min(H - height - gutter, anchorRect.y - s(8)));
+    }
+    readonly property bool onLeft: x + width <= anchorRect.x
+    transformOrigin: onLeft ? Item.TopRight : Item.TopLeft
 
     property real progress: open ? 1 : 0
-    Behavior on progress { NumberAnimation { duration: root.open ? 440 : 200; easing.type: root.open ? Easing.OutBack : Easing.InCubic; easing.overshoot: 1.15 } }
+    Behavior on progress { NumberAnimation { duration: root.open ? 220 : 140; easing.type: root.open ? Easing.OutCubic : Easing.InCubic } }
     visible: progress > 0.01
-    opacity: Math.min(1, progress)
-    scale: 0.88 + 0.12 * progress
-    property real originX: 0
-    property real originY: 0
-    transformOrigin: Item.Center
-    transform: Translate { x: root.originX * (1 - root.progress) * 0.25; y: root.originY * (1 - root.progress) * 0.25 }
+    opacity: progress
+    scale: 0.96 + 0.04 * progress
+    onVisibleChanged: if (!visible && !open) shown = null
 
-    // Row cascade, replayed on each opened event.
     property int generation: 0
-    onEvChanged: if (ev) generation++
-    function stagger(i) { return i; }
 
     Rectangle {
         id: card
         anchors.fill: parent
-        radius: Math.min(ThemeBackend.borderRadius + root.s(4), root.s(22))
+        radius: Math.min(ThemeBackend.borderRadius, root.s(18))
         color: ThemeBackend.base
         border.width: 1
-        border.color: Qt.alpha(root.tone, 0.45)
+        border.color: ThemeBackend.surface1
         clip: true
 
-        Rectangle {
-            width: parent.width
-            height: root.s(6)
-            color: root.tone
-            Behavior on color { ColorAnimation { duration: 300 } }
-        }
-        // Soft tinted glow at the top.
-        Rectangle {
-            width: parent.width; height: root.s(110)
-            gradient: Gradient {
-                GradientStop { position: 0; color: Qt.alpha(root.tone, 0.16) }
-                GradientStop { position: 1; color: "transparent" }
-            }
-        }
-
         Flickable {
+            id: flick
             anchors.fill: parent
-            anchors.margins: root.s(18)
-            anchors.topMargin: root.s(22)
+            anchors.margins: root.pad
             contentHeight: content.implicitHeight
+            interactive: contentHeight > height
             clip: true
             boundsBehavior: Flickable.StopAtBounds
 
             ColumnLayout {
                 id: content
-                width: parent.width
-                spacing: root.s(12)
+                width: flick.width
+                spacing: root.s(10)
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: root.s(8)
-                    GCalReveal { generation: root.generation; index: 0
+                    spacing: root.s(10)
+                    Rectangle {
+                        Layout.alignment: Qt.AlignTop
+                        Layout.topMargin: root.s(6)
+                        Layout.preferredWidth: root.s(10); Layout.preferredHeight: root.s(10)
+                        radius: root.s(3)
+                        color: root.tone
+                    }
+                    Text {
+                        id: title
                         Layout.fillWidth: true
-                        implicitHeight: title.implicitHeight
-                        Text {
-                            id: title
-                            width: parent.width
-                            text: root.live ? (root.live.title || GCal.tr("(No title)", "(Sans titre)")) : ""
-                            wrapMode: Text.WordWrap
-                            font.family: ThemeBackend.fontFamily
-                            font.weight: Font.Black
-                            font.pixelSize: root.s(19)
-                            color: ThemeBackend.text
-                        }
+                        text: root.live ? (root.live.title || GCal.tr("(No title)", "(Sans titre)")) : ""
+                        wrapMode: Text.WordWrap
+                        maximumLineCount: 3
+                        elide: Text.ElideRight
+                        font.family: ThemeBackend.fontFamily
+                        font.weight: Font.Bold
+                        font.pixelSize: root.s(17)
+                        color: ThemeBackend.text
                     }
                     IconButton {
                         Layout.alignment: Qt.AlignTop
-                        Layout.preferredWidth: root.s(28); Layout.preferredHeight: root.s(28)
-                        size: root.s(28); cornerRadius: root.s(9)
-                        buttonIcon: GCal.icon.close; iconFontSize: root.s(14)
-                        accentColor: ThemeBackend.surface0
-                        textColor: isHoveredOrHighlighted ? ThemeBackend.red : ThemeBackend.overlay1
+                        Layout.preferredWidth: root.s(26); Layout.preferredHeight: root.s(26)
+                        size: root.s(26); cornerRadius: root.s(8)
+                        buttonIcon: GCal.icon.close; iconFontSize: root.s(13)
+                        accentColor: "transparent"
+                        textColor: isHoveredOrHighlighted ? ThemeBackend.text : ThemeBackend.overlay1
                         onClicked: root.agenda.closeDetails()
                     }
                 }
@@ -163,7 +169,7 @@ Item {
                         spacing: root.s(4)
                         Text {
                             text: GCal.icon.people + "  " + GCal.tr("%1 guests", "%1 invités").arg(root.live ? (root.live.attendees || []).length : 0)
-                            font.family: ThemeBackend.fontFamily; font.weight: Font.Black; font.pixelSize: root.s(11.5)
+                            font.family: ThemeBackend.fontFamily; font.weight: Font.DemiBold; font.pixelSize: root.s(11)
                             color: ThemeBackend.subtext0
                         }
                         Repeater {
@@ -175,7 +181,7 @@ Item {
                                 Rectangle {
                                     Layout.preferredWidth: root.s(22); Layout.preferredHeight: root.s(22)
                                     radius: width / 2
-                                    color: Qt.alpha(root.tone, 0.25)
+                                    color: ThemeBackend.surface0
                                     Text {
                                         anchors.centerIn: parent
                                         text: (modelData.name || modelData.email || "?").charAt(0).toUpperCase()
@@ -211,7 +217,7 @@ Item {
                         spacing: root.s(6)
                         Text {
                             text: GCal.tr("Going?", "Tu participes ?")
-                            font.family: ThemeBackend.fontFamily; font.weight: Font.Black; font.pixelSize: root.s(11.5)
+                            font.family: ThemeBackend.fontFamily; font.weight: Font.DemiBold; font.pixelSize: root.s(11)
                             color: ThemeBackend.subtext0
                         }
                         GCalSegmented {
@@ -232,7 +238,7 @@ Item {
                     Rectangle {
                         anchors.fill: parent
                         radius: root.s(12)
-                        color: Qt.alpha(ThemeBackend.surface0, 0.35)
+                        color: ThemeBackend.mantle
                         Text {
                             id: desc
                             anchors.fill: parent

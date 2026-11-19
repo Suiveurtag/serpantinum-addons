@@ -12,9 +12,23 @@ QtObject {
 
     readonly property string backend: Quickshell.env("HOME") + "/.local/share/serpantinum-addons-v2/scripts/gcal/gcal.py"
 
+    // Settings → Calendar → Enable. Off: no clock-panel hooks, no agenda, no sync, and the daemon is stopped.
+    readonly property bool enabled: Config.getSetting("addonsV2Calendar", true) !== false
+    readonly property bool previewEnabled: Config.getSetting("addonsV2CalendarPreview", true) !== false
+    function setPreviewEnabled(on) { Config.setSetting("addonsV2CalendarPreview", on); }
+    readonly property string unit: "serpantinum-gcal.service"
+    function setEnabled(on) {
+        Config.setSetting("addonsV2Calendar", on);
+        if (!on) { root.agendaOpen = false; root.selectedDay = null; }
+    }
+    // Settings load after the shell starts, so react to the flag changing too.
+    onEnabledChanged: Quickshell.execDetached(["systemctl", "--user", root.enabled ? "start" : "stop", root.unit])
+    Component.onCompleted: if (!root.enabled) Quickshell.execDetached(["systemctl", "--user", "stop", root.unit])
+
     property var state: null
     property double now: Date.now()
-    readonly property var today: { const d = new Date(root.now); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+    readonly property double todayStart: root.startOfDay(root.now).getTime()
+    readonly property var today: new Date(root.todayStart)
 
     // UI state shared by the clock panel and the agenda.
     property bool agendaOpen: false
@@ -84,6 +98,7 @@ QtObject {
     // First event that is happening now or starts next (timed events, not declined), within a week.
     readonly property var nextEvent: {
         let best = null;
+        if (!root.enabled) return best;
         const limit = root.now + 7 * 86400000;
         for (const e of root.events) {
             if (e.allDay || e.rsvp === "declined" || e.end <= root.now || e.start > limit) continue;
@@ -122,6 +137,7 @@ QtObject {
     }
     function dayColors(d) {
         const out = [];
+        if (!root.enabled) return out;
         for (const e of root.eventsOn(d)) {
             const c = String(root.colorOf(e));
             if (out.indexOf(c) === -1) out.push(c);
@@ -182,45 +198,128 @@ QtObject {
         }
         return out;
     }
-    // Recurrence presets offered by the editor, and a readable summary of any RRULE.
+    // Recurrence: quick presets, an editable model of any RRULE (parseRule / buildRule) and a readable summary.
     readonly property var repeatPresets: [
         { id: "none", label: root.tr("Does not repeat", "Ne se répète pas"), rule: "" },
         { id: "daily", label: root.tr("Every day", "Tous les jours"), rule: "RRULE:FREQ=DAILY" },
         { id: "weekdays", label: root.tr("Every weekday", "Du lundi au vendredi"), rule: "RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR" },
+        { id: "weekends", label: root.tr("Weekends", "Le week-end"), rule: "RRULE:FREQ=WEEKLY;BYDAY=SA,SU" },
         { id: "weekly", label: root.tr("Every week", "Toutes les semaines"), rule: "RRULE:FREQ=WEEKLY" },
         { id: "biweekly", label: root.tr("Every 2 weeks", "Toutes les 2 semaines"), rule: "RRULE:FREQ=WEEKLY;INTERVAL=2" },
         { id: "monthly", label: root.tr("Every month", "Tous les mois"), rule: "RRULE:FREQ=MONTHLY" },
         { id: "yearly", label: root.tr("Every year", "Tous les ans"), rule: "RRULE:FREQ=YEARLY" }
     ]
+    readonly property var weekCodes: ["SU", "MO", "TU", "WE", "TH", "FR", "SA"]      // index = Date.getDay()
+    readonly property var weekOrder: ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]      // order used in a written rule
     function ruleOf(list) {
         for (const line of (list || [])) if (String(line).indexOf("RRULE:") === 0) return String(line);
         return "";
     }
-    function describeRule(list) {
-        const rule = root.ruleOf(list);
-        if (!rule) return "";
-        const parts = {};
-        for (const p of rule.slice(6).split(";")) { const kv = p.split("="); parts[kv[0]] = kv[1]; }
-        const n = parseInt(parts.INTERVAL || "1");
+    // BEGIN rule model (pure functions, exercised by tests/test_gcal.py)
+    // Swaps the RRULE line of a recurrence list, keeping its EXDATE / RDATE lines.
+    function withRule(list, rule) {
+        const rest = (list || []).filter(l => String(l).indexOf("RRULE:") !== 0);
+        return rule ? [rule].concat(rest) : rest;
+    }
+    // UNTIL is a UTC date-time for a timed event and a plain date for an all-day one.
+    function untilDay(v) {
+        const m = String(v).match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?/);
+        if (!m) return 0;
+        if (m[7]) { const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6])); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }
+        return new Date(+m[1], +m[2] - 1, +m[3]).getTime();
+    }
+    function untilString(dayMs, allDay) {
+        const d = new Date(dayMs), pad = n => (n < 10 ? "0" : "") + n;
+        if (allDay) return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate());
+        const e = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59);
+        return e.getUTCFullYear() + pad(e.getUTCMonth() + 1) + pad(e.getUTCDate()) + "T" + pad(e.getUTCHours()) + pad(e.getUTCMinutes()) + pad(e.getUTCSeconds()) + "Z";
+    }
+    // Rewrites UNTIL in the form the event needs (the all-day switch may have changed since it was written).
+    function fixUntil(rule, allDay) {
+        return String(rule).replace(/UNTIL=([^;]+)/, (all, v) => (/T/.test(v) === !allDay) ? all : "UNTIL=" + root.untilString(root.untilDay(v), allDay));
+    }
+    function parseRule(list, anchorMs) {
+        const parts = {}, rule = root.ruleOf(list);
+        if (rule) for (const piece of rule.slice(6).split(";")) { const i = piece.indexOf("="); if (i > 0) parts[piece.slice(0, i).toUpperCase()] = piece.slice(i + 1); }
+        const anchor = new Date(anchorMs || Date.now());
+        const st = {
+            freq: ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"].indexOf(parts.FREQ) !== -1 ? parts.FREQ : "WEEKLY",
+            interval: Math.max(1, parseInt(parts.INTERVAL || "1") || 1),
+            days: [], monthMode: "anchor", monthDays: [],
+            nth: Math.ceil(anchor.getDate() / 7), nthDay: root.weekCodes[anchor.getDay()],
+            months: [], raw: [], end: "never", until: 0, count: 10, extra: []
+        };
+        const known = { FREQ: 1, INTERVAL: 1, COUNT: 1, UNTIL: 1 };
+        const byday = (parts.BYDAY || "").split(",").filter(x => x);
+        const bymonthday = (parts.BYMONTHDAY || "").split(",").map(x => parseInt(x)).filter(x => !isNaN(x));
+        const rawKeep = () => ["BYDAY", "BYMONTHDAY", "BYSETPOS"].filter(k => parts[k]).map(k => k + "=" + parts[k]);
+        if (st.freq === "WEEKLY" && byday.length && byday.every(d => /^[A-Z]{2}$/.test(d))) { st.days = byday; known.BYDAY = 1; }
+        else if (st.freq === "MONTHLY" || st.freq === "YEARLY") {
+            if (parts.BYMONTH && st.freq === "YEARLY") { st.months = parts.BYMONTH.split(",").map(x => parseInt(x)).filter(x => x > 0 && x < 13); known.BYMONTH = 1; }
+            if (byday.length === 1 && /^-?[1-5][A-Z]{2}$/.test(byday[0]) && !parts.BYMONTHDAY && !parts.BYSETPOS) {
+                const m = byday[0].match(/^(-?\d)([A-Z]{2})$/); st.monthMode = "nth"; st.nth = +m[1]; st.nthDay = m[2]; known.BYDAY = 1;
+            } else if (parts.BYDAY === "MO,TU,WE,TH,FR" && parts.BYSETPOS === "-1" && !parts.BYMONTHDAY) {
+                st.monthMode = "lastWeekday"; known.BYDAY = 1; known.BYSETPOS = 1;
+            } else if (bymonthday.length && !parts.BYDAY && !parts.BYSETPOS) {
+                st.monthMode = "days"; st.monthDays = bymonthday; known.BYMONTHDAY = 1;
+            } else if (parts.BYDAY || parts.BYMONTHDAY || parts.BYSETPOS) {
+                st.monthMode = "raw"; st.raw = rawKeep(); known.BYDAY = known.BYMONTHDAY = known.BYSETPOS = 1;
+            }
+        }
+        if (parts.COUNT) { st.end = "count"; st.count = Math.max(1, parseInt(parts.COUNT) || 1); }
+        else if (parts.UNTIL) { st.end = "until"; st.until = root.untilDay(parts.UNTIL); }
+        for (const k in parts) if (!known[k]) st.extra.push(k + "=" + parts[k]);
+        if (!st.until) { const d = new Date(anchor.getFullYear(), anchor.getMonth() + 3, anchor.getDate()); st.until = d.getTime(); }
+        return st;
+    }
+    function buildRule(st, allDay) {
+        const out = ["FREQ=" + st.freq];
+        if (st.interval > 1) out.push("INTERVAL=" + st.interval);
+        if (st.freq === "WEEKLY" && st.days.length) out.push("BYDAY=" + root.weekOrder.filter(c => st.days.indexOf(c) !== -1).join(","));
+        if (st.freq === "MONTHLY" || st.freq === "YEARLY") {
+            if (st.monthMode === "days" && st.monthDays.length) out.push("BYMONTHDAY=" + st.monthDays.slice().sort((a, b) => (a < 0) - (b < 0) || a - b).join(","));
+            else if (st.monthMode === "nth") out.push("BYDAY=" + st.nth + st.nthDay);
+            else if (st.monthMode === "lastWeekday") out.push("BYDAY=MO,TU,WE,TH,FR", "BYSETPOS=-1");
+            else if (st.monthMode === "raw") for (const x of st.raw) out.push(x);
+            if (st.freq === "YEARLY" && st.months.length) out.push("BYMONTH=" + st.months.slice().sort((a, b) => a - b).join(","));
+        }
+        if (st.end === "count") out.push("COUNT=" + Math.max(1, st.count));
+        else if (st.end === "until") out.push("UNTIL=" + root.untilString(st.until, allDay));
+        for (const x of st.extra) out.push(x);
+        return "RRULE:" + out.join(";");
+    }
+    // Same frequency card with fresh defaults: a pattern written for another frequency would mean nothing here.
+    function retarget(st, freq, anchorMs) {
+        const fresh = root.parseRule(["RRULE:FREQ=" + freq], anchorMs);
+        return Object.assign({}, fresh, { interval: st.interval, end: st.end, until: st.until, count: st.count });
+    }
+    // Order of the parts does not matter: this is how presets recognise an equivalent written rule.
+    function canonicalRule(rule) { return String(rule).slice(6).split(";").filter(x => x).sort().join(";"); }
+    // END rule model
+    function ordinalLabel(n) {
+        if (n < 0) return root.tr("last", "dernier");
+        return root.tr(["", "1st", "2nd", "3rd", "4th", "5th"][n] || n + "th", ["", "1er", "2e", "3e", "4e", "5e"][n] || n + "e");
+    }
+    function describeRule(list, anchorMs) {
+        if (!root.ruleOf(list)) return "";
+        const st = root.parseRule(list, anchorMs);
         const units = { DAILY: [root.tr("day", "jour"), root.tr("days", "jours")], WEEKLY: [root.tr("week", "semaine"), root.tr("weeks", "semaines")],
-                        MONTHLY: [root.tr("month", "mois"), root.tr("months", "mois")], YEARLY: [root.tr("year", "an"), root.tr("years", "ans")] }[parts.FREQ] || ["", ""];
-        let text = n > 1 ? root.tr("Every %1 %2", "Tous les %1 %2").arg(n).arg(units[1]) : root.tr("Every %1", "Chaque %1").arg(units[0]);
-        if (parts.BYDAY) {
-            const names = { MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6, SU: 0 };
-            const days = parts.BYDAY.split(",").map(d => { const m = d.match(/(-?\d*)(\w\w)$/); return m ? (m[1] ? m[1] + " " : "") + root.locale.dayName(names[m[2]], Locale.ShortFormat) : d; });
-            text += " · " + days.join(", ");
-        }
-        if (parts.COUNT) text += " · " + root.tr("%1 times", "%1 fois").arg(parts.COUNT);
-        if (parts.UNTIL) {
-            const u = parts.UNTIL;
-            text += " · " + root.tr("until %1", "jusqu'au %1").arg(new Date(+u.slice(0, 4), +u.slice(4, 6) - 1, +u.slice(6, 8)).toLocaleDateString(root.locale, "d MMM yyyy"));
-        }
+                        MONTHLY: [root.tr("month", "mois"), root.tr("months", "mois")], YEARLY: [root.tr("year", "an"), root.tr("years", "ans")] }[st.freq];
+        let text = st.interval > 1 ? root.tr("Every %1 %2", "Tous les %1 %2").arg(st.interval).arg(units[1]) : root.tr("Every %1", "Chaque %1").arg(units[0]);
+        const dayName = (code, fmt) => root.locale.dayName(root.weekCodes.indexOf(code), fmt);
+        if (st.days.length) text += " · " + root.weekOrder.filter(c => st.days.indexOf(c) !== -1).map(c => dayName(c, Locale.ShortFormat)).join(", ");
+        if (st.monthMode === "days") text += " · " + st.monthDays.slice().sort((a, b) => (a < 0) - (b < 0) || a - b).map(d => d < 0 ? root.tr("last day", "dernier jour") : root.tr("day %1", "le %1").arg(d)).join(", ");
+        else if (st.monthMode === "nth") text += " · " + root.ordinalLabel(st.nth) + " " + dayName(st.nthDay, Locale.LongFormat);
+        else if (st.monthMode === "lastWeekday") text += " · " + root.tr("last weekday", "dernier jour ouvré");
+        if (st.freq === "YEARLY" && st.months.length) text += " · " + st.months.map(m => root.locale.standaloneMonthName(m - 1, Locale.ShortFormat)).join(", ");
+        if (st.end === "count") text += " · " + root.tr("%1 times", "%1 fois").arg(st.count);
+        else if (st.end === "until") text += " · " + root.tr("until %1", "jusqu'au %1").arg(new Date(st.until).toLocaleDateString(root.locale, "d MMM yyyy"));
         return text;
     }
     function presetOf(list) {
         const rule = root.ruleOf(list);
         if (!rule) return "none";
-        const hit = root.repeatPresets.find(p => p.rule === rule);
+        const hit = root.repeatPresets.find(p => p.rule && root.canonicalRule(p.rule) === root.canonicalRule(rule));
         return hit ? hit.id : "custom";
     }
     function reminderLabel(m) {
@@ -265,14 +364,20 @@ QtObject {
     signal actionFinished(string command, var result)
 
     function openAgenda(view, date, eventId) {
+        if (!root.enabled) return;
         if (view) root.agendaView = view;
         if (date) root.focusDate = root.startOfDay(date);
         root.openEventId = eventId || "";
         root.agendaOpen = true;
         if (!DashboardController.isVisible) DashboardController.show();
-        root.sync();
+        root.syncIfStale();
     }
     function closeAgenda() { root.agendaOpen = false; }
+    // Accounts and preferences live in Settings → Calendar.
+    function openSettings() {
+        DashboardController.hide();
+        Quickshell.execDetached(["serpantinum", "settings", "addon_calendar"]);
+    }
     property var escapeHandler: null
     function handleEscape() { return root.agendaOpen && root.escapeHandler ? root.escapeHandler() : false; }
     function ago(epochSeconds) {
@@ -283,7 +388,12 @@ QtObject {
     }
     function selectDay(d) { root.selectedDay = d && !root.sameDay(d, root.today) ? root.startOfDay(d) : null; }
 
-    function sync() { if (root.available || root.google) root.run(["sync"]); }
+    function sync() { if (root.enabled && (root.available || root.google)) root.run(["sync"]); }
+    function syncIfStale() {
+        const lastSync = root.state ? root.state.lastSync || 0 : 0;
+        const age = Date.now() - lastSync * 1000;
+        if (!root.syncing && (age < 0 || age >= 5 * 60000)) root.sync();
+    }
     function ensure(from, to) {
         if (!root.available) return;
         if (from >= root.range.from && to <= root.range.to) return;

@@ -25,11 +25,10 @@ FocusScope {
     property var details: null
     property var editorDraft: null
     property bool editScopeAll: false
-    property bool settingsOpen: false
     property var scopeRequest: null      // { kind: "update" | "delete", payload, ev, title }
     property var overrides: ({})         // id → { start, end } while a drag edit is being written
     readonly property bool onboarding: !GCal.available
-    readonly property bool overlayOpen: !!details || !!editorDraft || settingsOpen || !!scopeRequest
+    readonly property bool overlayOpen: !!details || !!editorDraft || !!scopeRequest
 
     // ------------------------------------------------------------------ navigation
 
@@ -153,7 +152,7 @@ FocusScope {
     }
 
     function newEvent(start, end, allDay) {
-        if (!GCal.writableCalendars.length) { toast(GCal.tr("Connect Google Calendar to create events", "Connecte Google Agenda pour créer des événements"), true); settingsOpen = true; return; }
+        if (!GCal.writableCalendars.length) { toast(GCal.tr("Connect Google Calendar to create events", "Connecte Google Agenda pour créer des événements"), true); GCal.openSettings(); return; }
         details = null;
         editScopeAll = false;
         editorDraft = { calendarId: GCal.defaultCalendar, title: "", allDay: !!allDay, start: start, end: end, reminders: { useDefault: true, overrides: [] }, recurrence: [] };
@@ -234,17 +233,8 @@ FocusScope {
     }
 
     function showDetails(ev, item) {
-        detailsCard.ev = null;
-        const p = item.mapToItem(app, item.width, 0);
-        const left = item.mapToItem(app, 0, 0);
-        const w = detailsCard.width;
-        let x = p.x + s(10);
-        if (x + w > app.width - s(16)) x = left.x - w - s(10);
-        x = Math.max(s(16), Math.min(app.width - w - s(16), x));
-        detailsCard.x = x;
-        detailsCard.y = Math.max(s(70), Math.min(app.height - detailsCard.implicitHeight - s(16), p.y - s(20)));
-        detailsCard.originX = (left.x + item.width / 2) - (x + w / 2);
-        detailsCard.originY = (p.y + item.height / 2) - (detailsCard.y + s(120));
+        const a = item.mapToItem(app, 0, 0);
+        detailsCard.anchorRect = Qt.rect(a.x, a.y, item.width, item.height);
         details = ev;
         detailsCard.ev = ev;
     }
@@ -279,8 +269,7 @@ FocusScope {
 
     // Arriving: honour a pending "open this event" / "new event" request.
     onShownChanged: {
-        if (!shown) { details = null; editorDraft = null; scopeRequest = null; settingsOpen = false; return; }
-        if (GCal.connectProc) settingsOpen = true;
+        if (!shown) { details = null; editorDraft = null; scopeRequest = null; return; }
         forceActiveFocus();
         GCal.ensure(periodStart.getTime(), periodEnd.getTime());
         handlePending();
@@ -306,7 +295,6 @@ FocusScope {
         if (scopeRequest) resolveScope(null);
         else if (editorDraft) closeEditor();
         else if (details) closeDetails();
-        else if (settingsOpen && !onboarding) settingsOpen = false;
         else return false;
         return true;
     }
@@ -440,7 +428,7 @@ FocusScope {
                 buttonIcon: GCal.icon.cog; iconFontSize: app.s(16)
                 accentColor: ThemeBackend.surface0
                 textColor: isHoveredOrHighlighted ? app.accent : ThemeBackend.overlay1
-                onClicked: app.settingsOpen = true
+                onClicked: GCal.openSettings()
                 rotation: isHoveredOrHighlighted ? 60 : 0
                 Behavior on rotation { NumberAnimation { duration: 420; easing.type: Easing.OutBack } }
             }
@@ -624,7 +612,7 @@ FocusScope {
                                 }
                             }
                         }
-                        MouseArea { id: accMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: app.settingsOpen = true }
+                        MouseArea { id: accMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: GCal.openSettings() }
                     }
                 }
             }
@@ -692,7 +680,7 @@ FocusScope {
         anchors.topMargin: app.onboarding ? app.s(60) : 0
         agenda: app
         onboarding: app.onboarding
-        open: app.onboarding ? app.reveal > 0.5 : app.settingsOpen
+        open: app.onboarding && app.reveal > 0.5
         opacity: app.onboarding ? app.step(1) : 1
         z: 30
     }

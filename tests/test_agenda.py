@@ -45,7 +45,7 @@ class AgendaPatchTest(unittest.TestCase):
     def test_native_day_cells_and_next_chip(self):
         patched = self.roundtrip(agenda.patch_native, DAY_CELL + CLOCK)
         self.assertNotIn('enabled: false', patched)
-        self.assertIn('enabled: GCal.available', patched)
+        self.assertIn('readonly property bool gcalLive: GCal.enabled && GCal.available', patched)
         self.assertIn('GCalDayDots', patched)
         self.assertLess(patched.index('GCalNextChip'), patched.index('id: hourStrip'))
 
@@ -89,9 +89,24 @@ class AgendaPatchTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             agenda.patch_keybind('hl.bind("SUPER + G", hl.dsp.exec_cmd("y"))\n', Path('/qs/Shell.qml'))
 
+    def test_guide_tab(self):
+        guide = (
+            '    property var tabsModel: [\n'
+            '        { id: "Idle", key: "idle", name: "Idle", icon: "x", file: "IdleTab.qml" },\n'
+            '        { id: "About", key: "about", name: "About", icon: "y", separatorBefore: true, file: "AboutTab.qml" }\n'
+            '    ]\n')
+        text = agenda.patch_guide(guide)
+        self.assertIn('key: "addon_calendar"', text)
+        self.assertLess(text.index('addon_calendar'), text.index('id: "About"'))
+        self.assertEqual(agenda.patch_guide(text), text)
+        self.assertEqual(agenda.remove(text), guide)
+        with self.assertRaises(ValueError):
+            agenda.patch_guide('property var tabsModel: []\n')
+
     def test_resources_cover_every_qml(self):
         files = agenda.resources(ROOT/'payload/gcal', Path('/qs'))
-        self.assertTrue(all(str(path).startswith('/qs/gcal/') for path, _ in files))
+        self.assertTrue(all(str(path).startswith('/qs/gcal/') for path, _ in files if path.name != 'AddonCalendarTab.qml'))
+        self.assertIn(Path('/qs/guide/AddonCalendarTab.qml'), [path for path, _ in files])
         self.assertIn(Path('/qs/gcal/GCalAgenda.qml'), [path for path, _ in files])
 
     def test_unit_runs_daemon(self):

@@ -156,7 +156,8 @@ class TestCheck(Base):
 
     def test_dev(self):
         self.install(channel="dev")
-        self.assertEqual(ar.check(fetch=make_fetch(release="2.0.0"))["state"], "dev")
+        # A dev checkout is not comparable to the latest tagged release.
+        self.assertEqual(ar.check(fetch=make_fetch(release="99.0.0"))["state"], "dev")
 
     def test_up_to_date(self):
         self.install()

@@ -19,7 +19,7 @@ right after; offline, they wait in the queue and the daemon replays them in orde
 
 ## Connecting Google
 
-Google requires an OAuth client of your own (free). The agenda's setup screen links every step:
+Google requires an OAuth client of your own (free). Settings → Calendar (`serpantinum settings addon_calendar`, also the agenda's gear button) links every step:
 
 1. Create a project in Google Cloud.
 2. Enable the **Google Calendar API**.
@@ -31,12 +31,27 @@ Google requires an OAuth client of your own (free). The agenda's setup screen li
 *Connect* opens the browser on Google's consent page and listens on `127.0.0.1` (random port, PKCE) for the answer.
 Scopes: `openid email https://www.googleapis.com/auth/calendar`. *Disconnect* revokes the token and clears the keyring.
 
+## Repeating events
+
+The event editor offers quick presets (every day, every weekday, weekends, every week, every 2 weeks, every month, every year)
+and **Custom…**, which opens the advanced repeat editor:
+
+- **Every N** days, weeks, months or years.
+- **Weekly**: any set of weekdays (`BYDAY=MO,WE,FR`).
+- **Monthly**: the start's day, specific days of the month (`1, 15`, or *last*), a weekday of the month (*1st, 2nd, 3rd, 4th or last Tuesday*)
+  or the last weekday (`BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1`).
+- **Yearly**: one or several months, with the same day patterns.
+- **Ends**: never, on a date (`UNTIL`, written as a date for an all-day event and in UTC otherwise) or after N occurrences (`COUNT`).
+
+Editing a recurring event keeps its `EXDATE` lines, and a rule written elsewhere is shown and edited as far as the editor understands
+it: the parts it does not know (`WKST`, `BYWEEKNO`...) are kept as they are. Picking another unit starts a fresh pattern for that unit.
+
 ## iCal subscriptions
 
 Any `http(s)://` or `webcal://` address of a `.ics` feed (Google's *secret address in iCal format*, Outlook,
 iCloud public calendars, school timetables, holidays). They are fetched at each sync and are read only.
 Supported: `RRULE` with `FREQ` daily/weekly/monthly/yearly, `INTERVAL`, `COUNT`, `UNTIL`, `BYDAY` (including
-`2MO`, `-1FR`), `BYMONTHDAY`, `BYMONTH`, plus `EXDATE`, `RECURRENCE-ID` overrides, `TZID` and all-day events.
+`2MO`, `-1FR`), `BYMONTHDAY`, `BYMONTH`, `BYSETPOS`, `WKST`, plus `EXDATE`, `RECURRENCE-ID` overrides, `TZID` and all-day events.
 
 ## Commands
 

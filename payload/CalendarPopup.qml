@@ -3,18 +3,20 @@ import QtQuick
 import "../"
 Item {
     id: root
-    // Addons extend the clock panel through these: addonWidth adds a column on the right of the native panel,
+    // Addons extend the clock panel through these: addonWidth adds a column on the right of the native panel, addonHeight a strip under it,
     // morphWidth/morphHeight (>= 0) take over the panel size (the Dashboard follows implicit size live), and
     // nativeOpacity/nativeScale/nativeActive fade the native clock out under an addon layer.
     property real addonWidth: 0
+    property real addonHeight: 0
     property real morphWidth: -1
     property real morphHeight: -1
     property real nativeOpacity: 1
     property real nativeScale: 1
     property bool nativeActive: true
     readonly property Item nativeFrame: frame
+    readonly property Item nativeItem: panel.item
     readonly property real baseWidth: (panel.item ? panel.item.implicitWidth : 0) + addonWidth
-    readonly property real baseHeight: panel.item ? panel.item.implicitHeight : 0
+    readonly property real baseHeight: (panel.item ? panel.item.implicitHeight : 0) + addonHeight
     implicitWidth: morphWidth >= 0 ? morphWidth : baseWidth
     implicitHeight: morphHeight >= 0 ? morphHeight : baseHeight
     property bool vertical: false
@@ -37,7 +39,7 @@ Item {
         Loader {
             id: panel
             width: parent.width - root.addonWidth
-            height: parent.height
+            height: parent.height - root.addonHeight
             source: "NativeCalendar.qml"
             onLoaded: {
                 const item = panel.item;

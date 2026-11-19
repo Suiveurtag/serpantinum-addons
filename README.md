@@ -577,20 +577,24 @@ Makes the Flatpak [Beamer](https://flathub.org/apps/uk.co.kalkman.beamer) 1.5.18
 
 ### 14. Calendar (Google Calendar and iCal)
 
-A full calendar inside the clock panel. Google Calendar is read/write (your own OAuth client, set up from the agenda in about three minutes); any iCal / webcal link (Outlook, iCloud, school timetables, public holidays…) is added read only.
+A full calendar inside the clock panel. Google Calendar is read/write (your own OAuth client, set up from Settings → Calendar in about three minutes); any iCal / webcal link (Outlook, iCloud, school timetables, public holidays…) is added read only.
 
 **Clock panel (Super+S)**
-- A fourth column, *Today*: the day's events then tomorrow's, with live progress on the ongoing one, video-call and pending-sync markers. Click an event to open it in the agenda.
-- Colour dots under each day of the mini calendar; click a day to list its events in the column (click again to come back to today).
+- A day stream under the clock (ported from the schedule module of the original Imperative Dots): one block per event, sized by its duration, overlapping events on separate lanes, a red marker for now, hover on the free time between events to see how long it lasts, all-day events as chips. Click a block to open it in the agenda; the ongoing one is lit.
+- Colour dots under each day of the mini calendar; click a day to show its stream (click again to come back to today).
 - A *next event* pill under the clock: title and a rolling countdown ("in 25 min", "now · 20 min left"), breathing dot when it is close.
 
 **Agenda (expand button, Super+G, or a reminder's *Open*)**
 - The clock panel morphs into the agenda; the back arrow (or Super+S) morphs it back.
 - Month, week, day and list views; search across titles, places and notes (`/`).
 - Create (button, `N`, double click, or drag across empty hours), edit, duplicate, delete with *Undo*. Drag an event to move it, drag its bottom edge to resize it (15 min snapping); recurring events ask *this event* or *the whole series*.
-- Editor: calendar, all-day, dates and times, repeat presets, popup reminders, location, Google Meet link, event colour, busy/free, notes.
+- Editor: calendar, all-day, dates and times, repeat (presets and a custom editor: every N days/weeks/months/years, weekdays, days of the month, "3rd Tuesday", last weekday, months, end date or count), popup reminders, location, Google Meet link, event colour, busy/free, notes.
 - Event card: time, recurrence, place (opens maps), *Join* for Meet / Zoom / Teams links, guests with their answers, RSVP (yes / maybe / no), notes with links.
-- Sidebar: mini month, calendar toggles, account and sync state. Keys: ←/→ period, `T` today, `M` `W` `D` `L` views, Esc closes the topmost card.
+- Sidebar: mini month, calendar toggles, account and sync state. The gear opens Settings → Calendar. Keys: ←/→ period, `T` today, `M` `W` `D` `L` views, Esc closes the topmost card.
+
+**Settings → Calendar** (`serpantinum settings addon_calendar`)
+- *Enable calendar*: turn the whole feature off without uninstalling it (native clock panel back, Super+G / Super+I inert, sync service stopped).
+- Google account (connect with your own OAuth client, disconnect), iCal subscriptions, reminder notifications, week start and the calendar new events go to.
 
 **Sync and reminders**
 - `scripts/gcal/gcal.py` (standard library only) as the user service `serpantinum-gcal.service`: syncs every 5 minutes (3 months back, 13 ahead, extended when you browse further), replays edits made offline, and sends reminder notifications (with *Join* and *Open* actions).
@@ -612,7 +616,7 @@ A full calendar inside the clock panel. Google Calendar is read/write (your own 
 | `Super+Shift+Z` | Desktop zoom |
 | `Super+Shift+M` | Mouse spotlight |
 | `Super+Shift+C` | Colour picker |
-| `Super+G` | Calendar agenda (Super+S opens the clock panel and its *Today* column) |
+| `Super+G` | Calendar agenda (Super+S opens the clock panel and its day stream) |
 | `Super+I` | Opens the calendar agenda directly (same as Super+G) |
 | `Super+Shift+S` | Screenshot (frozen, corrected version) |
 | `Super+Tab` | Next screen, pointer to its centre |

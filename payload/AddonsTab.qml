@@ -528,7 +528,7 @@ Item {
                                     { id: "addons_passive_screenshot", title: "Screenshot tools", icon: "󰹑", keywords: "screenshot capture freeze screenshot tool capture écran image", detail: "Frozen capture fixed · Super+Shift+S" },
                                     { id: "addons_passive_tokens", title: "AI Tokens counter", icon: "󰞷", keywords: "AI tokens counter Codex Claude usage compteur jetons", detail: "Widget and bar module · Codex + Claude usage" },
     // BEGIN serpantinum-gcal-v2 row
-                                    { id: "addons_passive_calendar", title: "Calendar", icon: "󰃭", keywords: "calendar agenda google ical ics events meeting calendrier événement rendez-vous rappel addonCalendar", detail: "Super+G · Google Calendar & iCal · Today in the clock panel (Super+S)" },
+                                    { id: "addons_passive_calendar", title: "Calendar", icon: "󰃭", keywords: "calendar agenda google ical ics events meeting calendrier événement rendez-vous rappel addonCalendar", detail: "Super+G / Super+I · Google Calendar & iCal · day stream in the clock panel (Super+S) · options in Calendar" },
     // END serpantinum-gcal-v2 row
                                     { id: "addons_passive_monitors", title: "Monitor tools", icon: "󰍹", keywords: "monitor display screen monitors écran", detail: "Display tools for connected monitors" },
                                     { id: "addons_passive_screen_switch", title: "Next screen", icon: "󰆽", keywords: "screen monitor next switch Super Tab écran moniteur", detail: "Super+Tab · Move pointer to the screen centre" },

@@ -271,6 +271,11 @@ def check(force=False, fetch=None) -> dict:
             or inst.get("serpantinum_commit") != ss["commit"]):
         out["state"] = "reinstall_needed"
         return out
+    # A development checkout is the user's update source; a tagged release
+    # cannot tell whether that checkout is current, so never mark it outdated.
+    if inst.get("channel") == "dev":
+        out["state"] = "dev"
+        return out
     try:
         rel = latest_release(force=force, fetch=fetch)
     except Exception as e:
@@ -292,8 +297,6 @@ def check(force=False, fetch=None) -> dict:
             out["state"] = "incompatible"
         else:
             out["state"] = "available"
-    elif inst.get("channel") == "dev":
-        out["state"] = "dev"
     return out
 
 

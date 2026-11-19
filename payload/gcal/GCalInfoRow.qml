@@ -12,29 +12,26 @@ GCalReveal {
     property bool clickable: false
     signal activated()
     function s(v) { return Scaler.s(v); }
-    implicitHeight: Math.max(s(30), col.implicitHeight)
+    implicitHeight: Math.max(s(24), col.implicitHeight)
 
     Rectangle {
         anchors.fill: parent
         anchors.margins: -root.s(4)
-        radius: root.s(10)
+        radius: root.s(8)
         color: root.clickable && hover.hovered ? Qt.alpha(ThemeBackend.surface0, 0.55) : "transparent"
         Behavior on color { ColorAnimation { duration: 150 } }
     }
     Rectangle {
         id: badge
-        width: root.s(30); height: width
-        radius: root.s(9)
-        color: Qt.alpha(root.tone, 0.16)
+        width: root.s(24); height: width
+        color: "transparent"
         Text {
             anchors.centerIn: parent
             text: root.icon
             font.family: ThemeBackend.iconFont
             font.pixelSize: root.s(15)
-            color: root.tone
+            color: ThemeBackend.overlay1
         }
-        scale: root.clickable && hover.hovered ? 1.08 : 1
-        Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
     }
     ColumnLayout {
         id: col

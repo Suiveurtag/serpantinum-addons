@@ -1320,8 +1320,8 @@ def patch_brightness_command(text):
             flock 9 || exit 1
             current=$(serpantinum-core brightness get) || exit $?
             [[ $current =~ ^(0|[1-9][0-9]?|100)$ ]] || exit 1
-            delta=-1
-            [[ $1 == raise ]] && delta=1
+            delta=-5
+            [[ $1 == raise ]] && delta=5
             target=$((current + delta))
             (( target < 0 || target > 100 )) && exit 0
             serpantinum-core brightness set "$target"
@@ -1338,25 +1338,30 @@ def patch_brightness_command(text):
     read_brightness = '    current=$(serpantinum-core brightness get) || exit $?'
     fast_backlight = '''    backlights=(/sys/class/backlight/*)
     if [[ ${SERPANTINUM_BRIGHTNESS_REPEAT:-} == 1 ]] && (( ${#backlights[@]} == 1 )) && [[ -d ${backlights[0]} ]] && command -v brightnessctl >/dev/null; then
-        relative=1%-
-        [[ $1 == raise ]] && relative=+1%
+        relative=2%-
+        [[ $1 == raise ]] && relative=+2%
         if brightnessctl -q -c backlight -d "${backlights[0]##*/}" --min-value=0 set "$relative" 2>/dev/null; then
             exit 0
         fi
     fi
 '''
-    legacy_fast_backlight = fast_backlight
-    fast_backlight = fast_backlight.replace('relative=1%-', 'relative=3%-').replace('relative=+1%', 'relative=+3%')
+    legacy_fast_backlight = fast_backlight.replace('relative=2%-', 'relative=1%-').replace('relative=+2%', 'relative=+1%')
     old_target = '''    target=$((current + delta))
     (( target < 0 || target > 100 )) && exit 0'''
     new_target = '''    if [[ ${SERPANTINUM_BRIGHTNESS_REPEAT:-} == 1 ]]; then
-        delta=$((delta * 3))
+        delta=$((delta * 2 / 5))
     fi
     target=$((current + delta))
     (( target < 0 )) && target=0
     (( target > 100 )) && target=100
     (( target == current )) && exit 0'''
     if marker in text:
+        text = text.replace(
+            '    delta=-1\n    [[ $1 == raise ]] && delta=1\n',
+            '    delta=-5\n    [[ $1 == raise ]] && delta=5\n',
+            1,
+        )
+        text = text.replace('delta=$((delta / 5))', 'delta=$((delta * 2 / 5))', 1)
         text = text.replace(legacy_fast_backlight, fast_backlight, 1).replace(old_target, new_target, 1)
         if repeat_lock not in text:
             text = text.replace(lock, repeat_lock, 1)
@@ -1449,6 +1454,7 @@ do
     local ticks = 0
     local pulseAge
     local burstTicks = 0
+    local pulseCount = 0
     local timer
     timer = hl.timer(function()
         ticks = ticks + 1
@@ -1459,11 +1465,12 @@ do
             hl.dispatch(repeatStep)
             burstTicks = math.max(0, burstTicks - 1)
         end
-        if ticks >= 107 or (not held and pulseAge and pulseAge >= 34) then
+        if ticks >= 107 or (not held and pulseAge and pulseAge >= 8) then
             pulseAge = nil
+            pulseCount = 0
             timer:set_enabled(false)
         end
-    end, {{ timeout = 16, type = "repeat" }})
+    end, {{ timeout = 80, type = "repeat" }})
     timer:set_enabled(false)
 
     hl.bind("{keysym}", function()
@@ -1477,7 +1484,8 @@ do
         held = false
         -- Some laptop firmware reports each Fn repeat as an immediate key-up.
         if ticks == 0 then
-            burstTicks = pulseAge and 12 or 0
+            pulseCount = pulseAge and (pulseCount + 1) or 1
+            burstTicks = pulseCount >= 3 and 2 or 0
             pulseAge = 0
         else
             pulseAge = nil
@@ -1488,6 +1496,13 @@ end
 -- END serpantinum-addons-v2 brightness {action}'''
         candidates = (pulse_block, block, previous, legacy) if remove else (block, previous, legacy, original)
         replacement = original if remove else pulse_block
+        managed_block = re.compile(
+            r'^-- BEGIN serpantinum-addons-v2 brightness ' + action + r'\n.*?^-- END serpantinum-addons-v2 brightness ' + action + r'$',
+            re.M | re.S,
+        )
+        text, count = managed_block.subn(replacement, text, count=1)
+        if count:
+            continue
         for candidate in candidates:
             text = re.sub(r'^' + re.escape(candidate) + r'$', lambda _: replacement, text, flags=re.M)
     return text

@@ -22,6 +22,7 @@ Item {
     property double end: 0
     property string colorId: ""
     property var recurrence: []
+    property bool repeatCustom: false         // advanced repeat panel open
     property bool remindDefault: true
     property var reminders: []
     property bool addMeet: false
@@ -47,6 +48,7 @@ Item {
         end = d.end;
         colorId = d.colorId || "";
         recurrence = (d.recurrence || []).slice();
+        repeatCustom = GCal.presetOf(recurrence) === "custom";
         const r = d.reminders || { useDefault: true, overrides: [] };
         remindDefault = r.useDefault !== false;
         reminders = (r.overrides || []).slice();
@@ -72,6 +74,14 @@ Item {
         if (!open || loading) return;
         if (allDay) { start = dayOf(start).getTime(); end = Math.max(GCal.addDays(dayOf(end - 1), 1).getTime(), start + 86400000); }
         else { start = combine(start, 9 * 60); end = start + 3600000; }
+        recurrence = fixedRecurrence();
+    }
+
+    // UNTIL has one form for a timed event and another for an all-day one; the all-day switch can change after the rule was written.
+    function fixedRecurrence() { return root.recurrence.map(l => String(l).indexOf("RRULE:") === 0 ? GCal.fixUntil(l, root.allDay) : l); }
+    function toggleCustom() {
+        if (!root.repeatCustom && !GCal.ruleOf(root.recurrence)) root.recurrence = GCal.withRule(root.recurrence, "RRULE:FREQ=WEEKLY;BYDAY=" + GCal.weekCodes[new Date(root.start).getDay()]);
+        root.repeatCustom = !root.repeatCustom;
     }
 
     function payload() {
@@ -82,7 +92,7 @@ Item {
             reminders: { useDefault: root.remindDefault, overrides: root.reminders },
             transparency: root.transparency
         };
-        if (!root.draft.recurringEventId || root.isNew) p.recurrence = root.recurrence;
+        if (!root.draft.recurringEventId || root.isNew) p.recurrence = root.fixedRecurrence();
         if (root.addMeet) p.addMeet = true;
         if (!root.isNew) {
             p.id = root.draft.id;
@@ -94,7 +104,7 @@ Item {
     }
     function save() {
         if (!root.calendarId) { shake.restart(); return; }
-        root.agenda.saveDraft(root.payload(), root.draft, root.recurrence);
+        root.agenda.saveDraft(root.payload(), root.draft, root.fixedRecurrence());
     }
 
     // Backdrop.
@@ -359,14 +369,37 @@ Item {
                                     text: modelData.label
                                     accent: root.tone
                                     selected: GCal.presetOf(root.recurrence) === modelData.id
-                                    onClicked: root.recurrence = modelData.rule ? [modelData.rule] : []
+                                    onClicked: {
+                                        root.recurrence = modelData.rule ? GCal.withRule(root.recurrence, modelData.rule) : [];
+                                        root.repeatCustom = false;
+                                    }
                                 }
                             }
                             GCalChip {
-                                visible: GCal.presetOf(root.recurrence) === "custom"
-                                text: GCal.describeRule(root.recurrence)
+                                text: GCal.tr("Custom…", "Personnalisé…")
+                                icon: GCal.icon.cog
                                 accent: root.tone
-                                selected: true
+                                selected: root.repeatCustom || GCal.presetOf(root.recurrence) === "custom"
+                                onClicked: root.toggleCustom()
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            visible: !root.repeatCustom && GCal.presetOf(root.recurrence) === "custom"
+                            text: GCal.describeRule(root.recurrence, root.start)
+                            wrapMode: Text.WordWrap
+                            font.family: ThemeBackend.fontFamily; font.weight: Font.Black; font.pixelSize: root.s(11.5)
+                            color: root.tone
+                        }
+                        GCalCollapse {
+                            open: root.repeatCustom
+                            GCalRepeatEditor {
+                                width: parent.width
+                                rule: root.recurrence
+                                anchor: root.start
+                                allDay: root.allDay
+                                accent: root.tone
+                                onEdited: (list) => root.recurrence = list
                             }
                         }
                     }
