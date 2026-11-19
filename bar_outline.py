@@ -148,8 +148,6 @@ def patch_left(text):
     current_item = '                readonly property string itemId: modelData\n'
     if text.count(current_item) == 1:
         # The modern repeater delegate is a plain Item; panel belongs on its MenuButton.
-        if '        property string panel: ""\n' in text:
-            text = text.replace(f'        property string panel: "" // {MARK}\n', '')
         text = text.replace(
             f'                panel: itemId === "settings" ? "guide" : (itemId === "launcher" ? "launcher" : "") // {MARK}\n',
             '',
@@ -158,7 +156,7 @@ def patch_left(text):
         panel_assignment = f'                panel: itemId === "launcher" ? "launcher" : (itemId === "settings" ? "guide" : "") // {MARK}\n'
         if text.count(button_item) == 1 and 'panel: itemId === "launcher"' not in text:
             text = text.replace(button_item, button_item + panel_assignment, 1)
-        if '        property string panel: ""\n' not in text:
+        if '        property string panel: ""' not in text:
             glyph = '        property string glyph: ""\n        property bool active: false\n'
             _once(text, glyph, 'LeftFace menu glyph')
             text = text.replace(glyph, glyph.replace('        property bool active: false\n', '        property string panel: "" // ' + MARK + '\n        property bool active: false\n'), 1)

@@ -12,7 +12,9 @@ import "js/world.mjs" as World
 Scope {
     id: world
     property var pet: null
-    readonly property bool hypr: Hyprland.requestSocketPath !== ""
+    readonly property bool niri: !!Quickshell.env("NIRI_SOCKET")
+    readonly property bool hypr: !niri && Hyprland.requestSocketPath !== ""
+    property var niriMonitors: []
     readonly property bool live: Clawd.world
     readonly property bool asleep: !!pet && pet.asleep
     property var fake: null            // injected {clients, monitors, screens}
@@ -43,7 +45,7 @@ Scope {
     readonly property var ignored: ["windowtitle", "windowtitlev2", "activelayout", "submap", "bell", "screencast", "screencastv2"]
     readonly property var displays: {
         const native = fake && fake.monitors ? fake.monitors : hypr ? Hyprland.monitors.values.map(m => ({ name: m.name, x: m.x, y: m.y,
-            activeWorkspace: m.activeWorkspace ? { id: m.activeWorkspace.id } : null, lastIpcObject: m.lastIpcObject })) : [];
+            activeWorkspace: m.activeWorkspace ? { id: m.activeWorkspace.id } : null, lastIpcObject: m.lastIpcObject })) : niriMonitors;
         const screens = fake && fake.screens ? fake.screens : Quickshell.screens.map(s => ({ name: s.name, x: s.x, y: s.y, width: s.width, height: s.height }));
         return World.monitors(screens, native);
     }
@@ -76,7 +78,8 @@ Scope {
         }
         const byId = {}, all = {};
         for (const w of next) byId[w.id] = { x: w.x, y: w.y, w: w.w, h: w.h, display: w.display };
-        if (live) for (const c of clients) if (c && c.address && c.at && c.size && c.mapped !== false) all[c.address] = { x: c.at[0], y: c.at[1], w: c.size[0], h: c.size[1] };
+        if (live) for (const c of clients) if (c && c.address && c.mapped !== false)
+            all[c.address] = c.at && c.size ? { x: c.at[0], y: c.at[1], w: c.size[0], h: c.size[1] } : mapped[c.address] || {};
         const front = live ? clients.find(c => c && c.focusHistoryID === 0) : null;
         const focus = front ? front.address : "";
         const ws = {};
@@ -110,7 +113,7 @@ Scope {
 
     // Fixtures only: plays Hyprland. Returns false when the real one is there.
     function inject(data) {
-        if (hypr || !data) return false;
+        if (hypr || niri || !data) return false;
         const next = Object.assign({}, fake || {});
         for (const k of ["monitors", "screens", "bar"]) if (data[k] !== undefined) next[k] = data[k];
         fake = next;
@@ -133,6 +136,21 @@ Scope {
     onDisplaysChanged: Qt.callLater(snapshot)
     Component.onCompleted: { snapshot(); fetch(); }
 
+    Process {
+        running: world.niri && world.live
+        command: ["python3", Quickshell.env("HOME") + "/.local/share/serpantinum-addons-v2/scripts/niri_world.py"]
+        stdout: SplitParser { onRead: data => {
+            try {
+                const state = JSON.parse(data);
+                world.niriMonitors = state.monitors;
+                if (state.pointer !== undefined) world.pointer = state.pointer;
+                if (state.layers !== undefined) world.applyLayers(state.layers);
+                world.clients = state.clients;
+                world.fed = true;
+                world.snapshot();
+            } catch (error) { console.warn("Clawd Niri:", error); }
+        } }
+    }
     Connections {
         target: Hyprland
         function onRawEvent(event) {

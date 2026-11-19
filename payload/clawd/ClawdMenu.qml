@@ -31,7 +31,7 @@ FocusScope {
         else if (rows[i] === "dreams") { pet.journalTab = "dreams"; pet.journalOpen = true; }
         else if (rows[i] === "revive") pet.revive();
         else if (rows[i] === "hide") Config.setSetting("addonsV2Clawd", false);
-        else Quickshell.execDetached(["bash", Caching.serpantinumDir + "/scripts/settings.sh", "open", "addons", "addons_general"]);
+        else Quickshell.execDetached(["bash", Caching.serpantinumDir + "/scripts/settings.sh", "open", "addons", "addons_banners"]);
     }
 
     FontMetrics { id: metrics; font.family: ThemeBackend.fontFamily; font.pixelSize: 14 }

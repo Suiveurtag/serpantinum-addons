@@ -285,7 +285,9 @@ The effort settings are per level and per agent, in the **effort** line of the c
 - After a scene: grey, on his back, crosses in his eyes, smoke. He no longer reacts to anything; his bubbles stay visible.
 - Revives with `> revive`, when a new Claude Code, Codex, OpenCode or Hermes session starts (except after a compaction), or when the shell starts / is activated 3 h or more after his death. Revival takes about 9 s with a halo of light.
 
-**Animations**: 123 strips (17 of them idle fidgets, 34 working loops) plus 32 idle "acts" (book, cheering, bike, carrying, broom, rowing, fishing, campfire, binoculars, photo, nap), played rarely on the ground, never twice in a row.
+**Shaking**: shake him while dragging (quick back-and-forth) and he flails, eyes squeezed shut; stop and he hangs limp with rolling eyes and stars circling his head; drop him and he lands dizzy, wobbling (shaken hard: he plops on his bottom before getting up).
+
+**Animations**: 127 strips (17 of them idle fidgets, 34 working loops, 4 for being shaken) plus 32 idle "acts" (book, cheering, bike, carrying, broom, rowing, fishing, campfire, binoculars, photo, nap), played rarely on the ground, never twice in a row.
 
 **IPC**
 - `clawd toggle`, `appear`, `hide`, `play <name>` (animations, scenes, dreams), `state` (debug JSON).

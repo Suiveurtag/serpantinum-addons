@@ -9,7 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 - Calendar: Google Calendar (read/write) and iCal subscriptions. The clock panel (Super+S) gains a day stream underneath (the schedule strip of the original Imperative Dots, fed by the calendar), event dots in its mini calendar and a next-event countdown under the clock; it morphs into a full agenda (Super+G) with month, week, day and list views, search, drag to move or resize, an event editor (repeat, reminders, Meet link, colour), RSVP, offline edits and reminder notifications. Synced by the `serpantinum-gcal` user service; `--without-calendar` removes it. Super+I also opens the agenda directly. Accounts and preferences live in Settings → Calendar, which also has an *Enable calendar* switch.
 - Calendar: advanced repeat options in the event editor. *Custom…* sets an interval and unit, weekdays, days of the month, a weekday of the month ("every 3rd Tuesday", "last Friday"), the last weekday or last day of the month, the months of a yearly series, and an end date or occurrence count; "Weekends" joins the presets. The backend now expands `BYSETPOS`, `WKST`, yearly `BYDAY`/`BYMONTHDAY` and `BYDAY` filters on daily rules, so such series from iCal feeds display correctly too.
+
+## [2.1.4] - 2026-11-17
+
+### Added
+- Niri support for Clawd, Capri, desktop tools, settings and Beamer, alongside Hyprland. Some features require the locally built Niri compositor described in `docs/NIRI.md`; physical multi-monitor sessions and Beamer transfers between computers still need real-world validation.
 - Boot intro: the native Serpantinum welcome replayed once per login (wipe, typed time-of-day greeting with your name, the logo filling with colour over "Serpantinum", then the desktop). Addons → General → "Skip intro at login" (off by default, with Preview and a sound switch); IPC `addonBootIntro play|skip|forget`.
+- Clawd reacts to being shaken while dragged: he flails with his eyes squeezed shut (`drag_shake`), hangs limp and dizzy with stars circling his head once the shaking stops (`drag_dizzy`), and lands wobbling (`dizzy`) or, after a hard shake, plops on his bottom before getting up (`dizzy_fall`).
+- AI Tokens: optional dashboard synchronization for the observed total and per-agent breakdown, with settings for its URL and password; the live indicator follows ongoing dashboard sessions.
+
+### Changed
+- Wallpaper accent controls have been reordered in theme settings.
+
+### Fixed
+- Clawd no longer intermittently remains attached to the pointer after a drag is released.
+- Bar action panel bindings and the Quick Actions colour picker launch.
+- Reinstalling the addons no longer fails on the bar action panel patch.
 
 ## [2.1.3] - 2026-11-13
 
