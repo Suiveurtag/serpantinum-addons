@@ -169,8 +169,6 @@ Item {
         anchors.margins: root.s(22)
         anchors.topMargin: root.s(16)
         spacing: root.s(10)
-        opacity: root.swapOpacity
-        transform: Translate { x: root.swapOffset }
 
         RowLayout {
             Layout.fillWidth: true
@@ -217,6 +215,8 @@ Item {
                 Layout.alignment: Qt.AlignVCenter
                 spacing: root.s(6)
                 visible: root.allDayEvents.length > 0
+                opacity: root.swapOpacity
+                transform: Translate { x: root.swapOffset }
                 Repeater {
                     model: root.allDayEvents.slice(0, 2)
                     delegate: Rectangle {
