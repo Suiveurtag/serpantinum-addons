@@ -324,6 +324,7 @@ PanelWindow {
     }
     ClawdSmash {
         id: smashFx
+        reducedMotion: Clawd.lowMotion
         anchors.fill: parent
         readonly property var s: overlay.pet.smash
         active: !!s && !!overlay.here && s.display === overlay.screen.name
