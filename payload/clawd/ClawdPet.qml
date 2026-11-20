@@ -489,7 +489,7 @@ Item {
         const v = Math.hypot(svx, svy), ux = svx / v, uy = svy / v;
         emit(x + width / 2 - ux * width * 0.45, y + height / 2 - uy * height * 0.45, v > 2400 ? 2 : 1, 3 + Math.min(3, v / 900), -ux * 40, -uy * 40 - 30);
     }
-    // Off the screen: the blast explodes from where he left, pointing back into the screen; he comes back from the top.
+    // Off the screen: the blast explodes from where he left, pointing back into the screen; he comes back on the floor, middle of his screen.
     function blastKo(d, c) {
         const v = Math.hypot(throwVx, vy), ux = throwVx / v, uy = vy / v;
         const ex = Math.max(d.x, Math.min(d.x + d.w, c.x + ux * width / 2)), ey = Math.max(d.y, Math.min(d.y + d.h, c.y - height / 2 + uy * height / 2));
@@ -505,9 +505,10 @@ Item {
         if (!d) return;
         Clawd.screenName = d.id;
         vy = 0;
-        enter("fall", "fall");
-        x = d.x + (d.w - width) / 2;
-        y = d.y - height;
+        enter("spawn", "spawn");  // back on the floor of his screen, with his appearance animation
+        x = Math.round(d.x + (d.w - width) / 2);
+        y = d.floor - height;
+        touch();
     }
     // A throw without the hand (IPC play throw): hard toward the nearer side of his screen, a little upward.
     function toss() {
