@@ -109,6 +109,19 @@ Item {
     property string awayScreen: ""
     property real vx: 0
     property real vy: 0
+    // A throw (released while the hand moved): its sideways speed in the fall (air drag, bounces off screen edges),
+    // the tilt / tumble it gives him (spin, deg; spinV deg/s, 0: he only leans) and the skid on landing (px/s).
+    property real throwVx: 0
+    property real spin: 0
+    property real spinV: 0
+    property real slide: 0
+    property real handVy: 0  // the vertical speed the hand gave him, air drag only (gravity's share never makes smoke)
+    // Throw effects the overlays draw: puffs = smoke / dust {x, y, t, s, dx, dy} (global px, ms, size, drift px/s);
+    // smash = the blast KO {x, y, angle (rad, into the screen), at (ms), display} when a throw sends him off a screen edge.
+    property var puffs: []
+    property real puffAt: 0
+    property var smash: null
+    readonly property int puffLife: 650
     property real last: 0
     property bool tired: false
     readonly property bool riding: !!support && support.kind === "win"
@@ -132,6 +145,8 @@ Item {
 
     function display(name) { return displays.find(d => d.id === name) || null; }
     function displayAt(gx, gy) { return World.displayAt(displays, gx, gy); }
+    // the display that really holds (gx, gy), null past every screen edge (displayAt snaps to the nearest one)
+    function screenAt(gx, gy) { return displays.find(d => gx >= d.x && gx < d.x + d.w && gy >= d.y && gy < d.y + d.h) || null; }
     function refresh() { if (hypr) Hyprland.refreshMonitors(); }
     function clampX(d, v) { return Math.max(d.x, Math.min(d.x + d.w - width, v)); }
 
@@ -169,7 +184,8 @@ Item {
         if (blasting || dead && ["corpse", "dead", "revive", "carried"].indexOf(m) < 0) return;
         if (["sleep", "dream", "nightmare", "sleepwalk"].indexOf(m) < 0) dreamAbort();
         groggy = "";
-        if (m !== "fall") dizzy = "";
+        if (m !== "fall") { dizzy = ""; throwVx = 0; spin = 0; spinV = 0; handVy = 0; }
+        slide = 0;
         const name = clipName(anim), was = grip(animation, mirrored);
         if (m !== "act") { if (act) actAt = Date.now(); act = null; }
         mode = m;
@@ -220,6 +236,7 @@ Item {
         else if (mode === "drop") fell();
         else if (mode === "shimmy") return;
         else if (mode === "react" && resume && grounded()) { const r = resume; resume = null; enter(r.mode, r.animation, r.mirrored); }
+        else if (mode === "ko" || mode === "bonk") return;  // their timers end them
         else if (["sleep", "drag", "walk", "hop", "chat", "recharge", "weekly", "surge"].indexOf(mode) < 0) idle();
     }
     // Back to his resting pose on whatever holds him: perch on a window, idle on the floor; no valid support: fall.
@@ -380,14 +397,30 @@ Item {
             else { x = act.to; act.to = undefined; actNext(); }
         } else if (mode === "fall") {
             vy = Math.min(2400, vy + 2600 * dt);
-            const c = contact(), ny = c.y + vy * dt;
-            if (!fallTarget || now - fallAt >= 250) { fallTarget = landingAt(c.x, c.y); fallAt = now; }
-            if (fallTarget && ny >= fallTarget.y) {
-                fallTarget = landingAt(c.x, c.y);  // touchdown: is it still there?
+            const c = contact();
+            let nx = c.x, ny = c.y + vy * dt;
+            if (throwVx || spin || spinV) flight(c, dt);
+            nx = c.x + throwVx * dt;
+            if (throwVx || vy < 0) { const b = bounce(c, nx, ny); if (mode !== "fall") return; nx = b.x; ny = b.y; }
+            handVy *= Math.exp(-0.7 * dt);
+            if (Math.hypot(throwVx, handVy) > 1500) trail(throwVx, vy);  // only a very fast throw smokes
+            if (!fallTarget || now - fallAt >= 250) { fallTarget = landingAt(nx, c.y); fallAt = now; }
+            if (vy >= 0 && fallTarget && ny >= fallTarget.y) {
+                fallTarget = landingAt(nx, c.y);  // touchdown: is it still there?
                 fallAt = now;
-                if (fallTarget && ny >= fallTarget.y) return settle(fallTarget, c.x);
+                if (fallTarget && ny >= fallTarget.y) return settle(fallTarget, nx);
             }
-            placeAt(c.x, ny);
+            placeAt(nx, ny);
+        } else if (mode === "land" && slide) {
+            // the skid after a throw: friction brings him to a stop on whatever he landed on
+            const s = stand(), f = 2200 * dt;
+            slide = Math.abs(slide) <= f ? 0 : slide - Math.sign(slide) * f;
+            if (!s) { slide = 0; return; }
+            const nx = Math.max(s.x0, Math.min(s.x1, x + slide * dt));
+            if (nx === s.x0 || nx === s.x1) slide = 0;
+            x = nx;
+            walked();
+            if (Math.abs(slide) > 450) { const c = contact(); emit(c.x - Math.sign(slide) * width * 0.25, c.y - 3, 1, 4, -slide * 0.1, -60); }
         } else if (mode === "corpse") {
             // his corpse drops straight onto the floor of his screen, whatever is in between
             vy = Math.min(2400, vy + 2600 * dt);
@@ -416,6 +449,107 @@ Item {
             if (vy > 0 && ny >= l.y) return settle(l, nx);
             placeAt(nx, ny);
         }
+    }
+    // In the air after a throw: air drag on the sideways speed, and the tumble (or a lean into the motion) it gives him.
+    function flight(c, dt) {
+        throwVx *= Math.exp(-0.7 * dt);
+        if (Math.abs(throwVx) < 20) throwVx = 0;
+        if (Clawd.lowMotion) { spin = 0; return; }
+        if (spinV) { spin = (spin + spinV * dt) % 360; spinV *= Math.exp(-0.5 * dt); }
+        else spin = Math.max(-22, Math.min(22, throwVx / 45 + vy / 160 * Math.sign(throwVx)));
+    }
+    // The screen edges stop a throw: a side with no screen beyond sends him back (half his speed), the top pushes him down.
+    function bounce(c, nx, ny) {
+        const g = grip(animation, mirrored), d = displayAt(c.x, c.y) || here;
+        if (!d) return { x: nx, y: ny };
+        const left = nx - g.x, right = left + width, top = ny - g.y, ko = !Clawd.lowMotion && Math.hypot(throwVx, handVy) > 1300;  // the hand's share, as for the smoke
+        // fast enough into an edge with nothing beyond (the floor never counts): the blast KO
+        const offTop = vy < 0 && top < d.y && !screenAt(c.x, d.y - 1);
+        const offLeft = throwVx < 0 && left < d.x && !screenAt(d.x - 1, Math.min(c.y, d.y + d.h - 1)), offRight = throwVx > 0 && right > d.x + d.w && !screenAt(d.x + d.w + 1, Math.min(c.y, d.y + d.h - 1));
+        if (ko && (offTop || offLeft || offRight)) { blastKo(d, c); return { x: nx, y: ny }; }
+        if (vy < 0 && top < d.y && !screenAt(c.x, d.y - 1)) { vy = -vy * 0.35; ny = d.y + g.y; }
+        if (throwVx < 0 && left < d.x && !screenAt(d.x - 1, Math.min(c.y, d.y + d.h - 1))) { throwVx = -throwVx * 0.5; spinV = -spinV * 0.6; nx = d.x + g.x; mirrored = false; }
+        else if (throwVx > 0 && right > d.x + d.w && !screenAt(d.x + d.w + 1, Math.min(c.y, d.y + d.h - 1))) { throwVx = -throwVx * 0.5; spinV = -spinV * 0.6; nx = d.x + d.w - width + g.x; mirrored = true; }
+        return { x: nx, y: ny };
+    }
+    // n puffs around (gx, gy), size ~s game px, drifting (dx, dy); the oldest go once their life is over.
+    function emit(gx, gy, n, s, dx, dy) {
+        if (Clawd.lowMotion) return;
+        const now = Date.now(), kept = puffs.filter(p => now - p.t < puffLife);
+        for (let i = 0; i < n; i++)
+            kept.push({ x: gx + (Math.random() - 0.5) * s * 4, y: gy + (Math.random() - 0.5) * s * 4, t: now, s: s * (0.7 + Math.random() * 0.6),
+                dx: dx + (Math.random() - 0.5) * 80, dy: dy + (Math.random() - 0.5) * 80 });
+        puffs = kept.slice(-40);
+    }
+    // The smoke a fast throw leaves behind him, every 30 ms, thicker the faster he goes.
+    function trail(svx, svy) {
+        const now = Date.now();
+        if (now - puffAt < 30) return;
+        puffAt = now;
+        const v = Math.hypot(svx, svy), ux = svx / v, uy = svy / v;
+        emit(x + width / 2 - ux * width * 0.45, y + height / 2 - uy * height * 0.45, v > 2400 ? 2 : 1, 3 + Math.min(3, v / 900), -ux * 40, -uy * 40 - 30);
+    }
+    // Off the screen: the blast explodes from where he left, pointing back into the screen; he comes back from the top.
+    function blastKo(d, c) {
+        const v = Math.hypot(throwVx, vy), ux = throwVx / v, uy = vy / v;
+        const ex = Math.max(d.x, Math.min(d.x + d.w, c.x + ux * width / 2)), ey = Math.max(d.y, Math.min(d.y + d.h, c.y - height / 2 + uy * height / 2));
+        smash = { x: ex, y: ey, angle: Math.atan2(-uy, -ux), at: Date.now(), display: d.id };
+        support = null; hop = null; fallTarget = null; target = null; intent = null;
+        enter("ko", "fall");
+        koTimer.restart();
+    }
+    function respawn() {
+        if (mode !== "ko") return;
+        const d = display(smash ? smash.display : Clawd.screenName) || here;
+        smash = null;
+        if (!d) return;
+        Clawd.screenName = d.id;
+        vy = 0;
+        enter("fall", "fall");
+        x = d.x + (d.w - width) / 2;
+        y = d.y - height;
+    }
+    // A throw without the hand (IPC play throw): hard toward the nearer side of his screen, a little upward.
+    function toss() {
+        if (owned() || !here || dead || grab) return;
+        const left = x + width / 2 - here.x < here.w / 2, v = { x: left ? -3000 : 3000, y: -700 };
+        target = null; intent = null; support = null; hop = null; cover = null; coverId = ""; peeking = null; resume = null; agenda = null;
+        fallTarget = null; lost = false;
+        enter("fall", "fall", v.x < 0);
+        throwVx = v.x; vy = v.y; handVy = v.y;
+        spinV = Clawd.lowMotion ? 0 : (v.x >= 0 ? 1 : -1) * 900;
+    }
+    // Head first on the ground: a bonk, a little bounce that turns him upright, a dizzy landing.
+    function bonkUp() {
+        if (mode !== "bonk") return;
+        const flip = spin > 0 ? 1 : -1;
+        enter("fall", "fall");
+        spin = flip * 180;
+        spinV = -flip * 640;
+        vy = -380;
+        dizzy = "dizzy";
+    }
+    // The hand's speed as it let go (px/s): the fastest stretch of at least 16 ms among its last 120 ms, so slowing down
+    // just before the release does not eat the throw. A pointer that stopped throws nothing, unless the screen edge
+    // stopped it (he was flung at it).
+    function fling(g) {
+        const t = g && g.trail, now = Date.now();
+        if (!t || t.length < 2) return { x: 0, y: 0 };
+        const b = t[t.length - 1], d = displayAt(b.x, b.y) || here;
+        const pinned = !!d && (b.x <= d.x + 1 || b.x >= d.x + d.w - 2 || b.y <= d.y + 1);
+        if (now - b.t > 80 && !pinned) return { x: 0, y: 0 };
+        let best = { x: 0, y: 0 }, top = 0;
+        for (let i = t.length - 1; i > 0; i--) {
+            if (now - t[i].t > 120) break;
+            let j = i - 1;
+            while (j > 0 && t[i].t - t[j].t < 16) j--;
+            const dt = (t[i].t - t[j].t) / 1000;
+            if (dt < 0.008) continue;
+            const v = { x: (t[i].x - t[j].x) / dt, y: (t[i].y - t[j].y) / dt }, m = Math.hypot(v.x, v.y);
+            if (m > top) { top = m; best = v; }
+        }
+        const cap = v => Math.max(-3600, Math.min(3600, v));
+        return { x: cap(best.x), y: cap(best.y) };
     }
     function walked() {
         if (support) { const l = ledgeOf(support); if (l) support.dx = contact().x - l.x; }
@@ -473,6 +607,21 @@ Item {
     // Touchdown on ledge l, his contact at cx.
     function settle(l, cx) {
         const shaken = dizzy;  // a vanished ledge (falls again) keeps it for the next landing; the bar (hangOn) drops it
+        const skid = l.kind === "bar" ? 0 : throwVx, tilt = ((spin % 360) + 540) % 360 - 180;
+        if (l.kind !== "bar" && mode === "fall" && Math.abs(tilt) > 100 && !Clawd.lowMotion) {  // upside down: the head hits first
+            const win = l.kind !== "floor", sx = win ? World.standAt(world ? world.wins : [], l, cx, width / 2) : cx;
+            if (sx !== null) {
+                support = win ? { kind: l.kind, id: l.id, dx: sx - l.x } : null;
+                vy = 0; fallTarget = null; lost = false;
+                const keep = tilt > 0 ? 180 : -180;
+                enter("bonk", "oops");
+                spin = keep;
+                placeAt(sx, l.y);
+                emit(sx, l.y - 2, 6, 4, 0, -90);
+                bonkTimer.restart();
+                return;
+            }
+        }
         if (l.kind === "bar") { hop = null; vx = 0; const b = barOf(l); if (b) hangOn(b, cx); else { lost = true; enter("fall", "fall"); } return; }  // grabbed the bar
         const win = l.kind !== "floor";
         if (win) {  // clamp onto the ledge, then off any front window; none left: fall again
@@ -485,10 +634,13 @@ Item {
         vy = 0; vx = 0; fallTarget = null;
         const hopping = mode === "hop" && !clock.done && animation === clipName("hop");
         hop = null;
+        const hard = Math.abs(skid) > 500;
         if (hopping) mode = "land";  // the hop strip ends with its own landing squash
-        else enter("land", shaken || (lost ? "oops" : "land"));
+        else enter("land", shaken || (lost ? "oops" : hard ? "stumble" : "land"), hard && skid < 0);
         lost = false;
         placeAt(cx, l.y);
+        if (Math.abs(skid) > 150 && !Clawd.lowMotion) slide = skid * 0.6;  // thrown: he skids on
+        if (Math.abs(skid) > 500) emit(cx, l.y - 2, 4, 4, skid * 0.08, -70);
         const d = display(l.display);
         if (!win && d) x = clampX(d, x);
         if (d && d.id !== Clawd.screenName) Clawd.screenName = d.id;
@@ -500,7 +652,7 @@ Item {
         return d ? { id: "floor:" + d.id, kind: "floor", x: d.x, y: d.floor, w: d.w, display: d.id } : null;
     }
     // Modes the world must never disturb: input, physics in flight, and the scenes of other work.
-    function owned() { return blasting || dead || ["drag", "fall", "hop", "corpse", "dead", "revive", "carried", "explode", "recharge", "weekly", "surge"].indexOf(mode) >= 0; }
+    function owned() { return blasting || dead || ["drag", "fall", "hop", "corpse", "dead", "revive", "carried", "explode", "recharge", "weekly", "surge", "ko", "bonk"].indexOf(mode) >= 0; }
     function placeOnSupport() {
         if (!here || owned()) return;  // special modes keep their support and revalidate after
         if (support) return revalidate();
@@ -1080,6 +1232,7 @@ Item {
         if (holding()) { letGo(false); return; }  // let go first; the request is dropped
         if (Dreams.NAMES.indexOf(name) >= 0) return playDream(name);
         if (Acts.NAMES.indexOf(name) >= 0) { if (!owned() && mode !== "act" && !grab && here && grounded() && !support) startAct(name); return; }  // a special by name (IPC play)
+        if (name === "throw") return toss();
         if (name === "limit") return explode(Math.random() < 0.5 ? "singularity" : "nuke");  // the quota ran out: either end
         if (name === "explode") return explode("singularity");
         if (name === "nuke") return explode("nuke");
@@ -1155,7 +1308,7 @@ Item {
     // recharged(). A dead Clawd simply comes back to life instead.
     function recharge() {
         if (dead) return revive();
-        if (blast || !here || !grounded() || grab && grab.moved || ["recharge", "weekly", "surge", "revive", "corpse", "carried", "explode", "fall", "hop", "drag"].indexOf(mode) >= 0) return;
+        if (blast || !here || !grounded() || grab && grab.moved || ["recharge", "weekly", "surge", "revive", "corpse", "carried", "explode", "fall", "hop", "drag", "ko", "bonk"].indexOf(mode) >= 0) return;
         grab = null; menuOpen = false; journalOpen = false; chatOpen = false; target = null; intent = null; resume = null; hop = null;
         rechargeAt = Date.now();
         enter("recharge", "idle");
@@ -1164,7 +1317,7 @@ Item {
     // stage), whose end calls weeklied(). Dead: he comes back to life instead.
     function weekly() {
         if (dead) return revive();
-        if (blast || !here || !grounded() || grab && grab.moved || ["recharge", "weekly", "surge", "revive", "corpse", "carried", "explode", "fall", "hop", "drag"].indexOf(mode) >= 0) return;
+        if (blast || !here || !grounded() || grab && grab.moved || ["recharge", "weekly", "surge", "revive", "corpse", "carried", "explode", "fall", "hop", "drag", "ko", "bonk"].indexOf(mode) >= 0) return;
         grab = null; menuOpen = false; journalOpen = false; chatOpen = false; target = null; intent = null; resume = null; hop = null;
         weeklyAt = Date.now();
         enter("weekly", "idle");
@@ -1180,7 +1333,7 @@ Item {
     // back on the workspace he left: surged(gx). Dead: he comes back to life instead.
     function surge() {
         if (dead) return revive();
-        if (blast || !here || !grounded() || grab && grab.moved || ["recharge", "weekly", "surge", "revive", "corpse", "carried", "explode", "fall", "hop", "drag"].indexOf(mode) >= 0) return;
+        if (blast || !here || !grounded() || grab && grab.moved || ["recharge", "weekly", "surge", "revive", "corpse", "carried", "explode", "fall", "hop", "drag", "ko", "bonk"].indexOf(mode) >= 0) return;
         grab = null; menuOpen = false; journalOpen = false; chatOpen = false; target = null; intent = null; resume = null; hop = null;
         surgeAt = Date.now();
         surgeHome = null;
@@ -1241,14 +1394,14 @@ Item {
     function press(button, gx, gy) {
         touch();
         if (button === Qt.RightButton) { openMenu(); return; }
-        if (mode === "recharge" || mode === "weekly" || mode === "surge") return;
+        if (mode === "recharge" || mode === "weekly" || mode === "surge" || mode === "ko") return;
         if (dead) {  // he does not react any more, but his corpse can be carried (only where it lies)
             if (button === Qt.LeftButton && ["dead", "carried"].indexOf(mode) >= 0) grab = { x: gx, y: gy, dx: gx - x, dy: gy - y, moved: false };
             return;
         }
         if (button === Qt.MiddleButton) { petpet(); return; }
         dizzy = "";
-        grab = { x: gx, y: gy, dx: gx - x, dy: gy - y, moved: false, ax: { o: gx, d: 0 }, ay: { o: gy, d: 0 }, flips: [], energy: 0 };
+        grab = { x: gx, y: gy, dx: gx - x, dy: gy - y, moved: false, ax: { o: gx, d: 0 }, ay: { o: gy, d: 0 }, flips: [], energy: 0, trail: [{ x: gx, y: gy, t: Date.now() }] };
     }
     function move(gx, gy) {
         if (!grab) return;
@@ -1268,6 +1421,7 @@ Item {
         }
         x = gx - grab.dx;
         y = gy - grab.dy;
+        if (grab.trail) { const now = Date.now(); grab.trail = grab.trail.filter(p => now - p.t <= 150).concat({ x: gx, y: gy, t: now }); }
         if (mode === "drag") shook(gx, gy);
     }
     // Shaking: a turn back of 16 px or more on either axis is a flip; 3 flips within 700 ms and he is being shaken.
@@ -1334,8 +1488,15 @@ Item {
         support = null;
         lost = false;
         fallTarget = null;
+        const v = fling(g), fast = Math.hypot(v.x, v.y) > 250;
         dizzy = g.energy >= 16 ? "dizzy_fall" : g.energy >= 4 ? "dizzy" : "";
-        enter("fall", "fall");
+        enter("fall", "fall", fast && v.x < 0);
+        if (!fast) return;
+        // thrown: he flies on with the hand's speed, tumbling when it was a real throw
+        throwVx = Math.abs(v.x) < 20 ? 0 : v.x;
+        vy = v.y;
+        handVy = v.y;
+        spinV = Math.hypot(v.x, v.y) > 1400 && !Clawd.lowMotion ? (v.x >= 0 ? 1 : -1) * Math.min(900, Math.hypot(v.x, v.y) * 0.4) : 0;
     }
     // A session got busy, needs the user or went quiet: stop wandering (and wake) or go back to normal life.
     function busy() {
@@ -1457,6 +1618,8 @@ Item {
     Timer { id: bubbleTimer; interval: 30000; onTriggered: if (pet.dreamPhase === "bubble") { pet.dreamPhase = ""; pet.dream = null; } }
     Timer { id: mumbleTimer; interval: 3500; onTriggered: pet.mumble = "" }
     Timer { id: drowsy; interval: pet.sleepAfter; onTriggered: { pet.tired = true; if (["sit", "perch"].indexOf(pet.mode) >= 0 || pet.mode === "idle" && pet.animation === "idle") pet.sleep(); } }
-    Timer { interval: 16; repeat: true; running: ["walk", "fall", "hop", "corpse", "climb", "shimmy", "act", "sleepwalk"].indexOf(pet.mode) >= 0; onTriggered: pet.step() }
+    Timer { interval: 16; repeat: true; running: ["walk", "fall", "hop", "corpse", "climb", "shimmy", "act", "sleepwalk"].indexOf(pet.mode) >= 0 || pet.mode === "land" && pet.slide !== 0; onTriggered: pet.step() }
+    Timer { id: koTimer; interval: 1500; onTriggered: pet.respawn() }
+    Timer { id: bonkTimer; interval: 380; onTriggered: pet.bonkUp() }
     Timer { interval: 2000; repeat: true; running: Clawd.world && Clawd.follow && !Clawd.lowMotion && !!pet.world; onTriggered: pet.follow() }
 }

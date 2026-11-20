@@ -55,7 +55,7 @@ PanelWindow {
     Item {
         id: frameBox
         // the press keeps its surface (Wayland implicit grab): stay mapped here while dragged onto another screen
-        visible: (overlay.petHere || hit.pressed) && !overlay.pet.blastHidden
+        visible: (overlay.petHere || hit.pressed) && !overlay.pet.blastHidden && overlay.pet.mode !== "ko"
         x: overlay.here ? Math.round(overlay.pet.x - overlay.here.x) : 0
         y: overlay.here ? Math.round(overlay.pet.y - overlay.here.y) : 0
         width: body.implicitWidth
@@ -71,6 +71,12 @@ PanelWindow {
         width: frameBox.width - hideL - hideR
         height: frameBox.height
         clip: hideL > 0 || hideR > 0
+        // a throw tilts or tumbles him in the air (ClawdPet.spin); upright again on landing, the short way round
+        rotation: overlay.pet.spin
+        Behavior on rotation {
+            enabled: overlay.pet.mode !== "fall"
+            RotationAnimation { duration: 140; direction: RotationAnimation.Shortest; easing.type: Easing.OutCubic }
+        }
 
         ClawdSprite {
             id: body
@@ -284,6 +290,48 @@ PanelWindow {
                 if (surge.t >= surge.at.end) overlay.pet.surged(overlay.here.x + overlay.width / 2);
             }
         }
+    }
+
+    // A throw's smoke and dust (pet.puffs, global px) and the blast KO off a screen edge (pet.smash): click-through, both
+    // timed by fxNow, which only runs while something is still fading.
+    property real fxNow: Date.now()
+    FrameAnimation {
+        id: fx
+        onTriggered: {
+            overlay.fxNow = Date.now();
+            const p = overlay.pet.puffs, last = p.length ? p[p.length - 1].t : 0, s = overlay.pet.smash;
+            if (overlay.fxNow - last > overlay.pet.puffLife && (!s || overlay.fxNow - s.at > smashFx.life)) stop();
+        }
+    }
+    Connections {
+        target: overlay.pet
+        function onPuffsChanged() { overlay.fxNow = Date.now(); fx.start(); }
+        function onSmashChanged() { overlay.fxNow = Date.now(); if (overlay.pet.smash) fx.start(); }
+    }
+    Repeater {
+        model: overlay.here ? overlay.pet.puffs : []
+        Rectangle {
+            required property var modelData
+            readonly property real age: Math.max(0, (overlay.fxNow - modelData.t) / overlay.pet.puffLife)
+            readonly property real px: Math.max(1, Math.round(modelData.s * Clawd.scale * (1 + age * 1.2)))
+            visible: age < 1
+            x: Math.round(modelData.x - overlay.here.x + modelData.dx * age * 0.65 - px / 2)
+            y: Math.round(modelData.y - overlay.here.y + modelData.dy * age * 0.65 - px / 2)
+            width: px; height: px
+            color: age < 0.25 ? "#f4f1ec" : age < 0.6 ? "#d9d4cc" : "#b9b2a8"
+            opacity: 0.75 * (1 - age)
+        }
+    }
+    ClawdSmash {
+        id: smashFx
+        anchors.fill: parent
+        readonly property var s: overlay.pet.smash
+        active: !!s && !!overlay.here && s.display === overlay.screen.name
+        t: active ? Math.max(0, (overlay.fxNow - s.at) / life) : 1
+        ox: active ? s.x - overlay.here.x : 0
+        oy: active ? s.y - overlay.here.y : 0
+        angle: active ? s.angle : 0
+        color: Clawd.effortStyle ? Clawd.effortStyle.color : "#D97757"
     }
 
     // Region tracks only its item's own geometry, never a moving parent's, so mirror the viewport here.

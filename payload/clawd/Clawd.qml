@@ -522,7 +522,7 @@ QtObject {
     function play(name) {
         if (!enabled) return "off";
         // the limit scenes (limit = either at random) and the revival are scenes, not strips
-        if (!manifest || ["limit", "limit5", "nuke", "bsod", "panic", "crash", "revive", "recharge", "weekly", "surge", "limit7"].indexOf(name) < 0 && Acts.NAMES.indexOf(name) < 0 && Dreams.NAMES.indexOf(name) < 0 && !Object.prototype.hasOwnProperty.call(manifest.animations, name)) return "unknown";
+        if (!manifest || ["limit", "limit5", "nuke", "bsod", "panic", "crash", "revive", "recharge", "weekly", "surge", "limit7", "throw"].indexOf(name) < 0 && Acts.NAMES.indexOf(name) < 0 && Dreams.NAMES.indexOf(name) < 0 && !Object.prototype.hasOwnProperty.call(manifest.animations, name)) return "unknown";
         command("play", name);
         return "ok";
     }
