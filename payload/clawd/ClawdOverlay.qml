@@ -299,22 +299,62 @@ PanelWindow {
         id: fx
         onTriggered: {
             overlay.fxNow = Date.now();
-            const p = overlay.pet.puffs, last = p.length ? p[p.length - 1].t : 0, s = overlay.pet.smash;
-            if (overlay.fxNow - last > overlay.pet.puffLife && (!s || overlay.fxNow - s.at > smashFx.life)) stop();
+            const p = overlay.pet.puffs, last = p.length ? p[p.length - 1].t : 0;
+            if (overlay.fxNow - last > overlay.pet.puffLife && (!overlay.smashHere || overlay.smashStart && overlay.fxNow - overlay.smashStart > smashFx.life)) stop();
         }
     }
     Connections {
         target: overlay.pet
         function onPuffsChanged() { overlay.fxNow = Date.now(); fx.start(); }
-        function onSmashChanged() { overlay.fxNow = Date.now(); if (overlay.pet.smash) fx.start(); }
+        function onSmashChanged() {
+            const s = overlay.pet.smash;
+            overlay.fxNow = Date.now();
+            overlay.smashStart = 0;
+            smashShot.armed = false;
+            smashShot.caught = false;
+            if (!s || !overlay.here || s.display !== overlay.screen.name) return;
+            fx.start();
+            if (Clawd.lowMotion) overlay.smashStart = Date.now();
+            else { smashArm.restart(); smashGo.restart(); }
+        }
     }
+
+    // The blast KO, fighting-game style: a hit freeze while the screen is captured (without him), then the blast with the
+    // camera shaking and punching in: the frozen capture shakes in place of the desktop for shakeLife s.
+    readonly property bool smashHere: !!pet.smash && !!here && pet.smash.display === screen.name
+    property real smashStart: 0         // ms, once the capture is in (or it gave up); 0 = still freezing
+    readonly property real smashT: smashHere && smashStart ? Math.max(0, (fxNow - smashStart) / 1000) : -1
+    readonly property real shakeLife: 0.45
+    readonly property real shakeAmp: smashT >= 0 && smashT < shakeLife && !Clawd.lowMotion ? 15 * Math.pow(1 - smashT / shakeLife, 2) : 0
+    readonly property point shake: Qt.point(Math.round(shakeAmp * Math.sin(smashT * 97)), Math.round(shakeAmp * 0.75 * Math.sin(smashT * 73 + 1.3)))
+    Timer { id: smashArm; interval: 34; onTriggered: smashShot.armed = true }   // his last frame off the screen first
+    Timer { id: smashGo; interval: 160; onTriggered: if (overlay.smashHere && !overlay.smashStart) overlay.smashStart = Date.now() }
+    Loader {
+        id: smashShot
+        property bool armed: false
+        property bool caught: false     // in before the blast started: a capture arriving later would pop in mid-shake
+        readonly property bool shown: caught && overlay.shakeAmp > 0
+        active: armed && overlay.smashHere && overlay.smashT < overlay.shakeLife
+        visible: shown
+        x: overlay.shake.x; y: overlay.shake.y
+        width: overlay.width; height: overlay.height
+        scale: 1 + 2.4 * overlay.shakeAmp / Math.max(1, Math.min(width, height))   // the punch-in also hides the edges
+        sourceComponent: ScreencopyView {
+            anchors.fill: parent
+            captureSource: overlay.screen
+            live: false
+            paintCursor: false
+            onHasContentChanged: if (hasContent && overlay.smashHere && !overlay.smashStart) { smashShot.caught = true; overlay.smashStart = Date.now(); }
+        }
+    }
+
     Repeater {
         model: overlay.here ? overlay.pet.puffs : []
         Rectangle {
             required property var modelData
             readonly property real age: Math.max(0, (overlay.fxNow - modelData.t) / overlay.pet.puffLife)
             readonly property real px: Math.max(1, Math.round(modelData.s * Clawd.scale * (1 + age * 1.2)))
-            visible: age < 1
+            visible: age < 1 && !smashShot.shown   // the capture holds them meanwhile
             x: Math.round(modelData.x - overlay.here.x + modelData.dx * age * 0.65 - px / 2)
             y: Math.round(modelData.y - overlay.here.y + modelData.dy * age * 0.65 - px / 2)
             width: px; height: px
@@ -325,13 +365,15 @@ PanelWindow {
     ClawdSmash {
         id: smashFx
         reducedMotion: Clawd.lowMotion
-        anchors.fill: parent
-        readonly property var s: overlay.pet.smash
-        active: !!s && !!overlay.here && s.display === overlay.screen.name
-        t: active ? Math.max(0, (overlay.fxNow - s.at) / life) : 1
-        ox: active ? s.x - overlay.here.x : 0
-        oy: active ? s.y - overlay.here.y : 0
-        angle: active ? s.angle : 0
+        x: overlay.shake.x; y: overlay.shake.y
+        width: overlay.width; height: overlay.height
+        readonly property var s: overlay.smashHere ? overlay.pet.smash : null
+        t: overlay.smashT
+        ox: s ? s.x - overlay.here.x : 0
+        oy: s ? s.y - overlay.here.y : 0
+        angle: s ? s.angle : 0
+        seed: s ? s.at % 997 / 997 : 0
+        pixel: Clawd.scale
         color: Clawd.effortStyle ? Clawd.effortStyle.color : "#D97757"
     }
 

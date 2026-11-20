@@ -39,6 +39,10 @@
     "source_sha256": "54cab9f557ade893b98c77b3e54da7bd753c9cf962496eeb4f9128dcc734b788",
     "package_sha256": "82c13ef792295b00b86ccb34e953876a5c8f570f4a809e439e915df8e7993f8d"
   },
+  "smash": {
+    "source_sha256": "8d686bf691aea545deb211f97f06b70bddd1d9358acba216cf65f65476c32c3f",
+    "package_sha256": "85f8001e4ddd80544bcada87fb41dede54e77c8d48d231367433a53b87dc4c96"
+  },
   "surge": {
     "source_sha256": "01363618c3d2a51e5205c5023700fe15dd5ec0a5a93fc9da698fb4a1ba392570",
     "package_sha256": "4cec84bea3355db711b6504ed3e9be17858209edb430b9feb5770e92dd4ad672"
