@@ -41,6 +41,19 @@ Item {
         ColumnLayout {
             id: settings; width: parent.width; spacing: rootObj.s(8)
             SettingsRow {
+                rootObj: root.rootObj; settingId: "addons_desktop_glass"; searchTab: "addons"; searchKeywords: "liquid glass desktop windows live capture reflection bureau fenêtres"
+                title: "Live desktop in Liquid Glass"; description: "Reflect windows behind the shell on Hyprland 0.57+. Uses extra graphics resources."; icon: "󰖲"
+                wrapText: true
+                Toggle {
+                    checked: Config.getSetting("addonsV2DesktopGlass", false)
+                    accentColor: ThemeBackend.mauve
+                    onToggled: {
+                        Config.setSetting("addonsV2DesktopGlass", checked);
+                        checked = Qt.binding(function() { return Config.getSetting("addonsV2DesktopGlass", false); });
+                    }
+                }
+            }
+            SettingsRow {
                 rootObj: root.rootObj; settingId: "addons_window_outline"; searchTab: "addons"; searchKeywords: "window outline border theme fenêtre contour bordure thème"
                 title: "Themed window outline"; description: "Add a fine outline to windows using the current shell palette."; icon: "󰖯"
                 Toggle {

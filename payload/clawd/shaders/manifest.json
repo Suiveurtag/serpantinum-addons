@@ -40,8 +40,8 @@
     "package_sha256": "82c13ef792295b00b86ccb34e953876a5c8f570f4a809e439e915df8e7993f8d"
   },
   "smash": {
-    "source_sha256": "8d686bf691aea545deb211f97f06b70bddd1d9358acba216cf65f65476c32c3f",
-    "package_sha256": "85f8001e4ddd80544bcada87fb41dede54e77c8d48d231367433a53b87dc4c96"
+    "source_sha256": "3a04279995129abed37440abe87084a4e8802d963d3d6630d086376b4fc46563",
+    "package_sha256": "2417eb5f2eb6ffedd221de7c7c702050c95aeb1513bfbb5282e00c40c4d85fc8"
   },
   "surge": {
     "source_sha256": "01363618c3d2a51e5205c5023700fe15dd5ec0a5a93fc9da698fb4a1ba392570",

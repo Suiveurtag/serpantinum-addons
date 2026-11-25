@@ -38,6 +38,8 @@ WORK_LOT_9 = ['work_6', 'edit_4', 'read_4', 'bash_4', 'search_4', 'web_4', 'task
 ANIMATIONS += FIDGETS_STAND + FIDGETS_SIT + FIDGETS_PERCH + WORK_LOT_9 + ['think_3', 'happy_3']
 SHAKEN = ['drag_shake', 'drag_dizzy', 'dizzy', 'dizzy_fall']  # lot 10: shaken while dragged, then the dizzy landings
 ANIMATIONS += SHAKEN
+SHAKEN += ['drag_catch']  # lot 11: caught in mid-air (held like drag, same checks)
+ANIMATIONS += ['drag_catch']
 SPECIALS = ['book_idle', 'book_blink', 'bike_ride', 'broom_fly', 'boat_idle', 'boat_row_in', 'boat_row', 'boat_row_out', 'boat_row_brief', 'boat_fish_in', 'boat_fish_wait', 'boat_fish_catch', 'boat_fish_out', 'boat_bino', 'carry_walk', 'camp_stand', 'camp_fire_build', 'camp_fire_burn', 'camp_fire_die', 'camp_binoc_raise', 'camp_binoc_look_right', 'camp_binoc_flip_left', 'camp_binoc_look_left', 'camp_binoc_lower', 'camp_camera_raise', 'camp_camera_shoot', 'camp_camera_away', 'camp_lie_down', 'camp_lie_idle', 'camp_stand_up', 'content_idle', 'content_bounce']  # the idle specials: own canvas (w, h) and grip
 ANIMATIONS += SPECIALS
 HOOKS = ROOT/'scripts/clawd/hooks.py'
@@ -309,6 +311,9 @@ class ClawdSpriteTests(unittest.TestCase):
             self.assertEqual((strip[0].tobytes(), strip[-1].tobytes()), (land, idle), name)   # lands like land, hands back to idle
         for name in ('drag_shake', 'drag_dizzy'):
             self.assertTrue(manifest[name]['loop'], name)
+        drag = frames('drag')[0].tobytes()
+        self.assertFalse(manifest['drag_catch']['loop'])
+        self.assertEqual(frames('drag_catch')[-1].tobytes(), drag)   # the swing settles into drag: no jump when its loop takes over
 
     def test_sleep_lot_strips(self):
         from PIL import Image, ImageOps

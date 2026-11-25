@@ -110,6 +110,14 @@ class ChangeTests(unittest.TestCase):
         self.assertEqual(text, installer.patch_theme_view(text))
         self.assertEqual(text.count('AddonPaletteEditor { tab: themeTabRoot }'), 1)
 
+    def test_palette_editor_supports_both_theme_layouts(self):
+        for indent in ('        ', '            '):
+            with self.subTest(indent=indent):
+                original = f'GuideScrollView {{\n{indent}ThemeAppearanceSection {{ id: appearanceSection; tab: themeTabRoot }}\n}}\n'
+                patched = installer.patch_theme_view(original)
+                self.assertIn(f'{indent}AddonPaletteEditor {{ tab: themeTabRoot }}', patched)
+                self.assertEqual(patched, installer.patch_theme_view(patched))
+
     def test_theme_uses_original_tile_delegate(self):
         theme = installer.QS/'guide/theme/ThemeTabState.qml'
         text = (theme if theme.exists() else installer.QS/'guide/theme/ThemeTab.qml').read_text()

@@ -22,6 +22,7 @@ lot 9 (idle fidgets, js/fidgets.mjs, and one more working loop per family): the 
 are idle's first frame, a perched one's are perch's (same grip), so the pet enters and leaves them without a jump.
 lot 10 (shaken): drag_shake / drag_dizzy keep drag's head row and dangling legs (each leg row one column at most from the one above),
 dizzy / dizzy_fall open on land's squash and end on idle's first frame; base palette only (stars and speed specks are cream 'z').
+lot 11 (caught): drag_catch keeps drag's head row (the hand holds him there), its legs swing on with his momentum and end on drag's first frame.
 hand.png (the petpet hand, drawn over Clawd in sync with his frames) is cut out of scripts/clawd/hand-pet.gif.
 An animation may set a grip = its contact point with the support, in frame pixels from the frame's top-left, unmirrored
 (mirrored: W - gx). The pet places him at x = contactX - gx*scale, y = contactY - gy*scale; without one the manifest has no
@@ -97,6 +98,8 @@ ANIMS = {
     # lot 10, shaken while dragged: jerked about, then limp and dizzy in the hand; on landing he wobbles under circling stars
     # (a hard shake: he plops on his bottom first); both landings end on idle's first frame
     'drag_shake': (12, True), 'drag_dizzy': (6, True), 'dizzy': (8, False), 'dizzy_fall': (8, False),
+    # lot 11, caught in mid-air: wide eyes and arms flung up, his legs swing on with the throw, overshoot and settle into drag
+    'drag_catch': (14, False),
 }
 BLAST = {**PALETTE, **{k: tuple(bytes.fromhex(v)) + (255,) for k, v in {
     'a': 'e8946c', 'b': 'f4b68e', 'c': 'fcddc2', 'w': 'ffffff', 'v': '6e3bff'}.items()}}

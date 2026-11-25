@@ -23,6 +23,7 @@ import urllib.error
 import urllib.request
 import agenda
 import capri
+import desktop_glass
 import clawd
 import bar_outline
 import bootintro
@@ -1043,14 +1044,13 @@ def patch_theme(text):
 
 def patch_theme_view(text):
     import re
-    text = re.sub(r'\n            // BEGIN ' + MARK + r' palette editor\n.*?            // END ' + MARK + r' palette editor\n', '', text, flags=re.S)
-    anchor = '            ThemeAppearanceSection { id: appearanceSection; tab: themeTabRoot }\n'
-    if text.count(anchor) != 1: raise InstallError('Theme appearance section anchor changed')
-    return text.replace(anchor, anchor + '''
-            // BEGIN serpantinum-addons-v2 palette editor
-            AddonPaletteEditor { tab: themeTabRoot }
-            // END serpantinum-addons-v2 palette editor
-''', 1)
+    text = re.sub(r'\n[ \t]*// BEGIN ' + MARK + r' palette editor\n.*?^[ \t]*// END ' + MARK + r' palette editor\n', '', text, flags=re.S | re.M)
+    anchor = re.compile(r'^([ \t]*)ThemeAppearanceSection \{ id: appearanceSection; tab: themeTabRoot \}\n', re.M)
+    matches = list(anchor.finditer(text))
+    if len(matches) != 1: raise InstallError('Theme appearance section anchor changed')
+    indent = matches[0].group(1)
+    block = f'\n{indent}// BEGIN {MARK} palette editor\n{indent}AddonPaletteEditor {{ tab: themeTabRoot }}\n{indent}// END {MARK} palette editor\n'
+    return text[:matches[0].end()] + block + text[matches[0].end():]
 
 
 def patch_matugen(text):
@@ -1739,6 +1739,7 @@ PAYLOAD_FILES = {
     **{name + '.qml': 'guide/' + name + '.qml' for name in ('AddonCursorSettings', 'AddonCursorPreview', 'AddonCursorRole', 'AddonCursorTestArea')},
     'AddonPaletteEditor.qml': 'guide/theme/AddonPaletteEditor.qml',
     'AddonGlassSurface.qml': 'reusables/AddonGlassSurface.qml',
+    'AddonDesktopGlass.qml': 'AddonDesktopGlass.qml',
     'AddonButtonEffect.qml': 'reusables/AddonButtonEffect.qml',
 }
 # Upstream files that the payload replaces outright (they exist upstream, so uninstall restores rather than deletes them).
@@ -1773,7 +1774,7 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
                QS/'guide/GuidePopup.qml': patch_guide, QS/'guide/GuideSidebar.qml': patch_guide_sidebar, QS/'guide/IdleTab.qml': patch_idle_tab,
                (theme_state if theme_state.exists() else theme_view): patch_theme,QS/'network/NetworkPopup.qml': patch_network,
                QS/'singletons/theme/Matugen.qml': patch_matugen, QS/'widgets/faces/weather/WeatherFaceFull.qml': patch_weather_face,
-               QS/'bar/faces/left/LeftFace.qml': patch_left_face, QS/'reusables/buttons/ClickButton.qml': patch_click_button, QS/'reusables/buttons/IconButton.qml': patch_icon_button,
+               bar_outline.left_face_path(QS): patch_left_face, QS/'reusables/buttons/ClickButton.qml': patch_click_button, QS/'reusables/buttons/IconButton.qml': patch_icon_button,
                QS/'guide/bar/modules/BarMenuCard.qml': patch_bar_menu_card, QS/'guide/bar/modules/BarModulesSettings.qml': patch_bar_modules_settings,
                QS/'bar/BarModuleRegistry.qml': patch_bar_module_registry, QS/'widgets/WidgetRegistry.qml': patch_widget_registry}
     for path, transform in patches.items():
@@ -1792,6 +1793,8 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
                 raise InstallError(f'Cannot restore {show_path(path)} from Serpantinum {commit}: {error}', show_path(path), 'wallpaper', 'Go online or set SERPANTINUM_UPSTREAM_CACHE, then run the installer again. Nothing was modified.') from error
             if blob is None: raise InstallError(f'Cannot restore {show_path(path)}: missing upstream copy', show_path(path), 'wallpaper', 'Run the installer again once Serpantinum is reachable.')
             pending[path] = blob.decode('utf-8')
+    glass_path = QS/'reusables/display/WallpaperBlur.qml'
+    pending[glass_path] = patch_file(glass_path, desktop_glass.patch, pending.get(glass_path))
     plan.screenshot = QS.parent/'scripts/screenshot.sh'
     text = patch_file(plan.screenshot, patch_screenshot_script)
     text = patch_file(plan.screenshot, patch_screenshot_cleanup, text)
@@ -1855,7 +1858,7 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
                                (QS/'reusables/qmldir', ['AddonGlassSurface 1.0 AddonGlassSurface.qml', 'AddonButtonEffect 1.0 AddonButtonEffect.qml']),
                                (QS/'guide/qmldir', [c + ' 1.0 ' + c + '.qml' for c in ('AddonCursorSettings', 'AddonCursorPreview', 'AddonCursorRole', 'AddonCursorTestArea')] + ['DnsControl 1.0 DnsControl.qml']),
                                (QS/'network/qmldir', ['DnsControl 1.0 DnsControl.qml']),
-                               (QS/'qmldir', ['AddonColorPicker 1.0 AddonColorPicker.qml', 'AddonMouseSpotlight 1.0 AddonMouseSpotlight.qml', 'AddonDesktopZoom 1.0 AddonDesktopZoom.qml',
+                               (QS/'qmldir', ['singleton AddonDesktopGlass 1.0 AddonDesktopGlass.qml', 'AddonColorPicker 1.0 AddonColorPicker.qml', 'AddonMouseSpotlight 1.0 AddonMouseSpotlight.qml', 'AddonDesktopZoom 1.0 AddonDesktopZoom.qml',
                                               'AddonDesktopDraw 1.0 AddonDesktopDraw.qml', 'AddonAwake 1.0 AddonAwake.qml', 'AddonWindowOutline 1.0 AddonWindowOutline.qml'])]:
         original = pending[path] if path in pending else (read(path) if path.exists() else '')
         for declaration in declarations:

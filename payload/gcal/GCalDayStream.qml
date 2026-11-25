@@ -110,8 +110,17 @@ Item {
 
     // ------------------------------------------------------------------ backdrop
 
+    GlassFill {
+        anchors.fill: parent
+        radius: 0
+        tintColor: ThemeBackend.surface0
+        tintAmount: 0.18
+        visible: ThemeBackend.liquidGlass
+    }
+
     Rectangle {
         anchors.fill: parent
+        visible: !ThemeBackend.liquidGlass
         gradient: Gradient {
             GradientStop { position: 0.0; color: "transparent" }
             GradientStop { position: 1.0; color: Qt.alpha(ThemeBackend.crust, 0.45) }
@@ -122,8 +131,9 @@ Item {
     // Three slow sine waves drifting behind everything.
     Item {
         anchors.fill: parent
-        opacity: 0.15
+        opacity: ThemeBackend.liquidGlass ? 0.25 : 0.15
         clip: true
+        visible: true
 
         Repeater {
             model: [
@@ -150,13 +160,37 @@ Item {
                     const ctx = getContext("2d");
                     ctx.clearRect(0, 0, width, height);
                     const cy = height / 2, step = Math.max(2, root.s(10));
-                    ctx.beginPath();
-                    ctx.moveTo(0, cy);
-                    for (let i = 0; i <= width + step * 2; i += step)
-                        ctx.lineTo(i, cy + Math.sin(i / root.s(modelData.len)) * root.s(modelData.amp));
-                    ctx.strokeStyle = String(ThemeBackend[modelData.tone]);
-                    ctx.lineWidth = Math.max(1, root.s(2));
-                    ctx.stroke();
+                    const drawWave = offset => {
+                        ctx.beginPath();
+                        ctx.moveTo(0, cy + offset);
+                        for (let i = 0; i <= width + step * 2; i += step)
+                            ctx.lineTo(i, cy + Math.sin(i / root.s(modelData.len)) * root.s(modelData.amp) + offset);
+                        ctx.stroke();
+                    };
+                    if (ThemeBackend.liquidGlass) {
+                        // A translucent glass ribbon with a narrow reflected highlight.
+                        ctx.lineCap = "round";
+                        ctx.lineJoin = "round";
+                        ctx.strokeStyle = String(ThemeBackend[modelData.tone]);
+                        ctx.globalAlpha = 0.28;
+                        ctx.lineWidth = root.s(10);
+                        drawWave(0);
+                        ctx.globalAlpha = 0.48;
+                        ctx.lineWidth = root.s(4);
+                        drawWave(0);
+                        ctx.strokeStyle = "white";
+                        ctx.globalAlpha = 0.78;
+                        ctx.lineWidth = Math.max(1, root.s(1.2));
+                        drawWave(-root.s(2));
+                        ctx.globalAlpha = 0.26;
+                        ctx.lineWidth = Math.max(1, root.s(1));
+                        drawWave(root.s(2));
+                        ctx.globalAlpha = 1;
+                    } else {
+                        ctx.strokeStyle = String(ThemeBackend[modelData.tone]);
+                        ctx.lineWidth = Math.max(1, root.s(2));
+                        drawWave(0);
+                    }
                 }
             }
         }
@@ -178,13 +212,23 @@ Item {
             Rectangle {
                 Layout.preferredWidth: root.s(36); Layout.preferredHeight: root.s(36)
                 radius: width / 2
-                color: ThemeBackend.surface0
+                color: calendarGlass.active ? "transparent" : ThemeBackend.surface0
+                border.width: ThemeBackend.liquidGlass ? 1 : 0
+                border.color: Qt.alpha(ThemeBackend.text, 0.32)
+                GlassFill {
+                    id: calendarGlass
+                    anchors.fill: parent
+                    radius: parent.radius
+                    tintColor: root.accent
+                    tintAmount: 0.24
+                    visible: ThemeBackend.liquidGlass
+                }
                 Text {
                     anchors.centerIn: parent
                     text: GCal.icon.calendar
                     font.family: ThemeBackend.iconFont
                     font.pixelSize: root.s(17)
-                    color: root.accent
+                    color: ThemeBackend.liquidGlass ? ThemeBackend.text : root.accent
                 }
             }
 
@@ -206,7 +250,7 @@ Item {
                     direction: root.slideDir
                     pixelSize: root.s(11)
                     weight: Font.Bold
-                    color: GCal.status === "error" ? ThemeBackend.red : ThemeBackend.overlay1
+                    color: GCal.status === "error" ? ThemeBackend.red : (ThemeBackend.liquidGlass ? ThemeBackend.subtext0 : ThemeBackend.overlay1)
                 }
             }
 
@@ -448,7 +492,19 @@ Item {
                             radius: Math.min(root.s(10), ThemeBackend.borderRadius)
                             topLeftRadius: 0
                             bottomLeftRadius: 0
-                            color: Qt.alpha(node.tone, node.lit ? 0.2 : 0.09)
+                            color: nodeGlass.active ? "transparent" : Qt.alpha(node.tone, node.lit ? 0.2 : 0.09)
+                            border.width: ThemeBackend.liquidGlass ? 1 : 0
+                            border.color: Qt.alpha(node.tone, node.lit ? 0.7 : 0.42)
+                            GlassFill {
+                                id: nodeGlass
+                                anchors.fill: parent
+                                radius: parent.radius
+                                topLeftRadius: 0
+                                bottomLeftRadius: 0
+                                tintColor: node.tone
+                                tintAmount: node.lit ? 0.14 : 0.09
+                                visible: ThemeBackend.liquidGlass
+                            }
                             Behavior on color { ColorAnimation { duration: 200 } }
                         }
 
@@ -482,7 +538,7 @@ Item {
                                 readonly property string label: node.ev.title || GCal.tr("(No title)", "(Sans titre)")
                                 textFormat: node.tight ? Text.StyledText : Text.PlainText
                                 text: node.tight
-                                    ? label.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + "  <font color=\"" + (node.current ? ThemeBackend.text : (node.past ? node.pastTone : ThemeBackend.overlay1)) + "\" size=\"2\"><b>" + node.range + "</b></font>"
+                                    ? label.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + "  <font color=\"" + (node.past ? ThemeBackend.subtext0 : ThemeBackend.text) + "\" size=\"2\"><b>" + node.range + "</b></font>"
                                     : label
                                 elide: Text.ElideRight
                                 wrapMode: node.compact && node.height > root.s(50) ? Text.WordWrap : Text.NoWrap
@@ -490,7 +546,7 @@ Item {
                                 font.family: ThemeBackend.fontFamily
                                 font.weight: Font.Black
                                 font.pixelSize: root.s(node.compact || node.tight ? 12 : 14)
-                                color: node.current || nodeHover.hovered ? node.tone : (node.past ? node.pastTone : ThemeBackend.text)
+                                color: ThemeBackend.liquidGlass ? ThemeBackend.text : (node.current || nodeHover.hovered ? node.tone : (node.past ? node.pastTone : ThemeBackend.text))
                                 Behavior on color { ColorAnimation { duration: 200 } }
                             }
                             Row {
@@ -501,7 +557,7 @@ Item {
                                     text: GCal.icon.clock
                                     font.family: ThemeBackend.iconFont
                                     font.pixelSize: root.s(11)
-                                    color: node.current ? node.tone : (node.past ? node.pastTone : ThemeBackend.overlay1)
+                                    color: ThemeBackend.liquidGlass ? ThemeBackend.text : (node.current ? node.tone : (node.past ? node.pastTone : ThemeBackend.overlay1))
                                 }
                                 Text {
                                     width: node.width - root.s(30) - clockIcon.width - root.s(4)
@@ -510,7 +566,7 @@ Item {
                                     font.family: ThemeBackend.fontFamily
                                     font.weight: Font.Bold
                                     font.pixelSize: root.s(11)
-                                    color: node.current ? ThemeBackend.text : (node.past ? node.pastTone : ThemeBackend.overlay1)
+                                    color: ThemeBackend.liquidGlass ? ThemeBackend.subtext0 : (node.current ? ThemeBackend.text : (node.past ? node.pastTone : ThemeBackend.overlay1))
                                 }
                             }
                             Row {

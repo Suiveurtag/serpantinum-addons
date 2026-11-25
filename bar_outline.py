@@ -171,6 +171,13 @@ def patch_left(text):
     return text.replace(f'panel: "settings" // {MARK}', f'panel: "guide" // {MARK}')   # the embedded settings window is the "guide" panel
 
 
+def left_face_path(qs):
+    left_face = qs/'bar/faces/left/ActionsFace.qml'
+    if not left_face.is_file():
+        left_face = qs/'bar/faces/left/LeftFace.qml'
+    return left_face
+
+
 def transformations(qs):
     return {qs/'Main.qml': patch_main, qs/'bar/Bar.qml': patch_bar, qs/'bar/BarModule.qml': patch_module,
-            qs/'bar/TopBar.qml': patch_group, qs/'bar/SideBar.qml': patch_group, qs/'bar/faces/left/LeftFace.qml': patch_left}
+            qs/'bar/TopBar.qml': patch_group, qs/'bar/SideBar.qml': patch_group, left_face_path(qs): patch_left}

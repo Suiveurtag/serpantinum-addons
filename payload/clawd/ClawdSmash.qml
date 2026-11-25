@@ -11,6 +11,7 @@ ShaderEffect {
     property bool reducedMotion: false
     property real pixel: 1
     property real seed: 0
+    property real power: 0              // 0..1, how hard he was thrown: the blast is small at 0 and grows to full size
     readonly property int life: reducedMotion ? 250 : 1350   // ms
     visible: t >= 0 && t * 1000 < life
 
@@ -21,6 +22,7 @@ ShaderEffect {
     property real uTime: t
     property real uPixel: pixel
     property real uSeed: seed
+    property real uScale: 0.3 + 0.9 * Math.max(0, Math.min(1, power))
     property real uLow: reducedMotion ? 1 : 0
     fragmentShader: Qt.resolvedUrl("shaders/smash.frag.qsb")  // resolved here, not in the user's file
 }

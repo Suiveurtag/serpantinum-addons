@@ -16,6 +16,7 @@ layout(std140, binding = 0) uniform buf {
     float uPixel;   // his pixel, px: everything snaps to it
     float uSeed;    // 0..1, a different blast every time
     float uLow;     // reduced motion: a short glint only
+    float uScale;   // blast size, 0.3 (just hard enough for a KO) to 1.2 (thrown as hard as it goes)
 };
 
 const float PI = 3.14159265;
@@ -59,7 +60,7 @@ void main() {
     vec2 p = g - uOrigin;
     float u = dot(p, uDir), v = dot(p, n);
     float S = min(uSize.x, uSize.y);
-    float reach = min(S * 0.82, 900.0);
+    float reach = min(S * 0.82, 900.0) * uScale;
     float size = min(130.0, reach * 0.18);
     vec3 white = vec3(1.0, 0.99, 0.93), yellow = vec3(1.0, 0.86, 0.36), orange = vec3(1.0, 0.6, 0.2);
     vec3 crimson = vec3(1.0, 0.17, 0.36), ink = vec3(0.16, 0.05, 0.14);

@@ -1,4 +1,4 @@
-import sys, unittest
+import sys, tempfile, unittest
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -8,6 +8,18 @@ QS = Path.home()/'.local/share/serpantinum/src/quickshell'
 
 
 class BarOutlineTest(unittest.TestCase):
+    def test_action_face_path_supports_old_and_new_versions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            folder = root/'bar/faces/left'
+            folder.mkdir(parents=True)
+            old = folder/'LeftFace.qml'
+            new = folder/'ActionsFace.qml'
+            old.touch()
+            self.assertEqual(bar_outline.left_face_path(root), old)
+            new.touch()
+            self.assertEqual(bar_outline.left_face_path(root), new)
+
     def test_patches_are_idempotent_and_fail_closed(self):
         for path, transform in bar_outline.transformations(QS).items():
             if not path.is_file():

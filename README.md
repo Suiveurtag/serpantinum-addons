@@ -557,6 +557,10 @@ Tab **Addons → Mouse** (sub-tab "Mouse").
 
 ### 12. General settings (Addons → General)
 
+**Live desktop in Liquid Glass** is off by default. When enabled on Hyprland 0.57 or newer, Liquid Glass samples the active workspace's windows over the wallpaper. Capture is shared per monitor, capped at 10 frames per second, and stopped when disabled. The first use builds a small QML module and requires CMake, a C/C++ compiler, `pkg-config`, `wayland-scanner`, and Qt 6 and Wayland development files. If the build or capture is unavailable, the wallpaper remains the backdrop.
+
+Hyprland's windows-only capture excludes pinned windows and other shell layers. Lock-screen glass always uses the wallpaper; standalone Settings also keeps the wallpaper to avoid capturing its own window.
+
 - **Themed window outline**: thin Hyprland border in the colours of the active palette, seasonal colours included. Off by default.
 - **Skip intro at login**: the native Serpantinum welcome plays once when the shell opens after you log in, never on a shell reload. Turn this on to skip it automatically at every login. Any key or click also skips the intro while it is playing. **Preview** plays it now; a second switch mutes its sounds. Off by default.
 - **Hide weather location**: the city name in the weather widget is continuously scrambled (random characters), without changing the data.

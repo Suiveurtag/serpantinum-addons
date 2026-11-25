@@ -77,6 +77,29 @@ PanelWindow {
             enabled: overlay.pet.mode !== "fall"
             RotationAnimation { duration: 140; direction: RotationAnimation.Shortest; easing.type: Easing.OutCubic }
         }
+        // caught in mid-air (pet.caught): the hand stops him at the top, his body stretches on with the speed he had, then snaps back
+        transform: Scale { id: catchStretch; origin.x: viewport.width / 2; origin.y: 0 }
+        SequentialAnimation {
+            id: catchPop
+            property real power: 0
+            ParallelAnimation {
+                NumberAnimation { target: catchStretch; property: "yScale"; to: 1 + 0.12 + 0.2 * catchPop.power; duration: 60; easing.type: Easing.OutQuad }
+                NumberAnimation { target: catchStretch; property: "xScale"; to: 1 - 0.08 - 0.1 * catchPop.power; duration: 60; easing.type: Easing.OutQuad }
+            }
+            ParallelAnimation {
+                NumberAnimation { target: catchStretch; property: "yScale"; to: 1; duration: 320; easing.type: Easing.OutElastic; easing.amplitude: 1.2; easing.period: 0.35 }
+                NumberAnimation { target: catchStretch; property: "xScale"; to: 1; duration: 320; easing.type: Easing.OutElastic; easing.amplitude: 1.2; easing.period: 0.35 }
+            }
+        }
+        Connections {
+            target: overlay.pet
+            function onCaught(power) {
+                if (Clawd.lowMotion) return;
+                catchPop.stop();
+                catchPop.power = power;
+                catchPop.start();
+            }
+        }
 
         ClawdSprite {
             id: body
@@ -104,6 +127,7 @@ PanelWindow {
         MouseArea {
             id: hit
             anchors.fill: parent
+            anchors.margins: -overlay.catchPad   // in the air he is easier to catch
             acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
             preventStealing: true
             cursorShape: overlay.pet.dead && !pressed ? Qt.ArrowCursor : pressed ? Qt.ClosedHandCursor : Qt.PointingHandCursor
@@ -373,12 +397,15 @@ PanelWindow {
         oy: s ? s.y - overlay.here.y : 0
         angle: s ? s.angle : 0
         seed: s ? s.at % 997 / 997 : 0
+        power: s ? s.power : 0
         pixel: Clawd.scale
         color: Clawd.effortStyle ? Clawd.effortStyle.color : "#D97757"
     }
 
     // Region tracks only its item's own geometry, never a moving parent's, so mirror the viewport here.
-    Item { id: hitBox; x: viewport.x; y: viewport.y; width: viewport.width; height: viewport.height; visible: viewport.visible }
+    // While he flies, the hit area grows by catchPad on every side (the MouseArea too): a moving target is hard to click.
+    readonly property int catchPad: (pet.mode === "fall" || pet.mode === "hop") && !pet.blasting ? Math.round(Math.max(viewport.width, viewport.height) * 0.3) : 0
+    Item { id: hitBox; x: viewport.x - overlay.catchPad; y: viewport.y - overlay.catchPad; width: viewport.width + 2 * overlay.catchPad; height: viewport.height + 2 * overlay.catchPad; visible: viewport.visible }
 
     ClawdBubble {
         id: bubble

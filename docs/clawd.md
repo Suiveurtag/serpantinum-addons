@@ -367,6 +367,7 @@ loops above:
 | `drag_dizzy` | 6 / loop | still held once the shaking stops (after 4 shaken turns or more; 3 s, then `drag`) | hangs limp and swings, eyes rolling, two cream stars circling his head |
 | `dizzy` | 8 / once | landing after a shake (4 shaken turns or more) | land's squash, wobbles on planted feet under the stars, shakes it off, blinks |
 | `dizzy_fall` | 8 / once | landing after a hard shake (16 shaken turns or more) | staggers wide, plops on his bottom, sits dazed under the stars, gets up |
+| `drag_catch` | 14 / once | caught in mid-air (a left press while he falls or hops; the hit area grows while he flies) | wide eyes, arms flung up, legs swinging on with his momentum, overshooting and settling into `drag`; a puff and a stretch as strong as his speed |
 
 An animation may have a `grip` in `clawd.json`: the point that touches the support, in frame
 pixels from the frame's top-left, unmirrored (`perch` and `perch_look`: the seat line

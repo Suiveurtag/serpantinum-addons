@@ -806,6 +806,12 @@
       "fps": 8,
       "loop": false
     },
+    "drag_catch": {
+      "file": "drag_catch.png",
+      "frames": 6,
+      "fps": 14,
+      "loop": false
+    },
     "book_idle": {
       "file": "book_idle.png",
       "frames": 1,

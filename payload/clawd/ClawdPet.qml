@@ -117,7 +117,7 @@ Item {
     property real slide: 0
     property real handVy: 0  // the vertical speed the hand gave him, air drag only (gravity's share never makes smoke)
     // Throw effects the overlays draw: puffs = smoke / dust {x, y, t, s, dx, dy} (global px, ms, size, drift px/s);
-    // smash = the blast KO {x, y, angle (rad, into the screen), at (ms), display} when a throw sends him off a screen edge.
+    // smash = the blast KO {x, y, angle (rad, into the screen), at (ms), display, power 0..1} when a throw sends him off a screen edge.
     property var puffs: []
     property real puffAt: 0
     property var smash: null
@@ -219,7 +219,7 @@ Item {
     function next() {
         // The drag strip may finish while the pointer is momentarily still. The
         // grab owns Clawd until the overlay reports release; never idle mid-drag.
-        if (mode === "drag" && grab && grab.moved) return;
+        if (mode === "drag" && grab && grab.moved) { if (animation === "drag_catch") enter("drag", "drag"); return; }  // caught: the swing settles
         if (dead) { if (mode === "dead" && animation !== "dead") enter("dead", "dead"); return; }
         if (mode === "turn" && target !== null) enter("walk", "walk", mirrored);
         else if (mode === "fall") { if (animation !== "fall") enter("fall", "fall"); }  // a startle mid-air is over
@@ -493,7 +493,8 @@ Item {
     function blastKo(d, c) {
         const v = Math.hypot(throwVx, vy), ux = throwVx / v, uy = vy / v;
         const ex = Math.max(d.x, Math.min(d.x + d.w, c.x + ux * width / 2)), ey = Math.max(d.y, Math.min(d.y + d.h, c.y - height / 2 + uy * height / 2));
-        smash = { x: ex, y: ey, angle: Math.atan2(-uy, -ux), at: Date.now(), display: d.id };
+        smash = { x: ex, y: ey, angle: Math.atan2(-uy, -ux), at: Date.now(), display: d.id,
+            power: Math.max(0, Math.min(1, (v - 1300) / 2700)) };  // 0 at the KO threshold, 1 from 4000 px/s: the blast grows with it
         support = null; hop = null; fallTarget = null; target = null; intent = null;
         enter("ko", "fall");
         koTimer.restart();
@@ -1402,7 +1403,24 @@ Item {
         }
         if (button === Qt.MiddleButton) { petpet(); return; }
         dizzy = "";
+        if (button === Qt.LeftButton && airborne()) { catchAir(gx, gy); return; }
         grab = { x: gx, y: gy, dx: gx - x, dy: gy - y, moved: false, ax: { o: gx, d: 0 }, ay: { o: gy, d: 0 }, flips: [], energy: 0, trail: [{ x: gx, y: gy, t: Date.now() }] };
+    }
+    // In the air (thrown, dropped, or his own hop): a press catches him on the spot, no 4 px threshold, no click.
+    function airborne() { return !blasting && (mode === "fall" || mode === "hop"); }
+    // Caught: held where the hand closed on him, upright again, his legs swinging on with the speed he had (drag_catch),
+    // a puff and a stretch (ClawdOverlay, caught) as strong as that speed; letting go at once drops him, moving throws him again.
+    signal caught(real power)
+    function catchAir(gx, gy) {
+        const sx = mode === "hop" ? vx : throwVx, sy = vy, speed = Math.hypot(sx, sy);  // a hop's sideways speed is vx
+        target = null; intent = null; support = null; hop = null; cover = null; coverId = ""; peeking = null; resume = null; agenda = null;
+        fallTarget = null; lost = false; dropStartled = false; menuOpen = false; vx = 0;
+        enter("drag", "drag_catch", sx < 0);
+        vy = 0;
+        grab = { x: gx, y: gy, dx: gx - x, dy: gy - y, moved: true, ax: { o: gx, d: 0 }, ay: { o: gy, d: 0 }, flips: [], energy: 0, trail: [{ x: gx, y: gy, t: Date.now() }] };
+        const power = Math.max(0, Math.min(1, speed / 2400));
+        if (speed > 300) emit(gx, gy, 3 + Math.round(power * 4), 2 + power * 2, sx * 0.04, sy * 0.04 - 40);
+        caught(power);
     }
     function move(gx, gy) {
         if (!grab) return;

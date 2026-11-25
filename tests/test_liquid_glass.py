@@ -4,9 +4,28 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+import desktop_glass
+
+
+class DesktopGlassPatchTests(unittest.TestCase):
+    def test_backdrop_patch_is_idempotent_and_fails_closed(self):
+        source = '''Item {
+                    Rectangle {
+                        anchors.fill: parent
+                        visible: root.tint > 0
+                    }
+}
+'''
+        patched = desktop_glass.patch(source)
+        self.assertEqual(desktop_glass.patch(patched), patched)
+        self.assertIn('root.active && root.liquid && !root.useSnapshot && AddonDesktopGlass.enabled', patched)
+        with self.assertRaises(ValueError):
+            desktop_glass.patch('Item {}')
 
 
 @unittest.skipUnless(shutil.which('quickshell'), 'Quickshell runtime unavailable')

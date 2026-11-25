@@ -10,6 +10,7 @@ ShellRoot {
         property real carryFrom: 0
         property int waits: 0
         property real startX: 0
+        property bool caughtOnce: false
         property var p: host.pet
         interval: 100; running: true; repeat: true
         function expect(c, msg) { if (!c) { console.error("CLAWD_FAIL", step, msg, p ? JSON.stringify({mode: p.mode, anim: p.animation, x: p.x, y: p.y, h: p.height, here: p.here}) : ""); Qt.exit(1); } }
@@ -32,7 +33,7 @@ ShellRoot {
                 break;
             case 1:
                 if (!wait(Clawd.instances === Quickshell.screens.length && Clawd.manifest && host.pet, "one overlay per screen")) break;
-                expect(!!Clawd.manifest.animations.explode && Object.keys(Clawd.manifest.animations).length === 159 && Clawd.manifest.frame.w === 21, "manifest loaded");
+                expect(!!Clawd.manifest.animations.explode && Object.keys(Clawd.manifest.animations).length === 160 && Clawd.manifest.frame.w === 21, "manifest loaded");
                 expect(p.mode === "spawn" && Clawd.screenName === Quickshell.screens[0].name, "spawns on a screen");
                 expect(Math.abs(p.y - floorY()) < 1 && p.height === Clawd.manifest.frame.h * 4, "spawn on the floor at x4");
                 break;
@@ -66,6 +67,7 @@ ShellRoot {
                 expect(p.mode === "drag" && p.animation === "drag_shake" && p.grab.energy >= 4, "a shake: " + (p.grab && p.grab.energy));
                 p.calmed();
                 expect(p.mode === "drag" && p.animation === "drag_dizzy", "the hand stops: dizzy in the hand");
+                p.grab.trail = p.grab.trail.slice(-1);   // the hand rested before letting go: the shake's moves (all in this tick) are no throw
                 p.release(p.x + 10, p.y + 10);
                 expect(p.mode === "fall" && p.dizzy === "dizzy", "release falls, dizzy");
                 break;
@@ -77,6 +79,25 @@ ShellRoot {
                 break;
             case 6:
                 if (!wait(p.mode === "idle", "land, then idle")) break;
+                if (!caughtOnce) {   // dropped from high up, caught on the way down: held at once, no click, then dropped again
+                    caughtOnce = true;
+                    p.press(Qt.LeftButton, p.x + 10, p.y + 10);
+                    p.move(p.x + 10, p.y - 290);
+                    p.release(p.x + 10, p.y + 10);
+                    expect(p.mode === "fall", "dropped high: falls");
+                    p.step();
+                    p.press(Qt.LeftButton, p.x + 10, p.y + 10);
+                    expect(p.mode === "drag" && p.animation === "drag_catch" && p.grab && p.grab.moved && p.spin === 0, "a press in the air catches him");
+                    const held = p.y;
+                    p.step();
+                    expect(p.y === held, "caught: he no longer falls");
+                    p.next();
+                    expect(p.mode === "drag" && p.animation === "drag", "the catch swing settles into drag");
+                    p.release(p.x + 10, p.y + 10);
+                    expect(p.mode === "fall" && !p.grab, "let go: falls again");
+                    step--;
+                    break;
+                }
                 p.singleClick();  // the click itself is 250 ms late (a double-click cancels it): its timer's effect
                 expect(p.mode === "land", "click reacts");
                 p.walk();
