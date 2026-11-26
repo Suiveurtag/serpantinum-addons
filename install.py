@@ -1125,7 +1125,7 @@ def patch_matugen_generation(text):
 def patch_shell(text):
     blocks = [
         '    // BEGIN serpantinum-addons-v2 window outline\n    AddonWindowOutline {}\n    // END serpantinum-addons-v2 window outline\n',
-        '    // BEGIN serpantinum-addons-v2 color picker\n    AddonColorPicker {}\n    // END serpantinum-addons-v2 color picker\n',
+        '    // BEGIN serpantinum-addons-v2 color picker\n    AddonColorPicker { id: addonColorPicker }\n    Connections { target: screenshotLoader.item; ignoreUnknownSignals: true; function onAddonPickerRequested(path, monitor) { if (addonColorPicker.openFromImage(path, monitor)) { screenshotLoader.item.freezeImg = ""; screenshotLoader.item.deactivate(); } } }\n    // END serpantinum-addons-v2 color picker\n',
         '    // BEGIN serpantinum-addons-v2 awake\n    AddonAwake {}\n    // END serpantinum-addons-v2 awake\n',
         '    // BEGIN serpantinum-addons-v2 desktop draw\n    AddonDesktopDraw {}\n    // END serpantinum-addons-v2 desktop draw\n',
         '    // BEGIN serpantinum-addons-v2 desktop zoom\n    AddonDesktopZoom {}\n    // END serpantinum-addons-v2 desktop zoom\n',
@@ -1133,12 +1133,43 @@ def patch_shell(text):
     ]
     # These IPC handlers must be direct ShellRoot children. Keeping them in
     # screenshotLoader makes every shortcut fail until a screenshot activates it.
+    text = text.replace('    // BEGIN serpantinum-addons-v2 color picker\n    AddonColorPicker {}\n    // END serpantinum-addons-v2 color picker\n', '')
     for block in blocks:
         text = text.replace(block, '')
     anchor = '    Main {}\n'
     if text.count(anchor) != 1: raise InstallError('Shell root component anchor changed')
     prefix, suffix = text.split(anchor, 1)
     return prefix.rstrip() + '\n\n' + '\n'.join(blocks) + '\n' + anchor + suffix
+
+
+def patch_screenshot_picker(text):
+    marker = "// BEGIN serpantinum-addons-v2 screenshot picker"
+    if marker in text:
+        return text
+    anchor = '    function enterColorPicker() {\n'
+    if text.count(anchor) != 1:
+        raise InstallError('Screenshot color picker anchor changed')
+    block = """    // BEGIN serpantinum-addons-v2 screenshot picker
+    signal addonPickerRequested(string path, string monitor)
+    function handoffAddonPicker() {
+        if (root.freezeImg === "" || root.isVideoMode) return;
+        let path = root.freezeImg;
+        let monitor = root.screen ? root.screen.name : root.targetMonitorName;
+        root.addonPickerRequested(path, monitor);
+    }
+    // END serpantinum-addons-v2 screenshot picker
+
+"""
+    text = text.replace(anchor, block + anchor, 1)
+    start = text.index(anchor)
+    end = text.index('    function handleColorPicked(', start)
+    section = text[start:end]
+    section = section.replace('        root.isColorPickerMode = true;', '        root.handoffAddonPicker();')
+    text = text[:start] + section + text[end:]
+    old = '                if (root.freezeImg !== "" && !root.isVideoMode) {\n                    root.isColorPickerMode = true;\n                }'
+    if text.count(old) != 1:
+        raise InstallError('Screenshot picker refreeze anchor changed')
+    return text.replace(old, '                if (root.freezeImg !== "" && !root.isVideoMode) {\n                    root.handoffAddonPicker();\n                }', 1)
 
 
 def patch_screenshot_overlay(text):
@@ -1770,7 +1801,7 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
     theme_state = QS/'guide/theme/ThemeTabState.qml'
     theme_view = QS/'guide/theme/ThemeTab.qml'
     patches = {QS/'Main.qml': lambda text: remove_inline_settings(patch_main(text), '//'), QS/'WindowRegistry.js': lambda text: remove_inline_settings(text, '//'),
-               QS/'Shell.qml': patch_shell, QS/'screenshot/ScreenshotOverlay.qml': patch_screenshot_overlay, QS/'quickactions/Floating.qml': lambda text: remove_beamer_edge_guard(text) if without_beamer else patch_beamer_edge_guard(patch_floating(text)),
+               QS/'Shell.qml': patch_shell, QS/'screenshot/ScreenshotOverlay.qml': lambda text: patch_screenshot_picker(patch_screenshot_overlay(text)), QS/'quickactions/Floating.qml': lambda text: remove_beamer_edge_guard(text) if without_beamer else patch_beamer_edge_guard(patch_floating(text)),
                QS/'guide/GuidePopup.qml': patch_guide, QS/'guide/GuideSidebar.qml': patch_guide_sidebar, QS/'guide/IdleTab.qml': patch_idle_tab,
                (theme_state if theme_state.exists() else theme_view): patch_theme,QS/'network/NetworkPopup.qml': patch_network,
                QS/'singletons/theme/Matugen.qml': patch_matugen, QS/'widgets/faces/weather/WeatherFaceFull.qml': patch_weather_face,
