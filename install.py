@@ -1044,13 +1044,16 @@ def patch_theme(text):
 
 def patch_theme_view(text):
     import re
-    text = re.sub(r'\n[ \t]*// BEGIN ' + MARK + r' palette editor\n.*?^[ \t]*// END ' + MARK + r' palette editor\n', '', text, flags=re.S | re.M)
-    anchor = re.compile(r'^([ \t]*)ThemeAppearanceSection \{ id: appearanceSection; tab: themeTabRoot \}\n', re.M)
+    text = re.sub(r'(?m)^[ \t]*// BEGIN ' + MARK + r' palette editor\n.*?^[ \t]*// END ' + MARK + r' palette editor\n?', '', text, flags=re.S)
+    anchor = re.compile(r'(?m)^(?P<indent>[ \t]*)ThemeAppearanceSection \{ id: appearanceSection; tab: themeTabRoot \}\n')
     matches = list(anchor.finditer(text))
     if len(matches) != 1: raise InstallError('Theme appearance section anchor changed')
-    indent = matches[0].group(1)
-    block = f'\n{indent}// BEGIN {MARK} palette editor\n{indent}AddonPaletteEditor {{ tab: themeTabRoot }}\n{indent}// END {MARK} palette editor\n'
-    return text[:matches[0].end()] + block + text[matches[0].end():]
+    match = matches[0]
+    indent = match.group('indent')
+    block = (f'{indent}// BEGIN {MARK} palette editor\n'
+             f'{indent}AddonPaletteEditor {{ tab: themeTabRoot }}\n'
+             f'{indent}// END {MARK} palette editor\n')
+    return text[:match.end()] + block + text[match.end():]
 
 
 def patch_matugen(text):
