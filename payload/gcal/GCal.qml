@@ -14,6 +14,7 @@ QtObject {
 
     // Settings → Calendar → Enable. Off: no clock-panel hooks, no agenda, no sync, and the daemon is stopped.
     readonly property bool enabled: Config.getSetting("addonsV2Calendar", true) !== false
+    readonly property bool reducedMotion: !!Config.getSetting("general", {}).performance
     readonly property bool previewEnabled: Config.getSetting("addonsV2CalendarPreview", true) !== false
     function setPreviewEnabled(on) { Config.setSetting("addonsV2CalendarPreview", on); }
     // Event badge under the clock: "never", "ahead" (starts within chipHours) or "ongoing" (only while it runs).
@@ -345,7 +346,9 @@ QtObject {
 
     function readableOn(c) {
         const col = Qt.color(c);
-        return (0.2126 * col.r + 0.7152 * col.g + 0.0722 * col.b) > 0.6 ? "#11111b" : "#ffffff";
+        const linear = c => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+        const luminance = 0.2126 * linear(col.r) + 0.7152 * linear(col.g) + 0.0722 * linear(col.b);
+        return luminance > 0.179 ? "#000000" : "#ffffff";
     }
 
     // Nerd Font glyphs (Material Design range) used across the calendar UI.

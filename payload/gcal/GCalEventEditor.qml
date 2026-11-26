@@ -3,7 +3,7 @@ import QtQuick.Layouts
 import "../"
 import "../reusables"
 
-// Side sheet to create or edit an event. Slides in from the right, fields cascade in, pickers expand inline.
+// Event editor with inline date and time pickers.
 Item {
     id: root
     required property Item agenda
@@ -103,7 +103,7 @@ Item {
         return p;
     }
     function save() {
-        if (!root.calendarId) { shake.restart(); return; }
+        if (!root.calendarId) { if (!GCal.reducedMotion) shake.restart(); return; }
         root.agenda.saveDraft(root.payload(), root.draft, root.fixedRecurrence());
     }
 
@@ -118,12 +118,14 @@ Item {
     Rectangle {
         id: sheet
         property real progress: root.open ? 1 : 0
-        Behavior on progress { NumberAnimation { duration: root.open ? 560 : 300; easing.type: root.open ? Easing.OutExpo : Easing.InCubic } }
+        Behavior on progress { NumberAnimation { duration: GCal.reducedMotion ? 125 : (root.open ? 250 : 190); easing.type: Easing.OutCubic } }
         visible: progress > 0.01
+        enabled: root.open
         width: Math.min(root.s(460), parent.width - root.s(40))
         height: parent.height - root.s(16)
         y: root.s(8)
-        x: parent.width - (width + root.s(8)) * progress
+        x: parent.width - width - root.s(8)
+        opacity: GCal.reducedMotion ? progress : 1
         radius: Math.min(ThemeBackend.borderRadius + root.s(4), root.s(22))
         color: ThemeBackend.base
         border.width: 1
@@ -132,10 +134,10 @@ Item {
         clip: true
         MouseArea { anchors.fill: parent }   // swallow clicks
 
-        transform: Translate {
-            id: shakeT
-            x: 0
-        }
+        transform: [
+            Translate { x: GCal.reducedMotion ? 0 : (sheet.width + root.s(8)) * (1 - sheet.progress) },
+            Translate { id: shakeT }
+        ]
         SequentialAnimation {
             id: shake
             NumberAnimation { target: shakeT; property: "x"; to: -root.s(10); duration: 60 }
@@ -308,10 +310,9 @@ Item {
                                     Layout.fillWidth: true
                                     readonly property bool open: root.picker === whenRow.modelData + "Date"
                                     Layout.preferredHeight: open ? mini.implicitHeight + root.s(10) : 0
-                                    Behavior on Layout.preferredHeight { NumberAnimation { duration: 380; easing.type: Easing.OutCubic } }
                                     clip: true
                                     opacity: open ? 1 : 0
-                                    Behavior on opacity { NumberAnimation { duration: 240 } }
+                                    Behavior on opacity { NumberAnimation { duration: 145; easing.type: Easing.OutCubic } }
                                     GCalMiniMonth {
                                         id: mini
                                         y: root.s(8)

@@ -16,7 +16,7 @@ Scope {
             const e = GCal.find(id);
             GCal.openAgenda("day", e ? new Date(e.start) : null, id);
         }
-        function newEvent(): void { GCal.openEventId = "new"; GCal.openAgenda(); }
+        function newEvent(): void { GCal.openAgenda(null, null, "new"); }
         function sync(): void { GCal.sync(); }
     }
 }

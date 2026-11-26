@@ -18,9 +18,7 @@ Item {
         anchors.centerIn: parent
         width: Math.min(root.s(520), parent.width - root.s(40))
         spacing: root.s(16)
-        visible: root.onboarding
-        opacity: root.open ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
+        visible: root.onboarding && root.open
 
         Item {
             Layout.alignment: Qt.AlignHCenter
@@ -29,12 +27,6 @@ Item {
                 anchors.fill: parent
                 radius: root.s(20)
                 color: Qt.alpha(root.accent, 0.18)
-                SequentialAnimation on rotation {
-                    running: root.open && root.onboarding
-                    loops: Animation.Infinite
-                    NumberAnimation { from: -6; to: 6; duration: 2600; easing.type: Easing.InOutSine }
-                    NumberAnimation { from: 6; to: -6; duration: 2600; easing.type: Easing.InOutSine }
-                }
             }
             Text {
                 anchors.centerIn: parent

@@ -10,6 +10,9 @@ FocusScope {
     property real reveal: 1          // 0 → 1 while the panel morphs in
     property bool shown: false       // fully open
     function s(v) { return Scaler.s(v); }
+    readonly property bool compact: width < s(1140)
+    readonly property bool narrow: width < s(900)
+    property bool sidebarOpen: false
     function step(i) { return Math.max(0, Math.min(1, app.reveal * 1.6 - i * 0.12)); }
 
     readonly property color accent: {
@@ -36,7 +39,9 @@ FocusScope {
         : view === "week" ? GCal.weekStart(GCal.focusDate) : GCal.startOfDay(GCal.focusDate)
     readonly property var periodEnd: view === "month" ? GCal.addDays(periodStart, 42) : view === "week" ? GCal.addDays(periodStart, 7)
         : view === "day" ? GCal.addDays(periodStart, 1) : GCal.addDays(periodStart, 60)
-    onPeriodStartChanged: GCal.ensure(periodStart.getTime(), periodEnd.getTime())
+    onPeriodStartChanged: Qt.callLater(ensurePeriod)
+    onPeriodEndChanged: Qt.callLater(ensurePeriod)
+    function ensurePeriod() { GCal.ensure(periodStart.getTime(), periodEnd.getTime()); }
 
     readonly property string title: {
         const d = GCal.focusDate;
@@ -46,80 +51,51 @@ FocusScope {
         if (app.view === "day") return GCal.dayTitle(d) + " " + d.toLocaleDateString(GCal.locale, "d MMMM");
         if (app.view === "list") return GCal.tr("Upcoming", "À venir");
         const a = app.periodStart, b = GCal.addDays(app.periodStart, 6);
+        if (a.getFullYear() !== b.getFullYear())
+            return a.toLocaleDateString(GCal.locale, "d MMM yyyy") + " – " + b.toLocaleDateString(GCal.locale, "d MMM yyyy");
         return a.getMonth() === b.getMonth()
             ? a.getDate() + " – " + b.toLocaleDateString(GCal.locale, "d MMMM yyyy")
             : a.toLocaleDateString(GCal.locale, "d MMM") + " – " + b.toLocaleDateString(GCal.locale, "d MMM yyyy");
     }
 
-    property int navDir: 1
-    property real viewOpacity: 1
     property real viewOffset: 0
-    property real viewScale: 1
-    property var pendingNav: null
-    SequentialAnimation {
-        id: navAnim
-        ParallelAnimation {
-            NumberAnimation { target: app; property: "viewOpacity"; to: 0; duration: 140; easing.type: Easing.InSine }
-            NumberAnimation { target: app; property: "viewOffset"; to: -app.s(36) * app.navDir; duration: 140; easing.type: Easing.InSine }
-        }
-        ScriptAction {
-            script: {
-                const n = app.pendingNav;
-                if (n.view) GCal.agendaView = n.view;
-                if (n.date) GCal.focusDate = n.date;
-                app.viewOffset = app.s(36) * app.navDir;
-            }
-        }
-        ParallelAnimation {
-            NumberAnimation { target: app; property: "viewOpacity"; to: 1; duration: 380; easing.type: Easing.OutQuart }
-            NumberAnimation { target: app; property: "viewOffset"; to: 0; duration: 420; easing.type: Easing.OutQuart }
-        }
-    }
-    SequentialAnimation {
-        id: viewAnim
-        ParallelAnimation {
-            NumberAnimation { target: app; property: "viewOpacity"; to: 0; duration: 140; easing.type: Easing.InSine }
-            NumberAnimation { target: app; property: "viewScale"; to: 0.97; duration: 140; easing.type: Easing.InSine }
-        }
-        ScriptAction {
-            script: {
-                const n = app.pendingNav;
-                if (n.view) GCal.agendaView = n.view;
-                if (n.date) GCal.focusDate = n.date;
-                app.viewScale = 1.025;
-            }
-        }
-        ParallelAnimation {
-            NumberAnimation { target: app; property: "viewOpacity"; to: 1; duration: 380; easing.type: Easing.OutQuart }
-            NumberAnimation { target: app; property: "viewScale"; to: 1; duration: 460; easing.type: Easing.OutBack; easing.overshoot: 1.2 }
-        }
+    NumberAnimation {
+        id: settleView
+        target: app
+        property: "viewOffset"
+        to: 0
+        duration: 185
+        easing.type: Easing.OutCubic
     }
 
-    function shift(dir) {
+    function shift(dir, animate) {
         const d = GCal.focusDate;
         const next = view === "month" ? new Date(d.getFullYear(), d.getMonth() + dir, Math.min(d.getDate(), 28))
             : view === "week" ? GCal.addDays(d, 7 * dir) : view === "day" ? GCal.addDays(d, dir) : GCal.addDays(d, 14 * dir);
-        navigate(next, dir);
+        navigate(next, dir, animate);
     }
-    function navigate(date, dir) {
-        navDir = dir || (date > GCal.focusDate ? 1 : -1);
-        pendingNav = { date: GCal.startOfDay(date) };
-        viewAnim.stop();
-        navAnim.restart();
+    function navigate(date, dir, animate = true) {
+        if (GCal.sameDay(date, GCal.focusDate)) return;
+        const direction = dir || (date > GCal.focusDate ? 1 : -1);
+        GCal.focusDate = GCal.startOfDay(date);
+        settleView.stop();
+        if (animate && !GCal.reducedMotion) {
+            viewOffset = app.s(10) * direction;
+            settleView.start();
+        } else viewOffset = 0;
     }
-    function today() { if (!GCal.sameDay(GCal.focusDate, GCal.today) || view === "list") navigate(GCal.today); }
+    function today(animate) { navigate(GCal.today, 0, animate); }
     function setView(v) {
-        if (v === view) return;
-        query = "";
+        if (v === view && !query) return;
         searchInput.clear();
-        pendingNav = { view: v };
-        navAnim.stop();
-        viewAnim.restart();
+        query = "";
+        settleView.stop();
+        viewOffset = 0;
+        GCal.agendaView = v;
     }
     function goTo(date, v) {
-        pendingNav = { view: v, date: GCal.startOfDay(date) };
-        navAnim.stop();
-        viewAnim.restart();
+        setView(v);
+        navigate(date, 0, false);
     }
 
     // ------------------------------------------------------------------ editing
@@ -153,12 +129,12 @@ FocusScope {
 
     function newEvent(start, end, allDay) {
         if (!GCal.writableCalendars.length) { toast(GCal.tr("Connect Google Calendar to create events", "Connecte Google Agenda pour créer des événements"), true); GCal.openSettings(); return; }
-        details = null;
+        closeDetails();
         editScopeAll = false;
         editorDraft = { calendarId: GCal.defaultCalendar, title: "", allDay: !!allDay, start: start, end: end, reminders: { useDefault: true, overrides: [] }, recurrence: [] };
     }
     function editEvent(ev) {
-        details = null;
+        closeDetails();
         if (ev.recurringEventId) {
             scopeRequest = { kind: "edit", ev: ev, title: GCal.tr("Edit recurring event", "Modifier un événement récurrent") };
             return;
@@ -167,7 +143,7 @@ FocusScope {
         editorDraft = Object.assign({}, ev);
     }
     function duplicateEvent(ev) {
-        details = null;
+        closeDetails();
         const copy = Object.assign({}, ev);
         delete copy.id; delete copy.recurringEventId;
         copy.title = ev.title + GCal.tr(" (copy)", " (copie)");
@@ -200,7 +176,7 @@ FocusScope {
         GCal.update(payload);
     }
     function deleteEvent(ev) {
-        details = null;
+        closeDetails();
         editorDraft = null;
         const payload = { id: ev.id, calendarId: ev.calendarId, recurringEventId: ev.recurringEventId || "" };
         if (ev.recurringEventId) {
@@ -236,9 +212,17 @@ FocusScope {
         const a = item.mapToItem(app, 0, 0);
         detailsCard.anchorRect = Qt.rect(a.x, a.y, item.width, item.height);
         details = ev;
-        detailsCard.ev = ev;
     }
-    function closeDetails() { details = null; detailsCard.ev = null; }
+    function eventItem(item, id) {
+        if (!item || !item.visible) return null;
+        if (item.ev && item.ev.id === id) return item;
+        for (let i = 0; i < item.children.length; ++i) {
+            const found = eventItem(item.children[i], id);
+            if (found) return found;
+        }
+        return null;
+    }
+    function closeDetails() { details = null; }
 
     // Toast.
     property string toastText: ""
@@ -247,16 +231,16 @@ FocusScope {
     property var toastCallback: null
     function toast(text, isError, action, cb) {
         toastText = text; toastError = !!isError; toastAction = action || ""; toastCallback = cb || null;
-        toastBox.shownAt = Date.now();
         toastTimer.interval = action ? 6000 : 3200;
+        toastBox.open = true;
         toastTimer.restart();
-        toastPop.restart();
         toastBar.restart();
     }
-    Timer { id: toastTimer; onTriggered: app.toastText = "" }
+    Timer { id: toastTimer; onTriggered: toastBox.dismiss() }
 
     Connections {
         target: GCal
+        function onOpenEventIdChanged() { if (GCal.openEventId && app.shown) app.handlePending(); }
         function onGoogleChanged() {
             if (app.shown && GCal.google)
                 app.toast(GCal.tr("Google Calendar connected", "Google Agenda connecté"), false);
@@ -269,14 +253,15 @@ FocusScope {
 
     // Arriving: honour a pending "open this event" / "new event" request.
     onShownChanged: {
-        if (!shown) { details = null; editorDraft = null; scopeRequest = null; return; }
+        if (!shown) { closeDetails(); editorDraft = null; scopeRequest = null; sidebarOpen = false; return; }
         forceActiveFocus();
-        GCal.ensure(periodStart.getTime(), periodEnd.getTime());
+        ensurePeriod();
         handlePending();
     }
     function handlePending() {
         const want = GCal.openEventId;
         GCal.openEventId = "";
+        if (want && want !== "new" && query) searchInput.clear();
         if (want === "new") {
             const d = GCal.focusDate;
             const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.max(8, Math.min(20, new Date().getHours() + 1)), 0).getTime();
@@ -284,7 +269,10 @@ FocusScope {
         } else if (want) {
             Qt.callLater(() => {
                 const e = GCal.find(want);
-                if (e) showDetails(e, header);
+                if (!e || !app.shown) return;
+                if (timeGrid.status === Loader.Ready) timeGrid.item.revealEvent(e);
+                // Let the target view finish creating its delegates before resolving the event's position.
+                Qt.callLater(() => { if (app.shown) showDetails(e, eventItem(viewArea, want) || toolbar); });
             });
         }
     }
@@ -295,86 +283,196 @@ FocusScope {
         if (scopeRequest) resolveScope(null);
         else if (editorDraft) closeEditor();
         else if (details) closeDetails();
+        else if (sidebarOpen) sidebarOpen = false;
         else return false;
         return true;
     }
+    onOverlayOpenChanged: if (!overlayOpen && shown) app.forceActiveFocus()
     Component.onCompleted: GCal.escapeHandler = app.closeTopOverlay
     Component.onDestruction: if (GCal.escapeHandler === app.closeTopOverlay) GCal.escapeHandler = null
-    Shortcut { sequence: "Left"; enabled: app.shown && !app.overlayOpen; onActivated: app.shift(-1) }
-    Shortcut { sequence: "Right"; enabled: app.shown && !app.overlayOpen; onActivated: app.shift(1) }
-    Shortcut { sequence: "T"; enabled: app.shown && !app.overlayOpen && !searchInput.hasFocus; onActivated: app.today() }
-    Shortcut { sequence: "N"; enabled: app.shown && !app.overlayOpen && !searchInput.hasFocus; onActivated: { GCal.openEventId = "new"; app.handlePending(); } }
+    Shortcut { sequence: "Left"; enabled: app.shown && !app.overlayOpen && !searchInput.hasFocus; onActivated: app.shift(-1, false) }
+    Shortcut { sequence: "Right"; enabled: app.shown && !app.overlayOpen && !searchInput.hasFocus; onActivated: app.shift(1, false) }
+    Shortcut { sequence: "T"; enabled: app.shown && !app.overlayOpen && !searchInput.hasFocus; onActivated: app.today(false) }
+    Shortcut { sequence: "N"; enabled: app.shown && !app.overlayOpen && !searchInput.hasFocus; onActivated: GCal.openEventId = "new" }
     Shortcut { sequence: "M"; enabled: app.shown && !app.overlayOpen && !searchInput.hasFocus; onActivated: app.setView("month") }
     Shortcut { sequence: "W"; enabled: app.shown && !app.overlayOpen && !searchInput.hasFocus; onActivated: app.setView("week") }
     Shortcut { sequence: "D"; enabled: app.shown && !app.overlayOpen && !searchInput.hasFocus; onActivated: app.setView("day") }
     Shortcut { sequence: "L"; enabled: app.shown && !app.overlayOpen && !searchInput.hasFocus; onActivated: app.setView("list") }
-    Shortcut { sequence: "/"; enabled: app.shown && !app.overlayOpen; onActivated: searchInput.forceInputFocus() }
+    Shortcut { sequence: "/"; enabled: app.shown && !app.onboarding && !app.overlayOpen && !searchInput.hasFocus; onActivated: searchInput.forceInputFocus() }
 
     // ------------------------------------------------------------------ layout
     Item {
         id: frame
         anchors.fill: parent
         anchors.margins: app.s(22)
+        enabled: !app.overlayOpen
 
-        // Header.
-        RowLayout {
+        Item {
             id: header
             width: parent.width
-            height: app.s(44)
-            spacing: app.s(8)
+            height: toolbar.height + (compactViews.visible ? app.s(42) : 0)
             opacity: app.step(0)
-            transform: Translate { y: -app.s(14) * (1 - app.step(0)) }
+            transform: Translate { y: -app.s(10) * (1 - app.step(0)) }
 
-            IconButton {
-                Layout.preferredWidth: app.s(36); Layout.preferredHeight: app.s(36)
-                size: app.s(36); cornerRadius: app.s(11)
-                buttonIcon: GCal.icon.back; iconFontSize: app.s(17)
-                accentColor: ThemeBackend.surface0
-                textColor: isHoveredOrHighlighted ? app.accent : ThemeBackend.text
-                onClicked: GCal.closeAgenda()
+            RowLayout {
+                id: toolbar
+                width: parent.width
+                height: app.s(44)
+                spacing: app.s(app.narrow ? 5 : 8)
+
+                IconButton {
+                    Layout.preferredWidth: app.s(36); Layout.preferredHeight: app.s(36)
+                    size: app.s(36); cornerRadius: app.s(11)
+                    buttonIcon: GCal.icon.back; iconFontSize: app.s(17)
+                    accentColor: ThemeBackend.surface0
+                    textColor: isHoveredOrHighlighted ? app.accent : ThemeBackend.text
+                    action_highlight: activeFocus
+                    Accessible.role: Accessible.Button
+                    Accessible.name: GCal.tr("Back to clock", "Retour à l’horloge")
+                    onClicked: GCal.closeAgenda()
+                }
+                Text {
+                    Layout.alignment: Qt.AlignVCenter
+                    Layout.preferredWidth: Math.min(implicitWidth + app.s(4),
+                        Math.max(app.s(90), toolbar.width - app.s(app.compact ? 330 : 765)))
+                    text: app.title
+                    elide: Text.ElideRight
+                    font.family: ThemeBackend.fontFamily
+                    font.pixelSize: app.s(app.narrow ? 17 : 22)
+                    font.weight: Font.Black
+                    color: ThemeBackend.text
+                }
+                IconButton {
+                    visible: !app.onboarding
+                    enabled: !app.query
+                    Layout.preferredWidth: app.s(32); Layout.preferredHeight: app.s(32)
+                    size: app.s(32); cornerRadius: app.s(10)
+                    buttonIcon: GCal.icon.left; iconFontSize: app.s(18)
+                    accentColor: ThemeBackend.surface0
+                    textColor: isHoveredOrHighlighted ? app.accent : ThemeBackend.text
+                    action_highlight: activeFocus
+                    Accessible.role: Accessible.Button
+                    Accessible.name: GCal.tr("Previous period", "Période précédente")
+                    onClicked: app.shift(-1)
+                }
+                ClickButton {
+                    visible: !app.onboarding
+                    enabled: !app.query
+                    Layout.preferredHeight: app.s(32); Layout.preferredWidth: implicitWidth
+                    buttonText: GCal.tr("Today", "Aujourd'hui")
+                    textFontSize: app.s(11.5); cornerRadius: app.s(10)
+                    accentColor: ThemeBackend.surface0; textColor: ThemeBackend.text
+                    onClicked: app.today()
+                }
+                IconButton {
+                    visible: !app.onboarding
+                    enabled: !app.query
+                    Layout.preferredWidth: app.s(32); Layout.preferredHeight: app.s(32)
+                    size: app.s(32); cornerRadius: app.s(10)
+                    buttonIcon: GCal.icon.right; iconFontSize: app.s(18)
+                    accentColor: ThemeBackend.surface0
+                    textColor: isHoveredOrHighlighted ? app.accent : ThemeBackend.text
+                    action_highlight: activeFocus
+                    Accessible.role: Accessible.Button
+                    Accessible.name: GCal.tr("Next period", "Période suivante")
+                    onClicked: app.shift(1)
+                }
+                Item { Layout.fillWidth: true }
+
+                LayoutItemProxy {
+                    visible: !app.onboarding && !app.compact
+                    target: viewSwitcher
+                    Layout.preferredWidth: app.s(340)
+                    Layout.preferredHeight: app.s(34)
+                }
+
+                LayoutItemProxy {
+                    visible: !app.onboarding && !app.compact
+                    target: searchInput
+                    Layout.preferredWidth: app.s(165)
+                    Layout.preferredHeight: app.s(34)
+                }
+
+                IconButton {
+                    visible: !app.onboarding && app.narrow
+                    size: app.s(34); cornerRadius: app.s(11)
+                    buttonIcon: GCal.icon.calendar; iconFontSize: app.s(16)
+                    action_highlight: app.sidebarOpen || activeFocus
+                    textColor: ThemeBackend.text
+                    Accessible.role: Accessible.Button
+                    Accessible.name: GCal.tr("Calendars", "Agendas")
+                    Accessible.checkable: true
+                    Accessible.checked: app.sidebarOpen
+                    onClicked: app.sidebarOpen = !app.sidebarOpen
+                }
+
+                IconButton {
+                    visible: GCal.available
+                    Layout.preferredWidth: app.s(34); Layout.preferredHeight: app.s(34)
+                    size: app.s(34); cornerRadius: app.s(11)
+                    buttonIcon: GCal.status === "offline" ? GCal.icon.offline : GCal.icon.sync
+                    iconFontSize: app.s(16)
+                    accentColor: ThemeBackend.surface0
+                    textColor: GCal.status === "error" ? ThemeBackend.red : (isHoveredOrHighlighted ? app.accent : ThemeBackend.subtext0)
+                    action_highlight: activeFocus
+                    Accessible.role: Accessible.Button
+                    Accessible.name: GCal.tr("Sync calendars", "Synchroniser les agendas")
+                    onClicked: GCal.run(["sync", "--force"])
+                    property real spin: 0
+                    NumberAnimation on spin { running: GCal.syncing && app.shown && !GCal.reducedMotion; loops: Animation.Infinite; from: 0; to: 360; duration: 900 }
+                    rotation: GCal.syncing && !GCal.reducedMotion ? spin : 0
+                }
+                IconButton {
+                    visible: !app.onboarding
+                    Layout.preferredWidth: app.s(34); Layout.preferredHeight: app.s(34)
+                    size: app.s(34); cornerRadius: app.s(11)
+                    buttonIcon: GCal.icon.cog; iconFontSize: app.s(16)
+                    accentColor: ThemeBackend.surface0
+                    textColor: isHoveredOrHighlighted ? app.accent : ThemeBackend.overlay1
+                    action_highlight: activeFocus
+                    Accessible.role: Accessible.Button
+                    Accessible.name: GCal.tr("Calendar settings", "Réglages du calendrier")
+                    onClicked: GCal.openSettings()
+                }
+                ClickButton {
+                    visible: GCal.writableCalendars.length > 0
+                    Layout.preferredHeight: app.s(34); Layout.preferredWidth: implicitWidth + app.s(8)
+                    buttonText: app.narrow ? "" : GCal.tr("New", "Nouveau"); buttonIcon: GCal.icon.plus
+                    Accessible.name: GCal.tr("New event", "Nouvel événement")
+                    textFontSize: app.s(12); iconFontSize: app.s(15); cornerRadius: app.s(11)
+                    accentColor: app.accent; textColor: GCal.readableOn(app.accent)
+                    onClicked: GCal.openEventId = "new"
+                }
             }
-            Item { Layout.preferredWidth: app.s(4) }
-            GCalRollText {
-                Layout.alignment: Qt.AlignVCenter
-                Layout.maximumWidth: app.s(420)
-                text: app.title
-                direction: app.navDir
-                pixelSize: app.s(22)
-                weight: Font.Black
-                color: ThemeBackend.text
+
+            RowLayout {
+                id: compactViews
+                visible: app.compact && !app.onboarding
+                anchors.top: toolbar.bottom
+                anchors.topMargin: app.s(6)
+                width: parent.width
+                height: app.s(36)
+                spacing: app.s(8)
+
+                LayoutItemProxy {
+                    target: viewSwitcher
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: app.s(148)
+                    Layout.preferredWidth: app.s(320)
+                    Layout.maximumWidth: app.s(340)
+                    Layout.fillHeight: true
+                }
+                LayoutItemProxy {
+                    target: searchInput
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: app.s(150)
+                    Layout.fillHeight: true
+                }
             }
-            Item { Layout.preferredWidth: app.s(4) }
-            IconButton {
-                visible: !app.query && !app.onboarding
-                Layout.preferredWidth: app.s(32); Layout.preferredHeight: app.s(32)
-                size: app.s(32); cornerRadius: app.s(10)
-                buttonIcon: GCal.icon.left; iconFontSize: app.s(18)
-                accentColor: ThemeBackend.surface0
-                textColor: isHoveredOrHighlighted ? app.accent : ThemeBackend.text
-                onClicked: app.shift(-1)
-            }
-            ClickButton {
-                visible: !app.query && !app.onboarding
-                Layout.preferredHeight: app.s(32); Layout.preferredWidth: implicitWidth
-                buttonText: GCal.tr("Today", "Aujourd'hui")
-                textFontSize: app.s(11.5); cornerRadius: app.s(10)
-                accentColor: ThemeBackend.surface0; textColor: ThemeBackend.text
-                onClicked: app.today()
-            }
-            IconButton {
-                visible: !app.query && !app.onboarding
-                Layout.preferredWidth: app.s(32); Layout.preferredHeight: app.s(32)
-                size: app.s(32); cornerRadius: app.s(10)
-                buttonIcon: GCal.icon.right; iconFontSize: app.s(18)
-                accentColor: ThemeBackend.surface0
-                textColor: isHoveredOrHighlighted ? app.accent : ThemeBackend.text
-                onClicked: app.shift(1)
-            }
-            Item { Layout.fillWidth: true }
 
             GCalSegmented {
-                visible: !app.onboarding
-                Layout.preferredWidth: app.s(340); Layout.preferredHeight: app.s(34)
+                id: viewSwitcher
+                compactIcons: width < app.s(280)
                 accent: app.accent
                 options: [
                     { id: "month", label: GCal.tr("Month", "Mois"), icon: GCal.icon.month },
@@ -386,59 +484,18 @@ FocusScope {
                 onSelected: (id) => app.setView(id)
             }
 
-            // Search: expands while focused or filled.
-            Item {
-                visible: !app.onboarding
-                readonly property bool wide: searchInput.hasFocus || app.query !== ""
-                Layout.preferredWidth: wide ? app.s(240) : app.s(36)
-                Layout.preferredHeight: app.s(34)
-                Behavior on Layout.preferredWidth { NumberAnimation { duration: 360; easing.type: Easing.OutBack; easing.overshoot: 1.1 } }
-                Input {
-                    id: searchInput
-                    anchors.fill: parent
-                    leadingIcon: GCal.icon.search
-                    placeholderText: parent.wide ? GCal.tr("Search events", "Rechercher") : ""
-                    showClearButton: app.query !== ""
-                    fontPixelSize: app.s(12)
-                    cornerRadius: app.s(11)
-                    accentColor: app.accent
-                    onTextEdited: (t) => app.query = t
-                    onCleared: app.query = ""
-                }
-            }
-
-            IconButton {
-                visible: GCal.available
-                Layout.preferredWidth: app.s(34); Layout.preferredHeight: app.s(34)
-                size: app.s(34); cornerRadius: app.s(11)
-                buttonIcon: GCal.status === "offline" ? GCal.icon.offline : GCal.icon.sync
-                iconFontSize: app.s(16)
-                accentColor: ThemeBackend.surface0
-                textColor: GCal.status === "error" ? ThemeBackend.red : (isHoveredOrHighlighted ? app.accent : ThemeBackend.overlay1)
-                onClicked: GCal.run(["sync", "--force"])
-                property real spin: 0
-                NumberAnimation on spin { running: GCal.syncing; loops: Animation.Infinite; from: 0; to: 360; duration: 900 }
-                rotation: GCal.syncing ? spin : 0
-                Behavior on rotation { enabled: !GCal.syncing; NumberAnimation { duration: 500; easing.type: Easing.OutBack } }
-            }
-            IconButton {
-                visible: !app.onboarding
-                Layout.preferredWidth: app.s(34); Layout.preferredHeight: app.s(34)
-                size: app.s(34); cornerRadius: app.s(11)
-                buttonIcon: GCal.icon.cog; iconFontSize: app.s(16)
-                accentColor: ThemeBackend.surface0
-                textColor: isHoveredOrHighlighted ? app.accent : ThemeBackend.overlay1
-                onClicked: GCal.openSettings()
-                rotation: isHoveredOrHighlighted ? 60 : 0
-                Behavior on rotation { NumberAnimation { duration: 420; easing.type: Easing.OutBack } }
-            }
-            ClickButton {
-                visible: GCal.writableCalendars.length > 0
-                Layout.preferredHeight: app.s(34); Layout.preferredWidth: implicitWidth + app.s(8)
-                buttonText: GCal.tr("New", "Nouveau"); buttonIcon: GCal.icon.plus
-                textFontSize: app.s(12); iconFontSize: app.s(15); cornerRadius: app.s(11)
-                accentColor: app.accent; textColor: GCal.readableOn(app.accent)
-                onClicked: { GCal.openEventId = "new"; app.handlePending(); }
+            Input {
+                id: searchInput
+                leadingIcon: GCal.icon.search
+                placeholderText: GCal.tr("Search events", "Rechercher")
+                subTextColor: ThemeBackend.subtext0
+                Accessible.name: placeholderText
+                showClearButton: app.query !== ""
+                fontPixelSize: app.s(12)
+                cornerRadius: app.s(11)
+                accentColor: app.accent
+                onTextEdited: (t) => app.query = t.trim()
+                onCleared: app.query = ""
             }
         }
 
@@ -454,14 +511,24 @@ FocusScope {
             // Sidebar.
             Item {
                 id: sidebar
-                width: app.s(250)
+                visible: !app.narrow || app.sidebarOpen
+                z: app.narrow ? 2 : 0
+                width: app.s(app.compact ? 220 : 250)
                 height: parent.height
                 opacity: app.step(1)
                 transform: Translate { x: -app.s(30) * (1 - app.step(1)) }
 
+                Rectangle {
+                    anchors.fill: parent
+                    visible: app.narrow
+                    radius: app.s(14)
+                    color: ThemeBackend.base
+                    border.color: ThemeBackend.surface1
+                }
                 ColumnLayout {
                     anchors.fill: parent
-                    spacing: app.s(16)
+                    anchors.margins: app.narrow ? app.s(10) : 0
+                    spacing: app.s(12)
 
                     Rectangle {
                         Layout.fillWidth: true
@@ -476,7 +543,7 @@ FocusScope {
                             selected: GCal.focusDate
                             weekBand: app.view === "week"
                             accent: app.accent
-                            onPicked: (d) => app.navigate(d)
+                            onPicked: (d) => { app.navigate(d); app.sidebarOpen = false; }
                         }
                     }
 
@@ -500,16 +567,6 @@ FocusScope {
                             readonly property bool on: modelData.visible !== false
                             width: ListView.view.width
                             height: app.s(34)
-                            property real enter: 0
-                            Component.onCompleted: calIn.start()
-                            SequentialAnimation {
-                                id: calIn
-                                PauseAnimation { duration: 200 + calRow.index * 40 }
-                                NumberAnimation { target: calRow; property: "enter"; to: 1; duration: 420; easing.type: Easing.OutQuint }
-                            }
-                            opacity: enter
-                            transform: Translate { x: -app.s(14) * (1 - calRow.enter) }
-
                             Rectangle {
                                 anchors.fill: parent
                                 radius: app.s(10)
@@ -527,17 +584,13 @@ FocusScope {
                                 border.width: app.s(2)
                                 border.color: calRow.modelData.color
                                 Behavior on color { ColorAnimation { duration: 200 } }
-                                scale: calMa.pressed ? 0.85 : 1
-                                Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutBack; easing.overshoot: 2.5 } }
                                 Text {
                                     anchors.centerIn: parent
                                     text: GCal.icon.check
                                     font.family: ThemeBackend.iconFont; font.pixelSize: app.s(13)
                                     color: GCal.readableOn(calRow.modelData.color)
-                                    scale: calRow.on ? 1 : 0
-                                    rotation: calRow.on ? 0 : -45
-                                    Behavior on scale { NumberAnimation { duration: 280; easing.type: Easing.OutBack; easing.overshoot: 2.2 } }
-                                    Behavior on rotation { NumberAnimation { duration: 280; easing.type: Easing.OutBack } }
+                                    opacity: calRow.on ? 1 : 0
+                                    Behavior on opacity { NumberAnimation { duration: 120 } }
                                 }
                             }
                             Text {
@@ -617,16 +670,22 @@ FocusScope {
                 }
             }
 
-            // Views.
+            Rectangle {
+                anchors.fill: parent
+                visible: app.narrow && app.sidebarOpen
+                z: 1
+                color: Qt.alpha(ThemeBackend.crust, 0.45)
+                MouseArea { anchors.fill: parent; onClicked: app.sidebarOpen = false }
+            }
+
             Item {
                 id: viewArea
-                anchors.left: sidebar.right
-                anchors.leftMargin: app.s(18)
+                anchors.left: app.narrow ? parent.left : sidebar.right
+                anchors.leftMargin: app.narrow ? 0 : app.s(18)
                 anchors.right: parent.right
                 height: parent.height
-                opacity: app.viewOpacity * app.step(2)
-                scale: app.viewScale
-                transform: Translate { x: app.viewOffset; y: app.s(20) * (1 - app.step(2)) }
+                opacity: app.step(2)
+                transform: Translate { y: app.s(12) * (1 - app.step(2)) }
 
                 Rectangle {
                     anchors.fill: parent
@@ -638,20 +697,24 @@ FocusScope {
                 Loader {
                     anchors.fill: parent
                     anchors.margins: app.s(10)
+                    transform: Translate { x: app.viewOffset }
                     active: !app.query && app.view === "month"
-                    sourceComponent: GCalMonthView { agenda: app; reveal: app.step(2) }
+                    sourceComponent: GCalMonthView { agenda: app }
                 }
                 Loader {
+                    id: timeGrid
                     anchors.fill: parent
                     anchors.margins: app.s(10)
+                    transform: Translate { x: app.viewOffset }
                     active: !app.query && (app.view === "week" || app.view === "day")
-                    sourceComponent: GCalTimeGrid { agenda: app; days: app.view === "day" ? 1 : 7; reveal: app.step(2) }
+                    sourceComponent: GCalTimeGrid { agenda: app; days: app.view === "day" ? 1 : 7 }
                 }
                 Loader {
                     anchors.fill: parent
                     anchors.margins: app.s(10)
+                    transform: Translate { x: app.viewOffset }
                     active: !!app.query || app.view === "list"
-                    sourceComponent: GCalListView { agenda: app; query: app.query; reveal: app.step(2) }
+                    sourceComponent: GCalListView { agenda: app; query: app.query }
                 }
             }
         }
@@ -666,7 +729,7 @@ FocusScope {
         onClicked: app.closeDetails()
         onWheel: (w) => app.closeDetails()
     }
-    GCalEventDetails { id: detailsCard; agenda: app; z: 10 }
+    GCalEventDetails { id: detailsCard; agenda: app; ev: app.details; z: 10 }
 
     GCalEventEditor {
         anchors.fill: parent
@@ -698,18 +761,27 @@ FocusScope {
         Rectangle {
             id: scopeCard
             property real progress: app.scopeRequest ? 1 : 0
-            Behavior on progress { NumberAnimation { duration: app.scopeRequest ? 420 : 180; easing.type: app.scopeRequest ? Easing.OutBack : Easing.InCubic } }
+            Behavior on progress { NumberAnimation { duration: app.scopeRequest ? 210 : 140; easing.type: Easing.OutCubic } }
             anchors.centerIn: parent
-            width: app.s(380)
+            width: Math.min(app.s(380), parent.width - app.s(32))
+            enabled: !!app.scopeRequest
             height: scopeCol.implicitHeight + app.s(40)
             radius: Math.min(ThemeBackend.borderRadius + app.s(4), app.s(22))
             color: ThemeBackend.base
             border.width: 1
             border.color: Qt.alpha(app.accent, 0.4)
             opacity: Math.min(1, progress)
-            scale: 0.9 + 0.1 * progress
+            scale: GCal.reducedMotion ? 1 : 0.97 + 0.03 * progress
             property var req: null
-            Connections { target: app; function onScopeRequestChanged() { if (app.scopeRequest) scopeCard.req = app.scopeRequest; } }
+            Connections {
+                target: app
+                function onScopeRequestChanged() {
+                    if (app.scopeRequest) {
+                        scopeCard.req = app.scopeRequest;
+                        Qt.callLater(cancelScope.forceActiveFocus);
+                    }
+                }
+            }
             ColumnLayout {
                 id: scopeCol
                 anchors.centerIn: parent
@@ -744,6 +816,7 @@ FocusScope {
                 }
                 ClickButton {
                     Layout.fillWidth: true; Layout.preferredHeight: app.s(34)
+                    id: cancelScope
                     buttonText: GCal.tr("Cancel", "Annuler")
                     textFontSize: app.s(11.5); cornerRadius: app.s(12)
                     accentColor: ThemeBackend.surface0; textColor: ThemeBackend.overlay1
@@ -757,42 +830,44 @@ FocusScope {
     Rectangle {
         id: toastBox
         z: 50
-        property double shownAt: 0
-        readonly property bool on: app.toastText !== ""
-        property real progress: on ? 1 : 0
-        Behavior on progress { NumberAnimation { duration: toastBox.on ? 480 : 220; easing.type: toastBox.on ? Easing.OutBack : Easing.InCubic; easing.overshoot: 1.4 } }
+        property bool open: false
+        function dismiss() { open = false; toastTimer.stop(); }
+        property real progress: open ? 1 : 0
+        Behavior on progress { NumberAnimation { duration: toastBox.open ? 180 : 140; easing.type: Easing.OutCubic } }
         visible: progress > 0.01
+        opacity: progress
         anchors.horizontalCenter: parent.horizontalCenter
-        y: parent.height - (height + app.s(26)) * progress
-        width: toastRow.implicitWidth + app.s(32)
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: app.s(26)
+        transform: Translate { y: GCal.reducedMotion ? 0 : app.s(12) * (1 - toastBox.progress) }
+        width: Math.min(toastRow.implicitWidth + app.s(32), parent.width - app.s(32))
         height: app.s(42)
         radius: height / 2
         color: Qt.alpha(ThemeBackend.crust, 0.95)
         border.width: 1
         border.color: app.toastError ? ThemeBackend.red : Qt.alpha(app.accent, 0.5)
-        SequentialAnimation {
-            id: toastPop
-            NumberAnimation { target: toastBox; property: "scale"; to: 1.05; duration: 90 }
-            NumberAnimation { target: toastBox; property: "scale"; to: 1; duration: 320; easing.type: Easing.OutBack }
-        }
-        // Time-left bar.
         Rectangle {
             anchors.bottom: parent.bottom
-            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.left: parent.left
+            anchors.leftMargin: app.s(15)
+            width: parent.width - app.s(30)
             height: app.s(2)
             radius: height / 2
             color: app.toastError ? ThemeBackend.red : app.accent
             opacity: 0.7
-            NumberAnimation on width {
-                id: toastBar
-                running: toastBox.on
-                from: toastBox.width - app.s(30); to: 0
-                duration: toastTimer.interval
+            transform: Scale {
+                NumberAnimation on xScale {
+                    id: toastBar
+                    from: 1; to: 0
+                    duration: toastTimer.interval
+                }
             }
         }
         RowLayout {
             id: toastRow
-            anchors.centerIn: parent
+            anchors.fill: parent
+            anchors.leftMargin: app.s(16)
+            anchors.rightMargin: app.s(16)
             spacing: app.s(12)
             Text {
                 text: app.toastError ? GCal.icon.alert : GCal.icon.check
@@ -800,6 +875,7 @@ FocusScope {
                 color: app.toastError ? ThemeBackend.red : app.accent
             }
             Text {
+                Layout.fillWidth: true
                 Layout.maximumWidth: app.s(520)
                 text: app.toastText
                 elide: Text.ElideRight
@@ -816,11 +892,12 @@ FocusScope {
                     id: undoMa
                     anchors.fill: parent
                     anchors.margins: -app.s(8)
+                    enabled: toastBox.open
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
                         const cb = app.toastCallback;
-                        app.toastText = "";
+                        toastBox.dismiss();
                         if (cb) cb();
                     }
                 }

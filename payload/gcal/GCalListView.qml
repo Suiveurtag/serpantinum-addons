@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls
 import "../"
 import "../reusables"
 
@@ -8,7 +9,6 @@ Item {
     id: root
     required property Item agenda
     property string query: ""
-    property real reveal: 1
     function s(v) { return Scaler.s(v); }
 
     readonly property bool searching: query.trim().length > 0
@@ -39,40 +39,34 @@ Item {
         return out;
     }
 
-    property int generation: 0
-    onRowsChanged: generation++
-
     // Empty states.
     ColumnLayout {
         anchors.centerIn: parent
+        width: Math.min(implicitWidth, Math.max(0, parent.width - root.s(32)))
         visible: root.rows.length === 0
         spacing: root.s(10)
-        opacity: root.reveal
         Text {
             Layout.alignment: Qt.AlignHCenter
             text: root.searching ? GCal.icon.search : GCal.icon.sun
             font.family: ThemeBackend.iconFont
             font.pixelSize: root.s(54)
             color: Qt.alpha(root.agenda.accent, 0.8)
-            SequentialAnimation on scale {
-                running: parent.visible
-                loops: Animation.Infinite
-                NumberAnimation { from: 1; to: 1.08; duration: 1800; easing.type: Easing.InOutSine }
-                NumberAnimation { from: 1.08; to: 1; duration: 1800; easing.type: Easing.InOutSine }
-            }
         }
         Text {
-            Layout.alignment: Qt.AlignHCenter
+            Layout.fillWidth: true
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.Wrap
             text: root.searching ? GCal.tr("No event matches “%1”", "Aucun événement ne correspond à « %1 »").arg(root.query) : GCal.tr("Nothing in the next two months", "Rien dans les deux prochains mois")
             font.family: ThemeBackend.fontFamily
             font.weight: Font.Bold
             font.pixelSize: root.s(14)
-            color: ThemeBackend.overlay1
+            color: ThemeBackend.subtext0
         }
     }
 
     ListView {
         id: list
+        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
         anchors.fill: parent
         anchors.leftMargin: root.s(8)
         anchors.rightMargin: root.s(8)
@@ -80,7 +74,6 @@ Item {
         spacing: root.s(6)
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        opacity: root.reveal
         delegate: Item {
             id: row
             required property var modelData
@@ -104,7 +97,6 @@ Item {
                     Layout.preferredWidth: root.s(34); Layout.preferredHeight: root.s(34)
                     radius: width / 2
                     color: row.isToday ? root.agenda.accent : Qt.alpha(ThemeBackend.surface0, 0.6)
-                    scale: 0.6 + 0.4 * row.enter
                     Text {
                         anchors.centerIn: parent
                         text: row.date.getDate()
@@ -121,39 +113,29 @@ Item {
                 }
             }
 
-            property real enter: 0
-            Component.onCompleted: enterAnim.start()
-            SequentialAnimation {
-                id: enterAnim
-                PauseAnimation { duration: Math.min(row.index, 14) * 30 }
-                NumberAnimation { target: row; property: "enter"; to: 1; duration: 460; easing.type: Easing.OutQuint }
-            }
-            opacity: enter * (past ? 0.55 : 1)
-            transform: Translate { x: root.s(24) * (1 - row.enter) }
-
             Rectangle {
                 visible: !row.isHeader
                 anchors.fill: parent
                 anchors.leftMargin: root.s(46)
                 radius: Math.min(ThemeBackend.borderRadius, root.s(12))
-                color: Qt.alpha(ThemeBackend.surface0, rowMa.containsMouse ? 0.6 : 0.25)
+                color: Qt.alpha(ThemeBackend.surface0, rowMa.containsMouse ? 0.6 : (row.past ? 0.14 : 0.25))
                 Behavior on color { ColorAnimation { duration: 160 } }
 
                 Rectangle {
                     x: root.s(10)
                     anchors.verticalCenter: parent.verticalCenter
-                    width: root.s(4); height: (parent.height - root.s(18)) * row.enter
+                    width: root.s(4); height: parent.height - root.s(18)
                     radius: width / 2
                     color: row.tone
                 }
                 Text {
                     id: timeLabel
                     x: root.s(24)
-                    width: root.s(118)
+                    width: Math.min(root.s(118), parent.width * 0.26)
                     anchors.verticalCenter: parent.verticalCenter
                     text: GCal.fmtRange(row.ev)
                     font.family: ThemeBackend.fontFamily; font.weight: Font.Bold; font.pixelSize: root.s(11)
-                    color: ThemeBackend.overlay1
+                    color: ThemeBackend.subtext0
                     elide: Text.ElideRight
                 }
                 ColumnLayout {
@@ -177,7 +159,7 @@ Item {
                         text: [GCal.calendarMap[row.ev.calendarId] ? GCal.calendarMap[row.ev.calendarId].name : "", row.ev.location].filter(x => x).join("  ·  ")
                         elide: Text.ElideRight
                         font.family: ThemeBackend.fontFamily; font.weight: Font.Bold; font.pixelSize: root.s(10.5)
-                        color: ThemeBackend.overlay1
+                        color: ThemeBackend.subtext0
                     }
                 }
                 Row {

@@ -1,13 +1,13 @@
 import QtQuick
+import QtQuick.Controls
 import "../"
 
 // Week / day time grid. Events can be dragged (time and day) and resized from their bottom edge with 15 min
-// snapping; dragging on empty space draws a new event; a breathing line marks the current time.
+// snapping; dragging on empty space draws a new event; a line marks the current time.
 Item {
     id: root
     required property Item agenda
     property int days: 7
-    property real reveal: 1
     function s(v) { return Scaler.s(v); }
 
     readonly property var start: days === 7 ? GCal.weekStart(GCal.focusDate) : GCal.startOfDay(GCal.focusDate)
@@ -24,15 +24,12 @@ Item {
     readonly property real headerH: s(54)
     readonly property int snap: 15
 
-    // Replays the cascade when the period changes; later data refreshes appear without re-animating.
-    property int generation: 0
-    property bool fresh: true
-    onRangeStartChanged: bump()
-    onDaysChanged: bump()
-    function bump() { generation++; fresh = true; freshTimer.restart(); scrollToMorning(); }
-    Timer { id: freshTimer; interval: 900; onTriggered: root.fresh = false }
-
-    function dayIndexOf(ms) { return Math.floor((GCal.startOfDay(ms) - root.start) / 86400000 + 0.01); }
+    function dayIndexOf(ms) {
+        return Math.round((GCal.startOfDay(ms) - root.start) / 86400000);
+    }
+    function movedTime(ms, days, minutes) {
+        return GCal.addDays(new Date(ms), days).getTime() + minutes * 60000;
+    }
     function minutesOf(ms) { const d = new Date(ms); return d.getHours() * 60 + d.getMinutes(); }
     function yOf(min) { return min / 60 * root.hourH; }
 
@@ -86,6 +83,7 @@ Item {
     }
 
     function scrollToMorning() {
+        body.cancelFlick();
         let first = 8 * 60;
         const cols = root.columns || [];
         for (let i = 0; i < cols.length; i++) {
@@ -94,11 +92,22 @@ Item {
         }
         for (let i = 0; i < root.dates.length; i++)
             if (GCal.sameDay(root.dates[i], GCal.today)) first = Math.min(first, root.minutesOf(GCal.now) - 60);
-        scrollAnim.to = Math.max(0, Math.min(body.contentHeight - body.height, root.yOf(first - 45)));
-        scrollAnim.restart();
+        body.contentY = Math.max(0, Math.min(body.contentHeight - body.height, root.yOf(first - 45)));
     }
-    Timer { interval: 0; running: true; onTriggered: root.bump() }
-    NumberAnimation { id: scrollAnim; target: body; property: "contentY"; duration: 700; easing.type: Easing.OutCubic }
+    function revealEvent(event) {
+        if (event.allDay || event.end - event.start >= 86400000) {
+            const lane = allDayLanes.items.find(item => item.ev.id === event.id);
+            if (lane)
+                allDayEvents.contentY = Math.min(lane.lane * s(22), Math.max(0, allDayEvents.contentHeight - allDayEvents.height));
+        } else {
+            const top = yOf(minutesOf(Math.max(event.start, rangeStart)));
+            if (top < body.contentY || top + s(32) > body.contentY + body.height)
+                body.contentY = Math.max(0, Math.min(top - s(48), body.contentHeight - body.height));
+        }
+    }
+    onRangeStartChanged: { allDayEvents.contentY = 0; Qt.callLater(scrollToMorning); }
+    onDaysChanged: Qt.callLater(scrollToMorning)
+    Component.onCompleted: Qt.callLater(scrollToMorning)
 
     // ------------------------------------------------------------------ header
     Item {
@@ -115,38 +124,24 @@ Item {
                 x: root.gutter + index * root.colW
                 width: root.colW
                 height: parent.height
-                property real enter: 0
-                Connections { target: root; function onGenerationChanged() { headIn.restart(); } }
-                Component.onCompleted: headIn.start()
-                SequentialAnimation {
-                    id: headIn
-                    ScriptAction { script: head.enter = 0 }
-                    PauseAnimation { duration: head.index * 35 }
-                    NumberAnimation { target: head; property: "enter"; to: 1; duration: 420; easing.type: Easing.OutBack; easing.overshoot: 1.2 }
-                }
-                opacity: Math.min(1, enter) * root.reveal
-                transform: Translate { y: -root.s(8) * (1 - head.enter) }
-
                 Row {
                     anchors.centerIn: parent
-                    spacing: root.s(8)
+                    spacing: root.s(root.colW < root.s(80) ? 3 : 8)
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: GCal.locale.dayName(head.modelData.getDay(), Locale.ShortFormat).replace(".", "").toUpperCase()
+                        text: GCal.locale.dayName(head.modelData.getDay(), root.colW < root.s(65) ? Locale.NarrowFormat : Locale.ShortFormat).replace(".", "").toUpperCase()
                         font.family: ThemeBackend.fontFamily
                         font.weight: Font.Black
                         font.pixelSize: root.s(11)
                         color: head.isToday ? root.agenda.accent : ThemeBackend.overlay1
                     }
                     Item {
-                        width: root.s(34); height: width
+                        width: root.s(root.colW < root.s(80) ? 26 : 34); height: width
                         anchors.verticalCenter: parent.verticalCenter
                         Rectangle {
                             anchors.fill: parent
                             radius: width / 2
                             color: head.isToday ? root.agenda.accent : (headMa.containsMouse ? ThemeBackend.surface1 : "transparent")
-                            scale: headMa.pressed ? 0.9 : (headMa.containsMouse ? 1.08 : 1)
-                            Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutBack; easing.overshoot: 2 } }
                             Behavior on color { ColorAnimation { duration: 150 } }
                         }
                         Text {
@@ -177,7 +172,6 @@ Item {
         anchors.top: header.bottom
         width: parent.width
         height: root.allDayH
-        Behavior on height { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
         clip: true
 
         Text {
@@ -188,7 +182,7 @@ Item {
             font.family: ThemeBackend.fontFamily
             font.weight: Font.Bold
             font.pixelSize: root.s(9.5)
-            color: ThemeBackend.overlay1
+            color: ThemeBackend.subtext0
         }
         MouseArea {
             x: root.gutter; width: parent.width - root.gutter; height: parent.height
@@ -197,45 +191,50 @@ Item {
                 root.agenda.newEvent(day.getTime(), GCal.addDays(day, 1).getTime(), true);
             }
         }
-        Repeater {
-            model: root.allDayLanes.items.filter(i => i.lane < 4)
-            Item {
-                id: bar
-                required property var modelData
-                required property int index
-                readonly property var ev: modelData.ev
-                readonly property color tone: GCal.colorOf(ev)
-                x: root.gutter + modelData.a * root.colW + root.s(2)
-                y: root.s(4) + modelData.lane * root.s(22)
-                width: (modelData.b - modelData.a + 1) * root.colW - root.s(4)
-                height: root.s(20)
-                property real grow: root.fresh ? 0 : 1
-                Component.onCompleted: if (root.fresh) growAnim.start()
-                SequentialAnimation {
-                    id: growAnim
-                    PauseAnimation { duration: 150 + bar.index * 40 }
-                    NumberAnimation { target: bar; property: "grow"; to: 1; duration: 480; easing.type: Easing.OutQuint }
-                }
-                Rectangle {
-                    width: parent.width * bar.grow
-                    height: parent.height
-                    radius: root.s(7)
-                    color: Qt.alpha(bar.tone, barMa.containsMouse ? 0.95 : 0.8)
-                    Behavior on color { ColorAnimation { duration: 140 } }
-                    Text {
-                        anchors.fill: parent
-                        anchors.leftMargin: root.s(8); anchors.rightMargin: root.s(6)
-                        verticalAlignment: Text.AlignVCenter
-                        elide: Text.ElideRight
-                        text: bar.ev.title || GCal.tr("(No title)", "(Sans titre)")
-                        font.family: ThemeBackend.fontFamily
-                        font.weight: Font.Black
-                        font.pixelSize: root.s(10.5)
-                        color: GCal.readableOn(bar.tone)
-                        opacity: bar.grow
+        Flickable {
+            id: allDayEvents
+            ScrollBar.vertical: ScrollBar { policy: allDayEvents.interactive ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff }
+            x: root.gutter
+            width: parent.width - x
+            height: parent.height
+            contentHeight: root.allDayLanes.count * root.s(22) + root.s(8)
+            interactive: contentHeight > height
+            flickableDirection: Flickable.VerticalFlick
+            boundsBehavior: Flickable.StopAtBounds
+            clip: true
+
+            Repeater {
+                model: root.allDayLanes.items
+                Item {
+                    id: bar
+                    required property var modelData
+                    required property int index
+                    readonly property var ev: modelData.ev
+                    readonly property color tone: GCal.colorOf(ev)
+                    x: modelData.a * root.colW + root.s(2)
+                    y: root.s(4) + modelData.lane * root.s(22)
+                    width: (modelData.b - modelData.a + 1) * root.colW - root.s(4)
+                    height: root.s(20)
+                    Rectangle {
+                        width: parent.width
+                        height: parent.height
+                        radius: root.s(7)
+                        color: Qt.tint(ThemeBackend.base, Qt.alpha(bar.tone, barMa.containsMouse ? 0.95 : 0.82))
+                        Behavior on color { ColorAnimation { duration: 140 } }
+                        Text {
+                            anchors.fill: parent
+                            anchors.leftMargin: root.s(8); anchors.rightMargin: root.s(6)
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                            text: bar.ev.title || GCal.tr("(No title)", "(Sans titre)")
+                            font.family: ThemeBackend.fontFamily
+                            font.weight: Font.Black
+                            font.pixelSize: root.s(10.5)
+                            color: GCal.readableOn(parent.color)
+                        }
                     }
+                    MouseArea { id: barMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.agenda.showDetails(bar.ev, bar) }
                 }
-                MouseArea { id: barMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.agenda.showDetails(bar.ev, bar) }
             }
         }
         Rectangle { anchors.bottom: parent.bottom; x: root.gutter; width: parent.width - root.gutter; height: 1; color: Qt.alpha(ThemeBackend.surface1, 0.6) }
@@ -244,6 +243,7 @@ Item {
     // ------------------------------------------------------------------ hours
     Flickable {
         id: body
+        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
         anchors.top: allDay.bottom
         anchors.bottom: parent.bottom
         width: parent.width
@@ -251,7 +251,6 @@ Item {
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         interactive: !grid.busy
-        opacity: root.reveal
 
         Item {
             id: grid
@@ -275,7 +274,7 @@ Item {
                         font.family: ThemeBackend.fontFamily
                         font.weight: Font.Bold
                         font.pixelSize: root.s(10)
-                        color: ThemeBackend.overlay1
+                        color: ThemeBackend.subtext0
                     }
                     Rectangle { x: root.gutter; width: parent.width - root.gutter; height: 1; color: Qt.alpha(ThemeBackend.surface1, 0.45) }
                     Rectangle { x: root.gutter; y: root.hourH / 2; width: parent.width - root.gutter; height: 1; color: Qt.alpha(ThemeBackend.surface1, 0.16) }
@@ -375,29 +374,14 @@ Item {
                             transform: Translate {
                                 x: block.dDays * root.colW
                                 y: root.yOf(block.dMin)
-                                Behavior on x { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
-                                Behavior on y { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
                             }
-                            Behavior on resizeDy { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
-
-                            property real pop: root.fresh ? 0 : 1
-                            Component.onCompleted: if (root.fresh) popAnim.start()
-                            SequentialAnimation {
-                                id: popAnim
-                                PauseAnimation { duration: 120 + column.index * 40 + block.index * 35 }
-                                NumberAnimation { target: block; property: "pop"; to: 1; duration: 460; easing.type: Easing.OutBack; easing.overshoot: 1.3 }
-                            }
-                            opacity: Math.min(1, pop) * (block.past && ma.mode === "" ? 0.6 : 1)
-                            scale: (0.85 + 0.15 * pop) * (ma.mode === "move" ? 1.03 : 1)
-                            Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.OutQuint } }
 
                             Rectangle {
                                 id: shadow
                                 anchors.fill: parent
-                                anchors.topMargin: ma.mode !== "" ? root.s(6) : root.s(1)
+                                transform: Translate { y: ma.mode !== "" ? root.s(5) : 0 }
                                 radius: card.radius
                                 color: Qt.alpha("black", ma.mode !== "" ? 0.28 : 0)
-                                Behavior on anchors.topMargin { NumberAnimation { duration: 200 } }
                                 Behavior on color { ColorAnimation { duration: 200 } }
                             }
                             Rectangle {
@@ -408,7 +392,8 @@ Item {
                                 topRightRadius: block.modelData.cutTop ? root.s(2) : radius
                                 bottomLeftRadius: block.modelData.cutBottom ? root.s(2) : radius
                                 bottomRightRadius: block.modelData.cutBottom ? root.s(2) : radius
-                                color: block.declined ? "transparent" : Qt.alpha(block.tone, blockHover.hovered || ma.mode !== "" ? 0.95 : 0.78)
+                                color: block.declined ? "transparent" : Qt.tint(ThemeBackend.base,
+                                    Qt.alpha(block.tone, blockHover.hovered || ma.mode !== "" ? 0.92 : (block.past ? 0.60 : 0.82)))
                                 border.width: block.declined || block.ev.pending ? 1 : 0
                                 border.color: block.tone
                                 Behavior on color { ColorAnimation { duration: 140 } }
@@ -446,21 +431,22 @@ Item {
                                         font.weight: Font.Black
                                         font.pixelSize: root.s(11)
                                         font.strikeout: block.declined
-                                        color: block.declined ? ThemeBackend.text : GCal.readableOn(block.tone)
+                                        color: block.declined ? ThemeBackend.text : GCal.readableOn(card.color)
                                     }
                                     Text {
                                         visible: block.height > root.s(34)
                                         width: parent.width
                                         elide: Text.ElideRight
                                         text: {
-                                            const start = block.ev.start + (ma.mode === "move" ? block.dDays * 86400000 + block.dMin * 60000 : 0);
-                                            const end = block.ev.end + (ma.mode === "move" ? block.dDays * 86400000 + block.dMin * 60000 : (ma.mode === "resize" ? block.resizeMin * 60000 : 0));
+                                            const moving = ma.mode === "move";
+                                            const start = moving ? root.movedTime(block.ev.start, block.dDays, block.dMin) : block.ev.start;
+                                            const end = moving ? root.movedTime(block.ev.end, block.dDays, block.dMin) : block.ev.end + block.resizeMin * 60000;
                                             return GCal.fmtTime(start) + " – " + GCal.fmtTime(end) + (block.ev.location && ma.mode === "" ? "  ·  " + block.ev.location : "");
                                         }
                                         font.family: ThemeBackend.fontFamily
                                         font.weight: Font.Bold
                                         font.pixelSize: root.s(10)
-                                        color: block.declined ? ThemeBackend.overlay1 : Qt.alpha(GCal.readableOn(block.tone), 0.8)
+                                        color: block.declined ? ThemeBackend.subtext0 : GCal.readableOn(card.color)
                                     }
                                 }
                                 Text {
@@ -470,7 +456,7 @@ Item {
                                     text: GCal.icon.video
                                     font.family: ThemeBackend.iconFont
                                     font.pixelSize: root.s(12)
-                                    color: GCal.readableOn(block.tone)
+                                    color: block.declined ? ThemeBackend.text : GCal.readableOn(card.color)
                                 }
                                 // Resize grip.
                                 Rectangle {
@@ -479,7 +465,7 @@ Item {
                                     anchors.bottom: parent.bottom
                                     anchors.bottomMargin: root.s(3)
                                     width: root.s(18); height: root.s(3); radius: height / 2
-                                    color: Qt.alpha(GCal.readableOn(block.tone), 0.6)
+                                    color: Qt.alpha(GCal.readableOn(card.color), 0.6)
                                 }
                             }
 
@@ -515,8 +501,8 @@ Item {
                                     mode = "";
                                     grid.busy = false;
                                     if (m === "move" && (block.dMin !== 0 || block.dDays !== 0)) {
-                                        const delta = block.dDays * 86400000 + block.dMin * 60000;
-                                        root.agenda.moveEvent(block.ev, block.ev.start + delta, block.ev.end + delta);
+                                        root.agenda.moveEvent(block.ev, root.movedTime(block.ev.start, block.dDays, block.dMin),
+                                            root.movedTime(block.ev.end, block.dDays, block.dMin));
                                     } else if (m === "resize" && block.resizeMin !== 0) {
                                         root.agenda.moveEvent(block.ev, block.ev.start, block.ev.end + block.resizeMin * 60000);
                                     } else if (m === "") {
@@ -535,32 +521,13 @@ Item {
                         width: parent.width
                         y: root.yOf(root.minutesOf(GCal.now))
                         z: 60
-                        Behavior on y { NumberAnimation { duration: 900; easing.type: Easing.OutCubic } }
                         Rectangle { width: parent.width; height: root.s(2); y: -height / 2; color: ThemeBackend.red; radius: height / 2 }
                         Rectangle {
-                            id: nowDot
                             x: -width / 2; y: -height / 2
                             width: root.s(10); height: width; radius: width / 2
                             color: ThemeBackend.red
                         }
-                        Rectangle {
-                            x: -width / 2; y: -height / 2
-                            width: root.s(10); height: width; radius: width / 2
-                            color: "transparent"
-                            border.width: root.s(2); border.color: ThemeBackend.red
-                            SequentialAnimation on scale {
-                                running: column.isToday && root.visible
-                                loops: Animation.Infinite
-                                NumberAnimation { from: 1; to: 2.6; duration: 1600; easing.type: Easing.OutCubic }
-                                PauseAnimation { duration: 400 }
-                            }
-                            SequentialAnimation on opacity {
-                                running: column.isToday && root.visible
-                                loops: Animation.Infinite
-                                NumberAnimation { from: 0.8; to: 0; duration: 1600; easing.type: Easing.OutCubic }
-                                PauseAnimation { duration: 400 }
-                            }
-                        }
+
                     }
                 }
             }

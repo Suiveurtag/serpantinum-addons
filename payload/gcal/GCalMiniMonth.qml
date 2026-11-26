@@ -3,7 +3,7 @@ import QtQuick.Layouts
 import "../"
 import "../reusables"
 
-// Compact month grid with its own month navigation (slide + fade), event dots, today ring and a highlight band
+// Compact month grid with month navigation, event dots, a today ring and a highlight band
 // that glides to the selected range (a day or a week).
 Item {
     id: root
@@ -16,36 +16,10 @@ Item {
     function s(v) { return Scaler.s(v); }
 
     property var month: new Date(selected.getFullYear(), selected.getMonth(), 1)
-    property var shownMonth: month
-    onSelectedChanged: {
-        const m = new Date(selected.getFullYear(), selected.getMonth(), 1);
-        if (m.getTime() !== month.getTime()) go(m);
-    }
-    function go(m) {
-        if (m.getTime() === shownMonth.getTime()) return;
-        dir = m > shownMonth ? 1 : -1;
-        month = m;
-        swap.restart();
-    }
-
-    property int dir: 1
-    property real gridOpacity: 1
-    property real gridOffset: 0
-    SequentialAnimation {
-        id: swap
-        ParallelAnimation {
-            NumberAnimation { target: root; property: "gridOpacity"; to: 0; duration: 130; easing.type: Easing.InSine }
-            NumberAnimation { target: root; property: "gridOffset"; to: -root.s(16) * root.dir; duration: 130; easing.type: Easing.InSine }
-        }
-        ScriptAction { script: { root.shownMonth = root.month; root.gridOffset = root.s(16) * root.dir; } }
-        ParallelAnimation {
-            NumberAnimation { target: root; property: "gridOpacity"; to: 1; duration: 360; easing.type: Easing.OutQuart }
-            NumberAnimation { target: root; property: "gridOffset"; to: 0; duration: 360; easing.type: Easing.OutQuart }
-        }
-    }
+    onSelectedChanged: month = new Date(selected.getFullYear(), selected.getMonth(), 1)
 
     readonly property var cells: {
-        const first = GCal.weekStart(shownMonth);
+        const first = GCal.weekStart(month);
         const out = [];
         for (let i = 0; i < 42; i++) out.push(GCal.addDays(first, i));
         return out;
@@ -59,13 +33,14 @@ Item {
         width: parent.width
         height: root.s(28)
         spacing: root.s(4)
-        GCalRollText {
+        Text {
             Layout.fillWidth: true
             Layout.leftMargin: root.s(4)
             text: GCal.monthTitle(root.month).toUpperCase()
-            direction: root.dir
-            pixelSize: root.s(12)
-            weight: Font.Black
+            elide: Text.ElideRight
+            font.family: ThemeBackend.fontFamily
+            font.pixelSize: root.s(12)
+            font.weight: Font.Black
             color: ThemeBackend.text
         }
         IconButton {
@@ -74,7 +49,7 @@ Item {
             buttonIcon: GCal.icon.left; iconFontSize: root.s(14)
             accentColor: ThemeBackend.surface0
             textColor: isHoveredOrHighlighted ? root.accent : ThemeBackend.overlay1
-            onClicked: root.go(GCal.addMonths(root.month, -1))
+            onClicked: root.month = GCal.addMonths(root.month, -1)
         }
         IconButton {
             Layout.preferredWidth: root.s(24); Layout.preferredHeight: root.s(24)
@@ -82,7 +57,7 @@ Item {
             buttonIcon: GCal.icon.right; iconFontSize: root.s(14)
             accentColor: ThemeBackend.surface0
             textColor: isHoveredOrHighlighted ? root.accent : ThemeBackend.overlay1
-            onClicked: root.go(GCal.addMonths(root.month, 1))
+            onClicked: root.month = GCal.addMonths(root.month, 1)
         }
     }
 
@@ -113,8 +88,6 @@ Item {
         readonly property real cw: width / 7
         readonly property real ch: root.s(26)
         height: ch * 6
-        opacity: root.gridOpacity
-        transform: Translate { x: root.gridOffset }
 
         // Selection band: a rounded pill gliding to the selected day / week.
         Rectangle {
@@ -131,9 +104,8 @@ Item {
             color: Qt.alpha(root.accent, 0.18)
             border.width: 1
             border.color: Qt.alpha(root.accent, 0.35)
-            Behavior on x { NumberAnimation { duration: 340; easing.type: Easing.OutBack; easing.overshoot: 1.2 } }
-            Behavior on y { NumberAnimation { duration: 340; easing.type: Easing.OutBack; easing.overshoot: 1.2 } }
-            Behavior on width { NumberAnimation { duration: 340; easing.type: Easing.OutCubic } }
+            Behavior on x { enabled: !GCal.reducedMotion; NumberAnimation { duration: 165; easing.type: Easing.OutCubic } }
+            Behavior on y { enabled: !GCal.reducedMotion; NumberAnimation { duration: 165; easing.type: Easing.OutCubic } }
         }
 
         Repeater {
@@ -142,7 +114,7 @@ Item {
                 id: cell
                 required property int index
                 readonly property var date: root.cells[index]
-                readonly property bool inMonth: date.getMonth() === root.shownMonth.getMonth()
+                readonly property bool inMonth: date.getMonth() === root.month.getMonth()
                 readonly property bool isToday: GCal.sameDay(date, GCal.today)
                 x: (index % 7) * grid.cw
                 y: Math.floor(index / 7) * grid.ch
@@ -154,8 +126,6 @@ Item {
                     anchors.verticalCenterOffset: -root.s(2)
                     width: root.s(22); height: width; radius: width / 2
                     color: cell.isToday ? root.accent : (ma.containsMouse ? Qt.alpha(ThemeBackend.surface1, 0.8) : "transparent")
-                    scale: ma.pressed ? 0.88 : (ma.containsMouse ? 1.08 : 1)
-                    Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutBack; easing.overshoot: 2 } }
                     Behavior on color { ColorAnimation { duration: 150 } }
                 }
                 Text {

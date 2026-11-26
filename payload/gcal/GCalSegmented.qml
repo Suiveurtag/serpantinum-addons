@@ -1,11 +1,12 @@
 import QtQuick
 import "../"
 
-// Segmented control: the highlight pill springs between options and stretches while it travels.
+// Segmented control with a sliding selection highlight.
 Item {
     id: root
     property var options: []          // [{ id, label, icon? }]
     property string current: ""
+    property bool compactIcons: false
     property color accent: ThemeBackend.mauve
     property real fontSize: Scaler.s(11.5)
     signal selected(string id)
@@ -22,18 +23,13 @@ Item {
     Rectangle {
         id: pill
         visible: root.at >= 0
-        property real target: Math.max(0, root.at) * root.cell
-        property real lead: target
-        property real tail: target
-        Behavior on lead { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
-        Behavior on tail { NumberAnimation { duration: 420; easing.type: Easing.OutBack; easing.overshoot: 1.1 } }
-        x: Math.min(lead, tail) + root.s(3)
-        width: Math.abs(lead - tail) + root.cell - root.s(6)
+        x: Math.max(0, root.at) * root.cell + root.s(3)
+        width: Math.max(0, root.cell - root.s(6))
+        Behavior on x { enabled: !GCal.reducedMotion; NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
         y: root.s(3)
         height: parent.height - root.s(6)
         radius: height / 2
         color: root.accent
-        Behavior on color { ColorAnimation { duration: 250 } }
     }
     Row {
         anchors.fill: parent
@@ -44,30 +40,45 @@ Item {
                 required property var modelData
                 required property int index
                 readonly property bool active: index === root.at
+                activeFocusOnTab: true
+                Accessible.role: Accessible.RadioButton
+                Accessible.name: modelData.label
+                Accessible.checkable: true
+                Accessible.checked: active
+                Accessible.onPressAction: root.selected(modelData.id)
+                Keys.onSpacePressed: root.selected(modelData.id)
+                Keys.onReturnPressed: root.selected(modelData.id)
                 width: root.cell
                 height: root.height
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: root.s(2)
+                    radius: height / 2
+                    color: "transparent"
+                    border.color: ThemeBackend.text
+                    visible: opt.activeFocus
+                }
                 Row {
                     anchors.centerIn: parent
                     spacing: root.s(6)
-                    scale: ma.pressed ? 0.92 : 1
-                    Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
+                    scale: ma.pressed && !GCal.reducedMotion ? 0.96 : 1
+                    Behavior on scale { NumberAnimation { duration: ma.pressed ? 70 : 135; easing.type: Easing.OutCubic } }
                     Text {
                         visible: !!opt.modelData.icon
                         anchors.verticalCenter: parent.verticalCenter
                         text: opt.modelData.icon || ""
                         font.family: ThemeBackend.iconFont
                         font.pixelSize: root.fontSize * 1.15
-                        color: opt.active ? GCal.readableOn(root.accent) : (ma.containsMouse ? ThemeBackend.text : ThemeBackend.overlay1)
-                        Behavior on color { ColorAnimation { duration: 180 } }
+                        color: GCal.readableOn(pill.visible && opt.x + opt.width / 2 >= pill.x && opt.x + opt.width / 2 < pill.x + pill.width ? root.accent : ThemeBackend.surface0)
                     }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
+                        visible: !root.compactIcons || !opt.modelData.icon
                         text: opt.modelData.label
                         font.family: ThemeBackend.fontFamily
                         font.weight: Font.Black
                         font.pixelSize: root.fontSize
-                        color: opt.active ? GCal.readableOn(root.accent) : (ma.containsMouse ? ThemeBackend.text : ThemeBackend.overlay1)
-                        Behavior on color { ColorAnimation { duration: 180 } }
+                        color: GCal.readableOn(pill.visible && opt.x + opt.width / 2 >= pill.x && opt.x + opt.width / 2 < pill.x + pill.width ? root.accent : ThemeBackend.surface0)
                     }
                 }
                 MouseArea {

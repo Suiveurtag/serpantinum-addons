@@ -1,12 +1,10 @@
 import QtQuick
 import "../"
 
-// Month grid: cells cascade in on every month change, chips can be dragged to another day, a double click
-// creates an event, the day number opens the day view.
+// Month grid with draggable events, day navigation and double-click creation.
 Item {
     id: root
     required property Item agenda
-    property real reveal: 1
     function s(v) { return Scaler.s(v); }
 
     readonly property var month: new Date(GCal.focusDate.getFullYear(), GCal.focusDate.getMonth(), 1)
@@ -18,11 +16,7 @@ Item {
     readonly property real headerH: s(26)
     readonly property real cw: width / 7
     readonly property real ch: (height - headerH) / rows
-    readonly property int maxChips: Math.max(1, Math.floor((ch - s(30)) / s(20)))
-
-    // Cascade replay: bumps whenever the shown month changes.
-    property int generation: 0
-    onMonthChanged: generation++
+    readonly property int maxChips: Math.max(0, Math.floor((ch - s(34)) / s(20)))
 
     // Drag state (a floating copy of the chip follows the pointer, the target cell lights up).
     property var dragEvent: null
@@ -54,8 +48,6 @@ Item {
                 font.pixelSize: root.s(11)
                 font.letterSpacing: root.s(0.5)
                 color: ThemeBackend.overlay1
-                opacity: root.reveal
-                transform: Translate { y: -root.s(6) * (1 - root.reveal) }
             }
         }
     }
@@ -74,21 +66,6 @@ Item {
             y: root.headerH + Math.floor(index / 7) * root.ch
             width: root.cw
             height: root.ch
-
-            property real enter: 0
-            Connections {
-                target: root
-                function onGenerationChanged() { cellIn.restart(); }
-            }
-            Component.onCompleted: cellIn.start()
-            SequentialAnimation {
-                id: cellIn
-                ScriptAction { script: cell.enter = 0 }
-                PauseAnimation { duration: (Math.floor(cell.index / 7) + cell.index % 7) * 18 }
-                NumberAnimation { target: cell; property: "enter"; to: 1; duration: 420; easing.type: Easing.OutQuint }
-            }
-            opacity: enter * root.reveal
-            transform: Translate { y: root.s(10) * (1 - cell.enter) }
 
             Rectangle {
                 anchors.fill: parent
@@ -121,8 +98,6 @@ Item {
                     anchors.fill: parent
                     radius: width / 2
                     color: cell.isToday ? root.agenda.accent : (numMa.containsMouse ? ThemeBackend.surface1 : "transparent")
-                    scale: numMa.pressed ? 0.88 : (numMa.containsMouse ? 1.1 : 1)
-                    Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutBack; easing.overshoot: 2 } }
                     Behavior on color { ColorAnimation { duration: 150 } }
                 }
                 Text {
@@ -131,7 +106,7 @@ Item {
                     font.family: ThemeBackend.fontFamily
                     font.weight: Font.Black
                     font.pixelSize: root.s(11.5)
-                    color: cell.isToday ? ThemeBackend.base : (cell.inMonth ? ThemeBackend.text : ThemeBackend.surface2)
+                    color: cell.isToday ? ThemeBackend.base : (cell.inMonth ? ThemeBackend.text : ThemeBackend.subtext0)
                 }
                 MouseArea { id: numMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.agenda.goTo(cell.date, "day") }
             }
@@ -142,7 +117,7 @@ Item {
                 width: parent.width - root.s(10)
                 spacing: root.s(2)
                 Repeater {
-                    model: cell.events.slice(0, cell.events.length > root.maxChips ? root.maxChips - 1 : root.maxChips)
+                    model: cell.events.slice(0, cell.events.length > root.maxChips ? Math.max(0, root.maxChips - 1) : root.maxChips)
                     Item {
                         id: chip
                         required property var modelData
@@ -150,28 +125,17 @@ Item {
                         readonly property var ev: modelData
                         readonly property color tone: GCal.colorOf(ev)
                         readonly property bool filled: ev.allDay || ev.end - ev.start >= 86400000
-                        readonly property bool past: ev.end <= GCal.now
                         width: parent.width
                         height: root.s(18)
-                        opacity: (root.dragEvent && root.dragEvent.id === ev.id && root.dragFrom === cell.index ? 0.3 : 1) * (past ? 0.55 : 1)
+                        opacity: (root.dragEvent && root.dragEvent.id === ev.id && root.dragFrom === cell.index ? 0.3 : 1)
                         Behavior on opacity { NumberAnimation { duration: 160 } }
 
-                        property real pop: 0
-                        Component.onCompleted: popIn.start()
-                        SequentialAnimation {
-                            id: popIn
-                            PauseAnimation { duration: 120 + (Math.floor(cell.index / 7) + cell.index % 7) * 18 + chip.index * 40 }
-                            NumberAnimation { target: chip; property: "pop"; to: 1; duration: 380; easing.type: Easing.OutBack; easing.overshoot: 1.4 }
-                        }
-                        transform: [
-                            Scale { origin.x: 0; origin.y: chip.height / 2; xScale: 0.6 + 0.4 * chip.pop; yScale: xScale },
-                            Translate { x: chipMa.containsMouse ? root.s(2) : 0; Behavior on x { NumberAnimation { duration: 160 } } }
-                        ]
-
                         Rectangle {
+                            id: chipBackground
                             anchors.fill: parent
                             radius: root.s(6)
-                            color: chip.filled ? Qt.alpha(chip.tone, chipMa.containsMouse ? 0.95 : 0.8) : (chipMa.containsMouse ? Qt.alpha(chip.tone, 0.18) : "transparent")
+                            color: chip.filled ? Qt.tint(ThemeBackend.base, Qt.alpha(chip.tone, chipMa.containsMouse ? 0.95 : 0.8))
+                                : (chipMa.containsMouse ? Qt.alpha(chip.tone, 0.18) : "transparent")
                             Behavior on color { ColorAnimation { duration: 140 } }
                         }
                         Rectangle {
@@ -190,7 +154,7 @@ Item {
                             font.weight: chip.filled ? Font.Black : Font.Bold
                             font.pixelSize: root.s(10.5)
                             font.strikeout: chip.ev.rsvp === "declined"
-                            color: chip.filled ? GCal.readableOn(chip.tone) : ThemeBackend.text
+                            color: chip.filled ? GCal.readableOn(chipBackground.color) : ThemeBackend.text
                         }
 
                         MouseArea {
@@ -223,17 +187,20 @@ Item {
                                         root.agenda.moveEvent(chip.ev, shift(chip.ev.start), shift(chip.ev.end));
                                     }
                                 }
+                                root.dragEvent = null; root.dragFrom = -1; root.dragOver = -1;
+                            }
+                            onCanceled: {
                                 dragging = false;
                                 root.dragEvent = null; root.dragFrom = -1; root.dragOver = -1;
                             }
-                            onClicked: (m) => { if (!dragging) root.agenda.showDetails(chip.ev, chip); }
+                            onClicked: { if (!dragging) root.agenda.showDetails(chip.ev, chip); }
                         }
                     }
                 }
                 Text {
                     visible: cell.events.length > root.maxChips
                     x: root.s(6)
-                    text: GCal.tr("+%1 more", "+%1 de plus").arg(cell.events.length - root.maxChips + 1)
+                    text: GCal.tr("+%1 more", "+%1 de plus").arg(cell.events.length - Math.max(0, root.maxChips - 1))
                     font.family: ThemeBackend.fontFamily
                     font.weight: Font.Black
                     font.pixelSize: root.s(10)
@@ -254,9 +221,7 @@ Item {
         height: root.s(22)
         radius: root.s(7)
         color: root.dragEvent ? GCal.colorOf(root.dragEvent) : "transparent"
-        scale: visible ? 1.06 : 0.8
-        rotation: -2
-        Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutBack } }
+        rotation: GCal.reducedMotion ? 0 : -2
         z: 20
         Text {
             anchors.fill: parent

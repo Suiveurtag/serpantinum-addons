@@ -14,7 +14,11 @@ Item {
 
     // Last opened event: keeps the card content during the close animation.
     property var shown: null
-    onEvChanged: if (ev) { shown = ev; generation++; }
+    onEvChanged: if (ev) {
+        shown = ev;
+        generation++;
+        Qt.callLater(() => { if (root.open) closeButton.forceActiveFocus(); });
+    }
 
     readonly property var live: shown ? (GCal.find(shown.id) || shown) : null
     readonly property color tone: live ? GCal.colorOf(live) : ThemeBackend.blue
@@ -24,7 +28,7 @@ Item {
 
     readonly property real pad: s(16)
     readonly property real gutter: s(12)
-    width: s(360)
+    width: Math.min(s(360), parent ? parent.width - gutter * 2 : s(360))
     implicitHeight: content.implicitHeight + pad * 2
     height: Math.min(implicitHeight, parent ? parent.height - gutter * 2 : implicitHeight)
 
@@ -43,10 +47,11 @@ Item {
     transformOrigin: onLeft ? Item.TopRight : Item.TopLeft
 
     property real progress: open ? 1 : 0
-    Behavior on progress { NumberAnimation { duration: root.open ? 220 : 140; easing.type: root.open ? Easing.OutCubic : Easing.InCubic } }
+    Behavior on progress { NumberAnimation { duration: root.open ? 220 : 140; easing.type: Easing.OutCubic } }
     visible: progress > 0.01
+    enabled: open
     opacity: progress
-    scale: 0.96 + 0.04 * progress
+    scale: GCal.reducedMotion ? 1 : 0.96 + 0.04 * progress
     onVisibleChanged: if (!visible && !open) shown = null
 
     property int generation: 0
@@ -97,6 +102,10 @@ Item {
                         color: ThemeBackend.text
                     }
                     IconButton {
+                        id: closeButton
+                        action_highlight: activeFocus
+                        Accessible.role: Accessible.Button
+                        Accessible.name: GCal.tr("Close event details", "Fermer les détails de l’événement")
                         Layout.alignment: Qt.AlignTop
                         Layout.preferredWidth: root.s(26); Layout.preferredHeight: root.s(26)
                         size: root.s(26); cornerRadius: root.s(8)
