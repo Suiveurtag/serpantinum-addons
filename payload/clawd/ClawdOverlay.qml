@@ -42,7 +42,7 @@ PanelWindow {
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.keyboardFocus: (menuHere || chatHere) ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
     mask: Region {
-        Region { item: hitBox.visible ? hitBox : null }
+        Region { item: hit.pressed ? overlay.contentItem : hitBox.visible ? hitBox : null }
         Region { item: menu.visible ? menu : null }
         Region { item: bubble.visible ? bubble : null }
         Region { item: dreamBubble.visible ? dreamBubble : null }
@@ -60,6 +60,24 @@ PanelWindow {
         y: overlay.here ? Math.round(overlay.pet.y - overlay.here.y) : 0
         width: body.implicitWidth
         height: body.implicitHeight
+    }
+    // Keep the grabber fixed to the screen. A MouseArea parented to Clawd moves
+    // under the pointer as he is dragged across an otherwise empty desktop.
+    MouseArea {
+        id: hit
+        anchors.fill: overlay.contentItem
+        acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+        preventStealing: true
+        cursorShape: overlay.pet.dead && !pressed ? Qt.ArrowCursor : pressed ? Qt.ClosedHandCursor : Qt.PointingHandCursor
+        function at(mouse) {
+            const p = mapToItem(overlay.contentItem, mouse.x, mouse.y);
+            return Qt.point(p.x + overlay.here.x, p.y + overlay.here.y);
+        }
+        onPressed: mouse => { const p = at(mouse); overlay.pet.press(mouse.button, p.x, p.y); }
+        onPositionChanged: mouse => { const p = at(mouse); overlay.pet.move(p.x, p.y); }
+        onReleased: mouse => { if (mouse.button === Qt.LeftButton) { const p = at(mouse); overlay.pet.release(p.x, p.y); } }
+        onDoubleClicked: mouse => { if (mouse.button === Qt.LeftButton) overlay.pet.doubleClick(); }
+        onCanceled: overlay.pet.release()
     }
     Item {
         id: viewport
@@ -123,23 +141,6 @@ PanelWindow {
                 property size uGrid: body.size ? Qt.size(body.size.w, body.size.h) : Qt.size(1, 1)
                 fragmentShader: "shaders/tint.frag.qsb"
             }
-        }
-        MouseArea {
-            id: hit
-            anchors.fill: parent
-            anchors.margins: -overlay.catchPad   // in the air he is easier to catch
-            acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-            preventStealing: true
-            cursorShape: overlay.pet.dead && !pressed ? Qt.ArrowCursor : pressed ? Qt.ClosedHandCursor : Qt.PointingHandCursor
-            function at(mouse) {
-                const p = mapToItem(overlay.contentItem, mouse.x, mouse.y);
-                return Qt.point(p.x + overlay.here.x, p.y + overlay.here.y);
-            }
-            onPressed: mouse => { const p = at(mouse); overlay.pet.press(mouse.button, p.x, p.y); }
-            onPositionChanged: mouse => { const p = at(mouse); overlay.pet.move(p.x, p.y); }
-            onReleased: mouse => { if (mouse.button === Qt.LeftButton) { const p = at(mouse); overlay.pet.release(p.x, p.y); } }
-            onDoubleClicked: mouse => { if (mouse.button === Qt.LeftButton) overlay.pet.doubleClick(); }
-            onCanceled: overlay.pet.release()
         }
     }
 
