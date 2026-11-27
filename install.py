@@ -1293,6 +1293,55 @@ def patch_screenshot_frozen_validation(text):
     return text.replace(old, new, 1)
 
 
+def patch_quickaction_edges(text):
+    marker = '            // BEGIN serpantinum-addons-v2 quickaction edges\n'
+    end_marker = '            // END serpantinum-addons-v2 quickaction edges\n'
+    if marker in text:
+        start = text.index(marker)
+        text = text[:start] + text[text.index(end_marker, start) + len(end_marker):]
+    anchor = '            function handleEdgeEntered(edge, mousePos) {\n'
+    if text.count(anchor) != 1:
+        raise InstallError('Quickactions edge settings anchor changed')
+    block = marker + """            function addonEdgeAllowed(edge) {
+                if (!edge) return false;
+                const screens = Config.getSetting("addonsV2QuickEdgesByScreen", {});
+                const name = floatingWidget.screen ? floatingWidget.screen.name : "";
+                const settings = screens[name];
+                return settings && settings[edge] !== undefined ? settings[edge] !== false
+                    : Config.getSetting("addonsV2QuickEdge_" + edge, true) !== false;
+            }
+            function addonPreferredEdge() {
+                const edges = [barPosition === "left" ? "right" : "left", "right", "left", "bottom", "top"];
+                return edges.find(edge => edge !== barPosition && addonEdgeAllowed(edge)) || "";
+            }
+            // END serpantinum-addons-v2 quickaction edges
+"""
+    text = text.replace(anchor, block + anchor, 1)
+    for name in ('handleEdgeEntered(edge, mousePos)', 'handleEdgePositionChanged(edge, mousePos)', 'showPeek(edge, pos)', 'showSidebar(edge, pos, expand)'):
+        anchor = '            function ' + name + ' {\n'
+        if text.count(anchor) != 1:
+            raise InstallError('Quickactions edge function changed: ' + name)
+        guard = '                if (!floatingWidget.addonEdgeAllowed(edge)) return;\n'
+        if anchor + guard not in text:
+            text = text.replace(anchor, anchor + guard, 1)
+    old = '(floatingWidget.barPosition === "left") ? "right" : "left"'
+    text = text.replace(old, 'floatingWidget.addonPreferredEdge()')
+    text = text.replace('let centerPos = floatingWidget.screenHeight / 2;', 'let centerPos = (sideEdge === "top" || sideEdge === "bottom" ? floatingWidget.screenWidth : floatingWidget.screenHeight) / 2;')
+    text = text.replace('floatingWidget.showSidebar(sideEdge, floatingWidget.screenHeight / 2, true);', 'floatingWidget.showSidebar(sideEdge, (sideEdge === "top" || sideEdge === "bottom" ? floatingWidget.screenWidth : floatingWidget.screenHeight) / 2, true);')
+    return text
+
+
+def patch_general_quick_edges(text):
+    marker = '    // BEGIN serpantinum-addons-v2 quickaction settings\n'
+    block = marker + '    AddonQuickEdges { rootObj: section.rootObj }\n    // END serpantinum-addons-v2 quickaction settings\n'
+    if marker in text:
+        return text
+    index = text.rfind('}')
+    if index < 0 or 'settingId: "general_quickactions"' not in text:
+        raise InstallError('General Quickactions settings anchor changed')
+    return text[:index] + block + text[index:]
+
+
 def patch_floating(text):
     marker = '                                // BEGIN serpantinum-addons-v2 picker action\n'
     if marker in text:
@@ -1772,6 +1821,7 @@ PAYLOAD_FILES = {
     'DnsControl.qml': 'network/DnsControl.qml', 'CalendarPopup.qml': 'calendar/CalendarPopup.qml',
     **{name + '.qml': 'guide/' + name + '.qml' for name in ('AddonCursorSettings', 'AddonCursorPreview', 'AddonCursorRole', 'AddonCursorTestArea')},
     'AddonPaletteEditor.qml': 'guide/theme/AddonPaletteEditor.qml',
+    'AddonQuickEdges.qml': 'guide/general/AddonQuickEdges.qml',
     'AddonGlassSurface.qml': 'reusables/AddonGlassSurface.qml',
     'AddonDesktopGlass.qml': 'AddonDesktopGlass.qml',
     'AddonButtonEffect.qml': 'reusables/AddonButtonEffect.qml',
@@ -1804,8 +1854,8 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
     theme_state = QS/'guide/theme/ThemeTabState.qml'
     theme_view = QS/'guide/theme/ThemeTab.qml'
     patches = {QS/'Main.qml': lambda text: remove_inline_settings(patch_main(text), '//'), QS/'WindowRegistry.js': lambda text: remove_inline_settings(text, '//'),
-               QS/'Shell.qml': patch_shell, QS/'screenshot/ScreenshotOverlay.qml': lambda text: patch_screenshot_picker(patch_screenshot_overlay(text)), QS/'quickactions/Floating.qml': lambda text: remove_beamer_edge_guard(text) if without_beamer else patch_beamer_edge_guard(patch_floating(text)),
-               QS/'guide/GuidePopup.qml': patch_guide, QS/'guide/GuideSidebar.qml': patch_guide_sidebar, QS/'guide/IdleTab.qml': patch_idle_tab,
+               QS/'Shell.qml': patch_shell, QS/'screenshot/ScreenshotOverlay.qml': lambda text: patch_screenshot_picker(patch_screenshot_overlay(text)), QS/'quickactions/Floating.qml': lambda text: patch_quickaction_edges(remove_beamer_edge_guard(text) if without_beamer else patch_beamer_edge_guard(patch_floating(text))),
+               QS/'guide/general/GeneralBehaviorSection.qml': patch_general_quick_edges, QS/'guide/GuidePopup.qml': patch_guide, QS/'guide/GuideSidebar.qml': patch_guide_sidebar, QS/'guide/IdleTab.qml': patch_idle_tab,
                (theme_state if theme_state.exists() else theme_view): patch_theme,QS/'network/NetworkPopup.qml': patch_network,
                QS/'singletons/theme/Matugen.qml': patch_matugen, QS/'widgets/faces/weather/WeatherFaceFull.qml': patch_weather_face,
                bar_outline.left_face_path(QS): patch_left_face, QS/'reusables/buttons/ClickButton.qml': patch_click_button, QS/'reusables/buttons/IconButton.qml': patch_icon_button,
@@ -1888,7 +1938,8 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
         plan.created.add(QS/target)
     pending[QS/'guide/DnsControl.qml'] = payload_text('DnsControl.qml')
     plan.created.add(QS/'guide/DnsControl.qml')
-    for path, declarations in [(QS/'guide/theme/qmldir', ['AddonPaletteEditor 1.0 AddonPaletteEditor.qml']),
+    for path, declarations in [(QS/'guide/general/qmldir', ['AddonQuickEdges 1.0 AddonQuickEdges.qml']),
+                               (QS/'guide/theme/qmldir', ['AddonPaletteEditor 1.0 AddonPaletteEditor.qml']),
                                (QS/'reusables/qmldir', ['AddonGlassSurface 1.0 AddonGlassSurface.qml', 'AddonButtonEffect 1.0 AddonButtonEffect.qml']),
                                (QS/'guide/qmldir', [c + ' 1.0 ' + c + '.qml' for c in ('AddonCursorSettings', 'AddonCursorPreview', 'AddonCursorRole', 'AddonCursorTestArea')] + ['DnsControl 1.0 DnsControl.qml']),
                                (QS/'network/qmldir', ['DnsControl 1.0 DnsControl.qml']),
