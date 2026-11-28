@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Colour picker: with the Liquid Glass appearance, the expanded disc and its HEX and Back buttons are glass again, refracting the frozen capture.
 - Calendar: Google Calendar (read/write) and iCal subscriptions. The clock panel (Super+S) gains a day stream underneath (the schedule strip of the original Imperative Dots, fed by the calendar), event dots in its mini calendar and a next-event countdown under the clock; it morphs into a full agenda (Super+G) with month, week, day and list views, search, drag to move or resize, an event editor (repeat, reminders, Meet link, colour), RSVP, offline edits and reminder notifications. Synced by the `serpantinum-gcal` user service; `--without-calendar` removes it. Super+I also opens the agenda directly. Accounts and preferences live in Settings → Calendar, which also has an *Enable calendar* switch.
 - Calendar: advanced repeat options in the event editor. *Custom…* sets an interval and unit, weekdays, days of the month, a weekday of the month ("every 3rd Tuesday", "last Friday"), the last weekday or last day of the month, the months of a yearly series, and an end date or occurrence count; "Weekends" joins the presets. The backend now expands `BYSETPOS`, `WKST`, yearly `BYDAY`/`BYMONTHDAY` and `BYDAY` filters on daily rules, so such series from iCal feeds display correctly too.
 
