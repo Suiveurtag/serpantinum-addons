@@ -336,6 +336,7 @@ PanelWindow {
     }
 
     MouseArea {
+        id: backdropInput
         anchors.fill: parent
         hoverEnabled: true
         enabled: root.ready && !root.copying && !root.closing
@@ -347,7 +348,17 @@ PanelWindow {
             magnifier.requestPaint();
         }
         onClicked: mouse => {
-            if (root.selected) return;
+            if (root.selected) {
+                const point = result.mapFromItem(backdropInput, mouse.x, mouse.y);
+                if (Math.hypot(point.x - result.width / 2, point.y - result.height / 2) <= result.width / 2) return;
+                root.editing = false;
+                root.selected = false;
+                root.copyError = "";
+                root.pointerX = mouse.x;
+                root.pointerY = mouse.y;
+                magnifier.requestPaint();
+                return;
+            }
             root.pointerX = mouse.x;
             root.pointerY = mouse.y;
             root.choose();

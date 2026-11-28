@@ -127,7 +127,14 @@ Item {
                         readonly property bool filled: ev.allDay || ev.end - ev.start >= 86400000
                         width: parent.width
                         height: root.s(18)
-                        opacity: (root.dragEvent && root.dragEvent.id === ev.id && root.dragFrom === cell.index ? 0.3 : 1)
+                        property real entrance: GCal.reducedMotion ? 1 : 0
+                        Component.onCompleted: if (!GCal.reducedMotion) chipEntrance.start()
+                        SequentialAnimation {
+                            id: chipEntrance
+                            PauseAnimation { duration: Math.min(cell.index, 8) * 12 + Math.min(chip.index, 3) * 15 }
+                            NumberAnimation { target: chip; property: "entrance"; to: 1; duration: 180; easing.type: Easing.OutCubic }
+                        }
+                        opacity: entrance * (root.dragEvent && root.dragEvent.id === ev.id && root.dragFrom === cell.index ? 0.3 : 1)
                         Behavior on opacity { NumberAnimation { duration: 160 } }
 
                         Rectangle {

@@ -61,7 +61,7 @@ def save_keys(payload):
         raise ValueError('Bindings changed outside this editor. Reload before saving.')
     lines = old.splitlines(keepends=True)
     source_rows = {r['line']: r for r in keybinds()['rows']}
-    seen = set()
+    seen = {}
     edited = {}
     additions = []
     for row in payload['rows']:
@@ -69,10 +69,12 @@ def save_keys(payload):
         if not chord or any(ord(c) < 32 for c in chord):
             raise ValueError('Empty or invalid shortcut')
         normalized = re.sub(r'\s+', '', chord).upper()
-        if normalized in seen:
-            raise ValueError('Duplicate shortcut: ' + chord)
-        seen.add(normalized)
         index = int(row['line'])
+        original_key = source_rows.get(index, {}).get('key', '')
+        unchanged = re.sub(r'\s+', '', original_key).upper() == normalized
+        if normalized in seen and not (unchanged and seen[normalized]):
+            raise ValueError('Duplicate shortcut: ' + chord)
+        seen[normalized] = unchanged
         if index == -1:
             command = str(row.get('command', '')).strip()
             if not command: raise ValueError('New shortcut needs a command')

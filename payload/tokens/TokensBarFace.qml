@@ -106,8 +106,8 @@ Item {
             ParallelAnimation {
                 running: dot.pulsing
                 loops: Animation.Infinite
-                ScaleAnimator { target: ring; from: 0.8; to: 2.2; duration: 1300; easing.type: Easing.OutCubic }
-                OpacityAnimator { target: ring; from: 0.8; to: 0; duration: 1300; easing.type: Easing.OutCubic }
+                NumberAnimation { target: ring; property: "scale"; from: 0.8; to: 2.2; duration: 1300; easing.type: Easing.OutCubic }
+                NumberAnimation { target: ring; property: "opacity"; from: 0.8; to: 0; duration: 1300; easing.type: Easing.OutCubic }
             }
         }
         Rectangle {

@@ -58,6 +58,8 @@ FocusScope {
             : a.toLocaleDateString(GCal.locale, "d MMM") + " – " + b.toLocaleDateString(GCal.locale, "d MMM yyyy");
     }
 
+    property real viewOpacity: 1
+    NumberAnimation { id: revealView; target: app; property: "viewOpacity"; to: 1; duration: 200; easing.type: Easing.OutCubic }
     property real viewOffset: 0
     NumberAnimation {
         id: settleView
@@ -91,7 +93,16 @@ FocusScope {
         query = "";
         settleView.stop();
         viewOffset = 0;
+        const order = ["month", "week", "day", "list"];
+        const direction = order.indexOf(v) >= order.indexOf(view) ? 1 : -1;
         GCal.agendaView = v;
+        revealView.stop();
+        if (!GCal.reducedMotion) {
+            viewOpacity = 0.55;
+            viewOffset = s(10) * direction;
+            revealView.start();
+            settleView.start();
+        } else viewOpacity = 1;
     }
     function goTo(date, v) {
         setView(v);
@@ -472,6 +483,7 @@ FocusScope {
 
             GCalSegmented {
                 id: viewSwitcher
+                viewIcons: true
                 compactIcons: width < app.s(280)
                 accent: app.accent
                 options: [
@@ -697,6 +709,7 @@ FocusScope {
                 Loader {
                     anchors.fill: parent
                     anchors.margins: app.s(10)
+                    opacity: app.viewOpacity
                     transform: Translate { x: app.viewOffset }
                     active: !app.query && app.view === "month"
                     sourceComponent: GCalMonthView { agenda: app }
@@ -705,6 +718,7 @@ FocusScope {
                     id: timeGrid
                     anchors.fill: parent
                     anchors.margins: app.s(10)
+                    opacity: app.viewOpacity
                     transform: Translate { x: app.viewOffset }
                     active: !app.query && (app.view === "week" || app.view === "day")
                     sourceComponent: GCalTimeGrid { agenda: app; days: app.view === "day" ? 1 : 7 }
@@ -712,6 +726,7 @@ FocusScope {
                 Loader {
                     anchors.fill: parent
                     anchors.margins: app.s(10)
+                    opacity: app.viewOpacity
                     transform: Translate { x: app.viewOffset }
                     active: !!app.query || app.view === "list"
                     sourceComponent: GCalListView { agenda: app; query: app.query }

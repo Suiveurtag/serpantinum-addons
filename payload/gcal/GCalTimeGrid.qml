@@ -365,6 +365,14 @@ Item {
                             width: Math.min(baseW, column.width - baseX - root.s(4))
                             height: Math.max(root.s(18), root.yOf((modelData.e - modelData.s) / 60000) - root.s(2)) + resizeDy
                             z: ma.mode !== "" ? 50 : (blockHover.hovered ? 10 : modelData.col)
+                            property real entrance: GCal.reducedMotion ? 1 : 0
+                            opacity: entrance
+                            Component.onCompleted: if (!GCal.reducedMotion) eventEntrance.start()
+                            SequentialAnimation {
+                                id: eventEntrance
+                                PauseAnimation { duration: Math.min(block.index, 5) * 18 }
+                                NumberAnimation { target: block; property: "entrance"; to: 1; duration: 200; easing.type: Easing.OutCubic }
+                            }
 
                             // Drag deltas (snapped), applied as a translation until the edit lands.
                             property int dDays: 0
@@ -388,9 +396,9 @@ Item {
                                 id: card
                                 anchors.fill: parent
                                 radius: Math.min(root.s(9), ThemeBackend.borderRadius)
-                                topLeftRadius: block.modelData.cutTop ? root.s(2) : radius
+                                topLeftRadius: 0
                                 topRightRadius: block.modelData.cutTop ? root.s(2) : radius
-                                bottomLeftRadius: block.modelData.cutBottom ? root.s(2) : radius
+                                bottomLeftRadius: 0
                                 bottomRightRadius: block.modelData.cutBottom ? root.s(2) : radius
                                 color: block.declined ? "transparent" : Qt.tint(ThemeBackend.base,
                                     Qt.alpha(block.tone, blockHover.hovered || ma.mode !== "" ? 0.92 : (block.past ? 0.60 : 0.82)))

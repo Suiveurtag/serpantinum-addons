@@ -121,7 +121,7 @@ Item {
         Behavior on progress { NumberAnimation { duration: GCal.reducedMotion ? 125 : (root.open ? 250 : 190); easing.type: Easing.OutCubic } }
         visible: progress > 0.01
         enabled: root.open
-        width: Math.min(root.s(460), parent.width - root.s(40))
+        width: Math.min(root.s(500), parent.width - root.s(40))
         height: parent.height - root.s(16)
         y: root.s(8)
         x: parent.width - width - root.s(8)
@@ -129,7 +129,7 @@ Item {
         radius: Math.min(ThemeBackend.borderRadius + root.s(4), root.s(22))
         color: ThemeBackend.base
         border.width: 1
-        border.color: Qt.alpha(root.tone, 0.4)
+        border.color: Qt.alpha(ThemeBackend.text, 0.10)
         Behavior on border.color { ColorAnimation { duration: 300 } }
         clip: true
         MouseArea { anchors.fill: parent }   // swallow clicks
@@ -147,39 +147,54 @@ Item {
         }
 
         Rectangle {
-            width: parent.width; height: root.s(120)
-            gradient: Gradient {
-                GradientStop { position: 0; color: Qt.alpha(root.tone, 0.14) }
-                GradientStop { position: 1; color: "transparent" }
-            }
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: head.height + root.s(36)
+            color: Qt.alpha(ThemeBackend.surface0, 0.35)
         }
 
-        // Header.
         RowLayout {
             id: head
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.margins: root.s(20)
-            spacing: root.s(10)
+            spacing: root.s(12)
             Rectangle {
-                Layout.preferredWidth: root.s(12); Layout.preferredHeight: root.s(12)
-                radius: width / 2
-                color: root.tone
-                Behavior on color { ColorAnimation { duration: 300 } }
+                Layout.preferredWidth: root.s(42); Layout.preferredHeight: root.s(42)
+                radius: Math.min(ThemeBackend.borderRadius, root.s(13))
+                color: Qt.alpha(root.tone, 0.18)
+                Text {
+                    anchors.centerIn: parent
+                    text: GCal.icon.calendar
+                    font.family: ThemeBackend.iconFont
+                    font.pixelSize: root.s(21)
+                    color: root.tone
+                }
             }
-            Text {
+            ColumnLayout {
                 Layout.fillWidth: true
-                text: (root.isNew ? GCal.tr("New event", "Nouvel événement") : GCal.tr("Edit event", "Modifier l'événement")).toUpperCase()
-                font.family: ThemeBackend.fontFamily
-                font.weight: Font.Black
-                font.pixelSize: root.s(13)
-                font.letterSpacing: root.s(0.6)
-                color: ThemeBackend.subtext0
+                spacing: root.s(3)
+                Text {
+                    text: root.isNew ? GCal.tr("New event", "Nouvel événement") : GCal.tr("Edit event", "Modifier l’événement")
+                    font.family: ThemeBackend.fontFamily
+                    font.weight: Font.Black
+                    font.pixelSize: root.s(17)
+                    color: ThemeBackend.text
+                }
+                Text {
+                    text: root.cal ? root.cal.name : GCal.tr("Calendar", "Agenda")
+                    font.family: ThemeBackend.fontFamily
+                    font.pixelSize: root.s(11)
+                    color: ThemeBackend.subtext0
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                }
             }
             IconButton {
-                Layout.preferredWidth: root.s(30); Layout.preferredHeight: root.s(30)
-                size: root.s(30); cornerRadius: root.s(9)
+                Layout.preferredWidth: root.s(34); Layout.preferredHeight: root.s(34)
+                size: root.s(34); cornerRadius: root.s(10)
                 buttonIcon: GCal.icon.close; iconFontSize: root.s(14)
                 accentColor: ThemeBackend.surface0
                 textColor: isHoveredOrHighlighted ? ThemeBackend.red : ThemeBackend.overlay1
@@ -190,7 +205,7 @@ Item {
         Flickable {
             id: scroller
             anchors.top: head.bottom
-            anchors.topMargin: root.s(14)
+            anchors.topMargin: root.s(24)
             anchors.bottom: footer.top
             anchors.bottomMargin: root.s(10)
             anchors.left: parent.left
@@ -244,18 +259,24 @@ Item {
 
                 // When.
                 GCalReveal { generation: root.generation; index: 2
-                    implicitHeight: whenCol.implicitHeight
+                    implicitHeight: whenCol.implicitHeight + root.s(28)
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Math.min(ThemeBackend.borderRadius, root.s(16))
+                        color: Qt.alpha(ThemeBackend.surface0, 0.38)
+                    }
                     ColumnLayout {
                         id: whenCol
-                        width: parent.width
+                        x: root.s(14); y: root.s(14)
+                        width: parent.width - root.s(28)
                         spacing: root.s(8)
                         RowLayout {
                             Layout.fillWidth: true
                             Text {
                                 Layout.fillWidth: true
                                 text: GCal.icon.clock + "  " + GCal.tr("When", "Quand")
-                                font.family: ThemeBackend.fontFamily; font.weight: Font.Black; font.pixelSize: root.s(12)
-                                color: ThemeBackend.subtext0
+                                font.family: ThemeBackend.fontFamily; font.weight: Font.Bold; font.pixelSize: root.s(12.5)
+                                color: ThemeBackend.text
                             }
                             Toggle {
                                 id: allDayToggle
@@ -350,15 +371,21 @@ Item {
                 // Repeat.
                 GCalReveal { generation: root.generation; index: 3
                     visible: root.isNew || !root.draft || !root.draft.recurringEventId || root.agenda.editScopeAll
-                    implicitHeight: repeatCol.implicitHeight
+                    implicitHeight: repeatCol.implicitHeight + root.s(28)
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Math.min(ThemeBackend.borderRadius, root.s(16))
+                        color: Qt.alpha(ThemeBackend.surface0, 0.38)
+                    }
                     ColumnLayout {
                         id: repeatCol
-                        width: parent.width
+                        x: root.s(14); y: root.s(14)
+                        width: parent.width - root.s(28)
                         spacing: root.s(8)
                         Text {
                             text: GCal.icon.repeat + "  " + GCal.tr("Repeat", "Répétition")
-                            font.family: ThemeBackend.fontFamily; font.weight: Font.Black; font.pixelSize: root.s(12)
-                            color: ThemeBackend.subtext0
+                            font.family: ThemeBackend.fontFamily; font.weight: Font.Bold; font.pixelSize: root.s(12.5)
+                            color: ThemeBackend.text
                         }
                         Flow {
                             Layout.fillWidth: true
@@ -408,15 +435,21 @@ Item {
 
                 // Reminders.
                 GCalReveal { generation: root.generation; index: 4
-                    implicitHeight: remCol.implicitHeight
+                    implicitHeight: remCol.implicitHeight + root.s(28)
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Math.min(ThemeBackend.borderRadius, root.s(16))
+                        color: Qt.alpha(ThemeBackend.surface0, 0.38)
+                    }
                     ColumnLayout {
                         id: remCol
-                        width: parent.width
+                        x: root.s(14); y: root.s(14)
+                        width: parent.width - root.s(28)
                         spacing: root.s(8)
                         Text {
                             text: GCal.icon.bell + "  " + GCal.tr("Reminders", "Rappels")
-                            font.family: ThemeBackend.fontFamily; font.weight: Font.Black; font.pixelSize: root.s(12)
-                            color: ThemeBackend.subtext0
+                            font.family: ThemeBackend.fontFamily; font.weight: Font.Bold; font.pixelSize: root.s(12.5)
+                            color: ThemeBackend.text
                         }
                         Flow {
                             Layout.fillWidth: true
@@ -481,15 +514,21 @@ Item {
 
                 // Colour.
                 GCalReveal { generation: root.generation; index: 7
-                    implicitHeight: colorCol.implicitHeight
+                    implicitHeight: colorCol.implicitHeight + root.s(28)
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Math.min(ThemeBackend.borderRadius, root.s(16))
+                        color: Qt.alpha(ThemeBackend.surface0, 0.38)
+                    }
                     ColumnLayout {
                         id: colorCol
-                        width: parent.width
+                        x: root.s(14); y: root.s(14)
+                        width: parent.width - root.s(28)
                         spacing: root.s(8)
                         Text {
                             text: GCal.icon.palette + "  " + GCal.tr("Colour", "Couleur")
-                            font.family: ThemeBackend.fontFamily; font.weight: Font.Black; font.pixelSize: root.s(12)
-                            color: ThemeBackend.subtext0
+                            font.family: ThemeBackend.fontFamily; font.weight: Font.Bold; font.pixelSize: root.s(12.5)
+                            color: ThemeBackend.text
                         }
                         Flow {
                             Layout.fillWidth: true

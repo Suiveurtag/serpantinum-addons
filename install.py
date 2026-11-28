@@ -22,12 +22,14 @@ import tempfile
 import urllib.error
 import urllib.request
 import agenda
+import animation_perf
 import capri
 import clawd
 import bar_outline
 import bootintro
 import release_ui
 import seasonal
+import snowhush
 import tokens
 import userpath
 import seasonal_surfaces
@@ -1132,6 +1134,7 @@ def patch_shell(text):
         '    // BEGIN serpantinum-addons-v2 desktop draw\n    AddonDesktopDraw {}\n    // END serpantinum-addons-v2 desktop draw\n',
         '    // BEGIN serpantinum-addons-v2 desktop zoom\n    AddonDesktopZoom {}\n    // END serpantinum-addons-v2 desktop zoom\n',
         '    // BEGIN serpantinum-addons-v2 mouse spotlight\n    AddonMouseSpotlight {}\n    // END serpantinum-addons-v2 mouse spotlight\n',
+        '    // BEGIN serpantinum-addons-v2 snow hush\n    readonly property var snowHush: SnowHush\n    // END serpantinum-addons-v2 snow hush\n',
     ]
     # These IPC handlers must be direct ShellRoot children. Keeping them in
     # screenshotLoader makes every shortcut fail until a screenshot activates it.
@@ -1290,6 +1293,55 @@ def patch_screenshot_frozen_validation(text):
     if new in text: return text
     if text.count(old) != 1: raise InstallError('Frozen screenshot validation anchor changed')
     return text.replace(old, new, 1)
+
+
+def patch_quickaction_edges(text):
+    marker = '            // BEGIN serpantinum-addons-v2 quickaction edges\n'
+    end_marker = '            // END serpantinum-addons-v2 quickaction edges\n'
+    if marker in text:
+        start = text.index(marker)
+        text = text[:start] + text[text.index(end_marker, start) + len(end_marker):]
+    anchor = '            function handleEdgeEntered(edge, mousePos) {\n'
+    if text.count(anchor) != 1:
+        raise InstallError('Quickactions edge settings anchor changed')
+    block = marker + """            function addonEdgeAllowed(edge) {
+                if (!edge) return false;
+                const screens = Config.getSetting("addonsV2QuickEdgesByScreen", {});
+                const name = floatingWidget.screen ? floatingWidget.screen.name : "";
+                const settings = screens[name];
+                return settings && settings[edge] !== undefined ? settings[edge] !== false
+                    : Config.getSetting("addonsV2QuickEdge_" + edge, true) !== false;
+            }
+            function addonPreferredEdge() {
+                const edges = [barPosition === "left" ? "right" : "left", "right", "left", "bottom", "top"];
+                return edges.find(edge => edge !== barPosition && addonEdgeAllowed(edge)) || "";
+            }
+            // END serpantinum-addons-v2 quickaction edges
+"""
+    text = text.replace(anchor, block + anchor, 1)
+    for name in ('handleEdgeEntered(edge, mousePos)', 'handleEdgePositionChanged(edge, mousePos)', 'showPeek(edge, pos)', 'showSidebar(edge, pos, expand)'):
+        anchor = '            function ' + name + ' {\n'
+        if text.count(anchor) != 1:
+            raise InstallError('Quickactions edge function changed: ' + name)
+        guard = '                if (!floatingWidget.addonEdgeAllowed(edge)) return;\n'
+        if anchor + guard not in text:
+            text = text.replace(anchor, anchor + guard, 1)
+    old = '(floatingWidget.barPosition === "left") ? "right" : "left"'
+    text = text.replace(old, 'floatingWidget.addonPreferredEdge()')
+    text = text.replace('let centerPos = floatingWidget.screenHeight / 2;', 'let centerPos = (sideEdge === "top" || sideEdge === "bottom" ? floatingWidget.screenWidth : floatingWidget.screenHeight) / 2;')
+    text = text.replace('floatingWidget.showSidebar(sideEdge, floatingWidget.screenHeight / 2, true);', 'floatingWidget.showSidebar(sideEdge, (sideEdge === "top" || sideEdge === "bottom" ? floatingWidget.screenWidth : floatingWidget.screenHeight) / 2, true);')
+    return text
+
+
+def patch_general_quick_edges(text):
+    marker = '    // BEGIN serpantinum-addons-v2 quickaction settings\n'
+    block = marker + '    AddonQuickEdges { rootObj: section.rootObj }\n    // END serpantinum-addons-v2 quickaction settings\n'
+    if marker in text:
+        return text
+    index = text.rfind('}')
+    if index < 0 or 'settingId: "general_quickactions"' not in text:
+        raise InstallError('General Quickactions settings anchor changed')
+    return text[:index] + block + text[index:]
 
 
 def patch_floating(text):
@@ -1775,8 +1827,12 @@ PAYLOAD_FILES = {
     'DnsControl.qml': 'network/DnsControl.qml', 'CalendarPopup.qml': 'calendar/CalendarPopup.qml',
     **{name + '.qml': 'guide/' + name + '.qml' for name in ('AddonCursorSettings', 'AddonCursorPreview', 'AddonCursorRole', 'AddonCursorTestArea')},
     'AddonPaletteEditor.qml': 'guide/theme/AddonPaletteEditor.qml',
+    'AddonQuickEdges.qml': 'guide/general/AddonQuickEdges.qml',
     'AddonGlassSurface.qml': 'reusables/AddonGlassSurface.qml',
     'AddonButtonEffect.qml': 'reusables/AddonButtonEffect.qml',
+    'snowhush/SnowHush.qml': 'snowhush/SnowHush.qml',
+    'snowhush/SnowHushCard.qml': 'snowhush/SnowHushCard.qml',
+    'snowhush/SnowHushSurface.qml': 'snowhush/SnowHushSurface.qml',
 }
 # Upstream files that the payload replaces outright (they exist upstream, so uninstall restores rather than deletes them).
 OVERWRITES = ('calendar/CalendarPopup.qml',)
@@ -1808,8 +1864,8 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
     theme_state = QS/'guide/theme/ThemeTabState.qml'
     theme_view = QS/'guide/theme/ThemeTab.qml'
     patches = {QS/'Main.qml': lambda text: remove_inline_settings(patch_main(text), '//'), QS/'WindowRegistry.js': lambda text: remove_inline_settings(text, '//'),
-               QS/'Shell.qml': patch_shell, QS/'screenshot/ScreenshotOverlay.qml': lambda text: patch_screenshot_picker(patch_screenshot_overlay(text)), QS/'quickactions/Floating.qml': lambda text: remove_beamer_edge_guard(text) if without_beamer else patch_beamer_edge_guard(patch_floating(text)),
-               QS/'guide/GuidePopup.qml': patch_guide, QS/'guide/GuideSidebar.qml': patch_guide_sidebar, QS/'guide/IdleTab.qml': patch_idle_tab,
+               QS/'Shell.qml': patch_shell, QS/'screenshot/ScreenshotOverlay.qml': lambda text: patch_screenshot_picker(patch_screenshot_overlay(text)), QS/'quickactions/Floating.qml': lambda text: patch_quickaction_edges(remove_beamer_edge_guard(text) if without_beamer else patch_beamer_edge_guard(patch_floating(text))),
+               QS/'guide/general/GeneralBehaviorSection.qml': patch_general_quick_edges, QS/'guide/GuidePopup.qml': patch_guide, QS/'guide/GuideSidebar.qml': patch_guide_sidebar, QS/'guide/IdleTab.qml': patch_idle_tab,
                (theme_state if theme_state.exists() else theme_view): patch_theme,QS/'network/NetworkPopup.qml': patch_network,
                QS/'singletons/theme/Matugen.qml': patch_matugen, QS/'widgets/faces/weather/WeatherFaceFull.qml': patch_weather_face,
                bar_outline.left_face_path(QS): patch_left_face, QS/'reusables/buttons/ClickButton.qml': patch_click_button, QS/'reusables/buttons/IconButton.qml': patch_icon_button,
@@ -1860,6 +1916,10 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
     def staged(path):
         return pending[path] if path in pending else read(path)
 
+    for path, transform in animation_perf.transformations(QS).items():
+        if path.is_file():
+            pending[path] = patch_file(path, transform, staged(path))
+
     for companion in COMPANIONS:
         removing = options[companion.option]
         module = companion.module
@@ -1876,6 +1936,9 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
 
     # Bar outlines (Addons → General, off by default): always patched like the update UI.
     for path, transform in bar_outline.transformations(QS).items():
+        pending[path] = patch_file(path, transform, staged(path))
+
+    for path, transform in snowhush.transformations(QS).items():
         pending[path] = patch_file(path, transform, staged(path))
 
     # Boot intro (Addons → General, on by default): always patched, like the bar outlines.
@@ -1895,12 +1958,15 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
         plan.created.add(QS/target)
     pending[QS/'guide/DnsControl.qml'] = payload_text('DnsControl.qml')
     plan.created.add(QS/'guide/DnsControl.qml')
-    for path, declarations in [(QS/'guide/theme/qmldir', ['AddonPaletteEditor 1.0 AddonPaletteEditor.qml']),
+    for path, declarations in [(QS/'guide/general/qmldir', ['AddonQuickEdges 1.0 AddonQuickEdges.qml']),
+                               (QS/'guide/theme/qmldir', ['AddonPaletteEditor 1.0 AddonPaletteEditor.qml']),
                                (QS/'reusables/qmldir', ['AddonGlassSurface 1.0 AddonGlassSurface.qml', 'AddonButtonEffect 1.0 AddonButtonEffect.qml']),
                                (QS/'guide/qmldir', [c + ' 1.0 ' + c + '.qml' for c in ('AddonCursorSettings', 'AddonCursorPreview', 'AddonCursorRole', 'AddonCursorTestArea')] + ['DnsControl 1.0 DnsControl.qml']),
                                (QS/'network/qmldir', ['DnsControl 1.0 DnsControl.qml']),
                                (QS/'qmldir', ['AddonColorPicker 1.0 AddonColorPicker.qml', 'AddonMouseSpotlight 1.0 AddonMouseSpotlight.qml', 'AddonDesktopZoom 1.0 AddonDesktopZoom.qml',
-                                              'AddonDesktopDraw 1.0 AddonDesktopDraw.qml', 'AddonAwake 1.0 AddonAwake.qml', 'AddonWindowOutline 1.0 AddonWindowOutline.qml'])]:
+                                              'AddonDesktopDraw 1.0 AddonDesktopDraw.qml', 'AddonAwake 1.0 AddonAwake.qml', 'AddonWindowOutline 1.0 AddonWindowOutline.qml',
+                                              'singleton SnowHush 1.0 snowhush/SnowHush.qml', 'SnowHushCard 1.0 snowhush/SnowHushCard.qml',
+                                              'SnowHushSurface 1.0 snowhush/SnowHushSurface.qml'])]:
         original = pending[path] if path in pending else (read(path) if path.exists() else '')
         original = original.replace(RETIRED_GLASS_DECLARATION, '')
         for declaration in declarations:
@@ -1999,6 +2065,9 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
             plan.blobs.append((path, blob, removing))
             if not removing:
                 plan.created.add(path)
+    snow_hush_art = 'snowhush/winter.jpg'
+    plan.blobs.append((QS/snow_hush_art, (SOURCE/'payload'/snow_hush_art).read_bytes(), False))
+    plan.created.add(QS/snow_hush_art)
     plan.shader_dirs = [(QS/'seasonal/shaders', 'atmosphere', shader_name), (QS/'capri/shaders', 'sprite', sprite_name)]
     plan.options = options
     return plan
@@ -2573,6 +2642,11 @@ def _uninstall_locked(report, purge, check):
             report['removed'].append(str(DEPLOY/leftover))
     state_dir = release.state_dir()
     if purge:
+        cache_home = Path(os.environ.get('XDG_CACHE_HOME') or HOME/'.cache')
+        snow_hush_cache = cache_home/'serpantinum-addons-v2/snowhush'
+        if snow_hush_cache.exists() or snow_hush_cache.is_symlink():
+            remove_path(snow_hush_cache)
+            report['removed'].append(str(snow_hush_cache))
         for path in addon_state_dirs():
             if path.exists():
                 if not within_addon_data(path):

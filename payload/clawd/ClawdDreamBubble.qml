@@ -45,7 +45,7 @@ Item {
     width: 24 * px
     height: 22 * px
 
-    Timer { interval: 33; repeat: true; running: cloud.visible; triggeredOnStart: true; onTriggered: cloud.now = Date.now() }
+    FrameAnimation { running: cloud.visible; onTriggered: cloud.now = Date.now() }
 
     Item {
         id: body

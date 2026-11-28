@@ -86,6 +86,14 @@ Item {
             readonly property bool isToday: GCal.sameDay(date, GCal.today)
             width: ListView.view.width
             height: isHeader ? root.s(48) : root.s(58)
+            property real entrance: GCal.reducedMotion ? 1 : 0
+            opacity: entrance
+            Component.onCompleted: if (!GCal.reducedMotion) rowEntrance.start()
+            SequentialAnimation {
+                id: rowEntrance
+                PauseAnimation { duration: Math.min(row.index, 6) * 18 }
+                NumberAnimation { target: row; property: "entrance"; to: 1; duration: 180; easing.type: Easing.OutCubic }
+            }
 
             RowLayout {
                 visible: row.isHeader

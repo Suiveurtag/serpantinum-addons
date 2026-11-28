@@ -42,7 +42,7 @@ PanelWindow {
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.keyboardFocus: (menuHere || chatHere) ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
     mask: Region {
-        Region { item: hitBox.visible ? hitBox : null }
+        Region { item: hit.pressed ? overlay.contentItem : hitBox.visible ? hitBox : null }
         Region { item: menu.visible ? menu : null }
         Region { item: bubble.visible ? bubble : null }
         Region { item: dreamBubble.visible ? dreamBubble : null }
@@ -60,6 +60,24 @@ PanelWindow {
         y: overlay.here ? Math.round(overlay.pet.y - overlay.here.y) : 0
         width: body.implicitWidth
         height: body.implicitHeight
+    }
+    // Keep the grabber fixed to the screen. A MouseArea parented to Clawd moves
+    // under the pointer as he is dragged across an otherwise empty desktop.
+    MouseArea {
+        id: hit
+        anchors.fill: overlay.contentItem
+        acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+        preventStealing: true
+        cursorShape: overlay.pet.dead && !pressed ? Qt.ArrowCursor : pressed ? Qt.ClosedHandCursor : Qt.PointingHandCursor
+        function at(mouse) {
+            const p = mapToItem(overlay.contentItem, mouse.x, mouse.y);
+            return Qt.point(p.x + overlay.here.x, p.y + overlay.here.y);
+        }
+        onPressed: mouse => { const p = at(mouse); overlay.pet.press(mouse.button, p.x, p.y); }
+        onPositionChanged: mouse => { const p = at(mouse); overlay.pet.move(p.x, p.y); }
+        onReleased: mouse => { if (mouse.button === Qt.LeftButton) { const p = at(mouse); overlay.pet.release(p.x, p.y); } }
+        onDoubleClicked: mouse => { if (mouse.button === Qt.LeftButton) overlay.pet.doubleClick(); }
+        onCanceled: overlay.pet.release()
     }
     Item {
         id: viewport
@@ -124,28 +142,11 @@ PanelWindow {
                 fragmentShader: "shaders/tint.frag.qsb"
             }
         }
-        MouseArea {
-            id: hit
-            anchors.fill: parent
-            anchors.margins: -overlay.catchPad   // in the air he is easier to catch
-            acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-            preventStealing: true
-            cursorShape: overlay.pet.dead && !pressed ? Qt.ArrowCursor : pressed ? Qt.ClosedHandCursor : Qt.PointingHandCursor
-            function at(mouse) {
-                const p = mapToItem(overlay.contentItem, mouse.x, mouse.y);
-                return Qt.point(p.x + overlay.here.x, p.y + overlay.here.y);
-            }
-            onPressed: mouse => { const p = at(mouse); overlay.pet.press(mouse.button, p.x, p.y); }
-            onPositionChanged: mouse => { const p = at(mouse); overlay.pet.move(p.x, p.y); }
-            onReleased: mouse => { if (mouse.button === Qt.LeftButton) { const p = at(mouse); overlay.pet.release(p.x, p.y); } }
-            onDoubleClicked: mouse => { if (mouse.button === Qt.LeftButton) overlay.pet.doubleClick(); }
-            onCanceled: overlay.pet.release()
-        }
     }
 
     // The effort clock (seconds) and the sparks around him for the electric, gold and space looks.
     property real tintTime: 0
-    Timer { interval: 40; repeat: true; running: !!Clawd.effortStyle && !Clawd.lowMotion && viewport.visible; triggeredOnStart: true; onTriggered: overlay.tintTime = (Date.now() / 1000) % 4096 }
+    FrameAnimation { running: !!Clawd.effortStyle && Clawd.effortStyle.mode > 0 && !Clawd.lowMotion && viewport.visible; onTriggered: overlay.tintTime = (Date.now() / 1000) % 4096 }
     // What floats around him at the top efforts (electric, gold, space): shaders/aura.frag over his sprite grown by a margin.
     ShaderEffect {
         id: aura
