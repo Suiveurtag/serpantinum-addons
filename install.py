@@ -33,6 +33,36 @@ def shader_package_name(folder):
 
 def patch_guide(text):
     import re
+    # Current upstream Guide uses a data-driven tabsModel and loads tab files
+    # dynamically; older revisions used hand-written sidebar delegates.
+    if 'property var tabsModel: [' in text and 'function ensureLoaded()' in text:
+        marker = '// BEGIN serpantinum-addons-v2 tabs'
+        text = re.sub(r'        // BEGIN serpantinum-addons-v2 tabs\n.*?        // END serpantinum-addons-v2 tabs\n', '', text, flags=re.S)
+        if marker not in text:
+            about = '        { id: "About", key: "about", name: "About", icon: "󰋽", file: "AboutTab.qml", iconOffsetX: 0 }'
+            if text.count(about) != 1: raise ValueError('Guide tabsModel anchor changed')
+            entries = '''        { id: "Addons", key: "addons", name: "Addons", icon: "󰐱", file: "AddonsTab.qml", iconOffsetX: 0 },
+        { id: "Monitors", key: "addon_monitors", name: "Monitors", icon: "󰍹", file: "AddonMonitorsTab.qml", iconOffsetX: 0 },
+        { id: "Keybinds", key: "addon_keybinds", name: "Keybinds", icon: "󰌌", file: "AddonKeybindsTab.qml", iconOffsetX: 0 },
+'''
+            text = text.replace(about, '        // BEGIN serpantinum-addons-v2 tabs\n' + entries + '        // END serpantinum-addons-v2 tabs\n' + about, 1)
+        old_tab_title = '''                return I18n.t("guide.tabs." + (t.key || t.id).toLowerCase(), t.name || t.id);'''
+        new_tab_title = '''                let translationKey = "guide.tabs." + (t.key || t.id).toLowerCase();
+                let translated = I18n.t(translationKey);
+                return translated && translated !== translationKey ? translated : (t.name || t.id);'''
+        text = text.replace(old_tab_title, new_tab_title)
+        old_subtab_title = '''                        return I18n.t("guide.tabs." + (st.key || st.id).toLowerCase(), st.name || st.id);'''
+        new_subtab_title = '''                        let translationKey = "guide.tabs." + (st.key || st.id).toLowerCase();
+                        let translated = I18n.t(translationKey);
+                        return translated && translated !== translationKey ? translated : (st.name || st.id);'''
+        text = text.replace(old_subtab_title, new_subtab_title)
+        text = text.replace(
+            'I18n.t("guide.tabs." + (tabDelegate.modelData.key || tabDelegate.modelData.id).toLowerCase(), tabDelegate.modelData.name || tabDelegate.modelData.id)',
+            'root.resolveTabTitle(tabDelegate.modelData.key || tabDelegate.modelData.id)')
+        text = text.replace(
+            'I18n.t("guide.tabs." + (subtabItem.modelData.key || subtabItem.modelData.id).toLowerCase(), subtabItem.modelData.name || subtabItem.modelData.id)',
+            'root.resolveSubtabTitle(tabDelegate.modelData.key || tabDelegate.modelData.id, subtabItem.modelData.key || subtabItem.modelData.id)')
+        return text
     # Migrate our first revision while leaving every upstream tab intact.
     text = re.sub(r'        // BEGIN serpantinum-addons-v2 tabs.*?        // END serpantinum-addons-v2 tabs[\s,]*(?=    \])', '', text, flags=re.S)
     text = re.sub(r'\n                                // BEGIN serpantinum-addons-v2 sidebar.*?                                // END serpantinum-addons-v2 sidebar\n', '', text, flags=re.S)
@@ -135,6 +165,27 @@ def patch_theme(text):
 
 def patch_matugen(text):
     if '// BEGIN ' + MARK + ' generation' in text: return text
+    if '"nice", "-n", "15",\n            "matugen", "image", cleanPath,' in text:
+        anchor = '''        matugenProcess.command = [
+            "nice", "-n", "15",
+            "matugen", "image", cleanPath,
+            "-c", root.configPath,
+            "-m", selectedMode,
+            "-t", selectedType,
+            "--source-color-index", "0"
+        ];'''
+        replacement = '''        // BEGIN serpantinum-addons-v2 generation
+        matugenProcess.command = [
+            "nice", "-n", "15", "python3",
+            Quickshell.env("HOME") + "/.local/share/serpantinum-addons-v2/scripts/colors.py",
+            cleanPath, root.configPath, root.configPathStatic, selectedMode, selectedType,
+            Config.getSetting("addonsV2ColorMode", "matugen"), Caching.stateDir
+        ];
+        // END serpantinum-addons-v2 generation'''
+        if text.count(anchor) != 1: raise ValueError('Matugen nice command anchor changed')
+        return text.replace(anchor, replacement, 1)
+    if 'scripts/colors.py' in text:
+        return text
     anchor = '''        matugenProcess.command = [
             "matugen", "image", cleanPath,
             "-c", root.configPath,
@@ -254,7 +305,9 @@ def install(without_halloween=False):
     # Both tabs use the same DNS component; identical payload with appropriate relative imports.
     pending[QS/'guide/DnsControl.qml'] = (SOURCE/'payload/DnsControl.qml').read_text()
     qmldir = QS/'qmldir'
-    qmldir_text = qmldir.read_text()
+    # Combine the color-picker registration with seasonal's qmldir transform;
+    # replacing pending here would silently discard all seasonal declarations.
+    qmldir_text = pending.get(qmldir, qmldir.read_text())
     pending[qmldir] = qmldir_text if 'AddonColorPicker 1.0 AddonColorPicker.qml' in qmldir_text else qmldir_text + '\nAddonColorPicker 1.0 AddonColorPicker.qml\n'
     for folder in ('guide', 'network'):
         directory = QS/folder/'qmldir'

@@ -66,7 +66,8 @@ def atomic(path, data):
 
 
 def generate(image, config, static_config, mode, scheme, addon_mode, state):
-    subprocess.run(['matugen', 'image', image, '-c', config, '-m', mode, '-t', scheme], check=True)
+    subprocess.run(['matugen', 'image', image, '-c', config, '-m', mode, '-t', scheme,
+                    '--source-color-index', '0'], check=True)
     state = Path(state)
     colors_path = state / 'qs_colors.json'
     matugen_colors_path = state / 'qs_matugen_colors.json'
@@ -82,10 +83,12 @@ def generate(image, config, static_config, mode, scheme, addon_mode, state):
         synthetic = Path(directory) / 'colors.json'
         synthetic.write_text(json.dumps(md3(colors)))
         subprocess.run(['matugen', '-c', static_config, '-m', mode, 'json', str(synthetic)], cwd=Path(config).parent, check=True)
-    # Publish only after both Matugen passes succeeded. The shell's file
-    # watchers are notified before generationFinished is emitted by QML.
-    atomic(colors_path, colors)
-    atomic(matugen_colors_path, colors)
+    # config-static generates app templates but has no Quickshell output. Publish
+    # the first-pass palette with the sampled accents overlaid to both shell files.
+    final_colors = colors
+    final_colors.update(palette(image, addon_mode))
+    atomic(matugen_colors_path, final_colors)
+    atomic(colors_path, final_colors)
 
 
 if __name__ == '__main__':

@@ -76,6 +76,7 @@ def patch_settings_row(text):
     property Item seasonalMist: EdgeMist {
         parent: root
         anchors.fill: parent
+        z: -1
         visible: root.isOwnTabLive()
         engaged: root.enabled && !root.dimmed && (root.seasonalHover.hovered || root.highlightFlash > 0.1)
         cornerRadius: root.cornerRadius
