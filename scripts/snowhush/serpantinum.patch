@@ -66,7 +66,20 @@ diff --git a/linux/src/prefs.rs b/linux/src/prefs.rs
 index 3cf9aa8..d2a9fde 100644
 --- a/linux/src/prefs.rs
 +++ b/linux/src/prefs.rs
-@@ -76,7 +76,7 @@ impl Settings {
+@@ -53,9 +53,10 @@ impl Settings {
+         self.wallpaper || self.depth
+     }
+
+-    /// Whether snowmen live in the wallpaper's picture for a snowball fight: only with its depth.
++    /// Whether snowmen live in the wallpaper's picture for a snowball fight. Serpantinum leaves the fight out: no
++    /// snowmen, no throwing hint, no online rooms; the picture's depth still lets snow settle in it.
+     pub fn fights(&self) -> bool {
+-        self.depth
++        false
+     }
+
+     pub fn load() -> Settings {
+@@ -76,7 +77,7 @@ impl Settings {
              melt: read("meltSnow").is_none_or(|v| v != 0),
              snow_on_windows: settled && read("snowOnWindows").is_none_or(|v| v != 0),
              behind_windows: read("behindWindows").is_some_and(|v| v != 0),

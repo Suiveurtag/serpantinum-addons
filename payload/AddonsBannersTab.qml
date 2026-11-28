@@ -54,13 +54,13 @@ Item {
             // BEGIN serpantinum-clawd-v2 option
             ClawdSettings { rootObj: root.rootObj; viewport: addonsViewport; Layout.bottomMargin: rootObj.s(6) }
             // END serpantinum-clawd-v2 option
+            BannerDivider { label: "ARCHIVE" }
+            // BEGIN serpantinum-night-v2 option
+            HalloweenCard { rootObj: root.rootObj; Layout.bottomMargin: rootObj.s(6) }
+            // END serpantinum-night-v2 option
             // BEGIN serpantinum-capri-v2 option
             CapriSettings { rootObj: root.rootObj; viewport: addonsViewport; Layout.bottomMargin: rootObj.s(6) }
             // END serpantinum-capri-v2 option
-            // BEGIN serpantinum-night-v2 option
-            BannerDivider { label: "ARCHIVE" }
-            HalloweenCard { rootObj: root.rootObj; Layout.bottomMargin: rootObj.s(6) }
-            // END serpantinum-night-v2 option
         }
     }
 }

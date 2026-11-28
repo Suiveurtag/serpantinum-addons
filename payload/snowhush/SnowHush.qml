@@ -33,6 +33,53 @@ Scope {
     property var clickedEntry: null
     property int previousCheckState: Qt.Unchecked
 
+    // First start (or a new engine release) builds Snowhush from source: launch.py reports each step.
+    property bool building: false
+    property string buildStage: ""
+    property int buildDone: 0
+    property int buildTotal: 0
+    property string buildDetail: ""
+    property real buildStartedAt: 0
+    // 0..1 across the whole build: fetch, then the crates, then the long final link.
+    readonly property real buildProgress: {
+        const share = root.buildTotal > 0 ? root.buildDone / root.buildTotal : 0;
+        switch (root.buildStage) {
+        case "tools": return 0.01;
+        case "fetch": return 0.02 + 0.06 * share;
+        case "patch": return 0.08;
+        case "crates": return 0.09;
+        case "compile": return 0.1 + 0.72 * share;
+        case "link": return 0.84;
+        case "install": return 0.98;
+        default: return 0;
+        }
+    }
+
+    function resetBuild(): void {
+        root.building = false;
+        root.buildStage = "";
+        root.buildDone = 0;
+        root.buildTotal = 0;
+        root.buildDetail = "";
+    }
+
+    function readLauncher(line: string): void {
+        if (line === "SNOWHUSH_ENGINE_STARTING") {
+            root.resetBuild();
+            startupDeadline.restart();
+        } else if (line === "SNOWHUSH_BUILD") {
+            root.building = true;
+            root.buildStartedAt = Date.now();
+        } else if (line.startsWith("SNOWHUSH_PROGRESS ")) {
+            const parts = line.split(" ");
+            root.building = true;
+            root.buildStage = parts[1] || "";
+            root.buildDone = Number(parts[2]) || 0;
+            root.buildTotal = Number(parts[3]) || 0;
+            root.buildDetail = parts.slice(4).join(" ");
+        }
+    }
+
     // The pinned Linux release exposes its four falling modes, Mixed and
     // holiday switches in this order in its StatusNotifier Mode submenu.
     readonly property var menuItems: engineMenu.children.values || []
@@ -190,12 +237,11 @@ Scope {
         environment: ({ SERPANTINUM_SNOWHUSH_WALLPAPERS: root.wallpaperFile })
         stdinEnabled: true
         stdout: SplitParser {
-            onRead: line => {
-                if (line === "SNOWHUSH_ENGINE_STARTING") startupDeadline.restart();
-            }
+            onRead: line => root.readLauncher(line)
         }
         stderr: StdioCollector { id: diagnostics }
         onExited: (code, status) => {
+            root.resetBuild();
             root.verifiedPid = 0;
             startupDeadline.stop();
             modeStep.stop();
@@ -282,7 +328,9 @@ Scope {
         function select(mode: string): bool { return root.selectMode(mode); }
         function status(): string {
             return JSON.stringify({ enabled: root.enabled, ready: root.modeItems.length > 0, mode: root.mode, surfaces: root.surfaces.size,
-                                    pending: root.requestedMode, error: root.error || root.modeError });
+                                    pending: root.requestedMode, error: root.error || root.modeError,
+                                    build: root.building ? { stage: root.buildStage, done: root.buildDone, total: root.buildTotal,
+                                                             progress: root.buildProgress } : null });
         }
     }
 }

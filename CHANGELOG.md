@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Snow Hush: the banner is redesigned as a riso-printed winter postcard. The artwork becomes a perforated stamp with a turning postmark, a snow globe is the on/off switch (it shakes when pressed, snows inside and across the card while on), and the engine's controls unfold in numbered sections: weather tiles, stepped gauges for intensity and opacity (opacity now reads low to high), accumulation pills and settings switches.
+- Snow Hush: the banner takes the colours of the active effect (snow, autumn, rain, cherry blossom, Christmas for New Year, Halloween): palette, falling particles (leaves, rain streaks, petals, gold sparks), tinted stamp and globe. Halloween and New Year are grouped with the Snow tile they depend on, and Mixed sits apart as a switch over all kinds. The globe gets a centred vector flake and a flared base. Settings switches no longer turn into captions after a toggle.
+- Snow Hush: building the engine shows its steps (tools, source, patch, crates, compile `n / total`, link, install) with a progress bar, elapsed time and a CPU notice; the compile runs at low priority, and a failed build offers its log. Older cached engine builds are removed after a successful one.
+
+### Removed
+- Snow Hush: the snowball fight (snowmen in the wallpaper, the "Click a snowman…" hint and online invite rooms).
+
 ### Added
 - Colour picker: with the Liquid Glass appearance, the expanded disc and its HEX and Back buttons are glass again, refracting the frozen capture.
 - Calendar: Google Calendar (read/write) and iCal subscriptions. The clock panel (Super+S) gains a day stream underneath (the schedule strip of the original Imperative Dots, fed by the calendar), event dots in its mini calendar and a next-event countdown under the clock; it morphs into a full agenda (Super+G) with month, week, day and list views, search, drag to move or resize, an event editor (repeat, reminders, Meet link, colour), RSVP, offline edits and reminder notifications. Synced by the `serpantinum-gcal` user service; `--without-calendar` removes it. Super+I also opens the agenda directly. Accounts and preferences live in Settings → Calendar, which also has an *Enable calendar* switch.
