@@ -166,7 +166,7 @@ Rectangle {
         }
         return out.join("\n");
     }
-    // The power switch: a ╔═╗ block in the middle of the header, solid while he is off so it is the first thing seen.
+    // The power switch: a ╔═╗ block in the header, solid while he is off so it is the first thing seen.
     component Power: Item {
         id: power
         readonly property bool lit: area.containsMouse || activeFocus
@@ -231,7 +231,9 @@ Rectangle {
             id: header
             readonly property int frameH: Clawd.manifest ? Clawd.manifest.frame.h : 0
             title: "Clawd v1"
-            lines: 9
+            // the button sits at the right of the header; a narrow card puts it underneath, centred
+            readonly property bool stacked: card.cols < 84
+            lines: stacked ? 9 : 5
             Item {
                 id: stage
                 y: card.lh
@@ -266,7 +268,7 @@ Rectangle {
             Column {
                 x: stage.width + 2 * card.cw
                 y: card.lh
-                width: parent.width - x
+                width: (header.stacked ? parent.width : power.x - 2 * card.cw) - x
                 Row {
                     height: card.lh
                     T { text: "✻ "; color: card.accent; font.bold: true }
@@ -281,9 +283,10 @@ Rectangle {
                 }
             }
             Power {
+                id: power
                 objectName: "clawdEnable"
-                x: Math.round((parent.width - width) / 2)
-                y: 5 * card.lh
+                x: header.stacked ? Math.round((parent.width - width) / 2) : parent.width - width - card.cw
+                y: (header.stacked ? 5 : 1) * card.lh
                 onActivated: Config.setSetting("addonsV2Clawd", !Clawd.enabled)
             }
         }
