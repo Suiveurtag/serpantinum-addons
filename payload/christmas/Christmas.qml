@@ -31,6 +31,13 @@ Scope {
     readonly property bool windows: present && area("windows")
     readonly property bool notifications: present && area("notifications")
 
+    // One opacity, 0.1 .. 1, for the large effects: panel wrapping, window lights, notification wrap, switch-on garland.
+    readonly property real effectOpacity: {
+        const value = Number(Config.getSetting("addonsV2ChristmasOpacity", 0.7));
+        return isNaN(value) ? 0.7 : Math.max(0.1, Math.min(1, value));
+    }
+    function setEffectOpacity(value: real): void { Config.setSetting("addonsV2ChristmasOpacity", Math.max(0.1, Math.min(1, value))); }
+
     readonly property bool present: enabled || outro.running
     Timer { id: outro; interval: 900 }
     onEnabledChanged: {
@@ -44,6 +51,10 @@ Scope {
     property int introSerial: 0
     property int lightsOnSerial: 0
     Timer { interval: 2500; running: true; onTriggered: xmas.armed = true }
+
+    // A panel's gift layer reports its close and reopening; the host's layer plays the send-off, which outlives the panel.
+    signal panelClosed(string screen, rect frame, string edge, real radius)
+    signal panelOpened(string screen)
 
     // Palette shared by the effects and the banner.
     readonly property color gold: "#f2c46d"
@@ -103,6 +114,7 @@ Scope {
         function toggle(): void { Config.setSetting("addonsV2Christmas", !xmas.enabled); }
         function setLights(value: string): void { if (xmas.styles.indexOf(value) >= 0) Config.setSetting("addonsV2ChristmasLights", value); }
         function setArea(name: string, value: bool): void { if (xmas.areas.indexOf(name) >= 0) xmas.setArea(name, value); }
+        function setOpacity(percent: int): void { xmas.setEffectOpacity(percent / 100); }
         function intro(): void { if (xmas.enabled) { xmas.introSerial++; xmas.lightsOnSerial++; } }
         function status(): string {
             return JSON.stringify({ enabled: xmas.enabled, motion: xmas.motion, lights: xmas.lights, twinkle: xmas.twinkle,

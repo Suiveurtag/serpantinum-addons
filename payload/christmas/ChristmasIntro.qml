@@ -40,7 +40,7 @@ Item {
     Rectangle {
         width: parent.width; height: parent.height * 0.32
         visible: intro.playing
-        opacity: intro.warmth * 0.9
+        opacity: intro.warmth * 0.9 * Christmas.effectOpacity
         gradient: Gradient {
             GradientStop { position: 0; color: Qt.alpha(Christmas.gold, 0.16) }
             GradientStop { position: 0.45; color: Qt.alpha(Christmas.gold, 0.05) }
@@ -52,6 +52,7 @@ Item {
         on: false
         live: true
         visible: intro.playing
+        opacity: Christmas.effectOpacity
         readonly property real margin: intro.unit * 30
         x: -margin
         width: intro.width + margin * 2

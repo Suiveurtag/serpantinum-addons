@@ -14,6 +14,8 @@ Item {
     readonly property color ribbon: urgent ? Christmas.gold : Christmas.cranberry
     readonly property color shade: urgent ? "#a77a2c" : Christmas.deepRed
     property real arrive: Christmas.motion ? 0 : 1
+    opacity: Christmas.effectOpacity
+    layer.enabled: opacity < 1          // flattened, so the bow's parts do not show through each other
     Component.onCompleted: if (arrive < 1) entrance.start()
     SequentialAnimation {
         id: entrance

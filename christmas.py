@@ -12,7 +12,7 @@ MARK = 'serpantinum-christmas-v2'
 TYPES = ['singleton Christmas 1.0 christmas/Christmas.qml'] + [f'{name} 1.0 christmas/{name}.qml' for name in
          ('ChristmasSettings', 'ChristmasCard', 'ChristmasHost', 'ChristmasPanel', 'ChristmasTouch', 'ChristmasGarland',
           'ChristmasFrost', 'ChristmasRibbon', 'ChristmasLights', 'ChristmasBow', 'ChristmasHolly', 'ChristmasBurst',
-          'ChristmasIntro', 'ChristmasWindowLights')]
+          'ChristmasIntro', 'ChristmasWindowLights', 'ChristmasSendOff')]
 
 
 def remove_blocks(text):
@@ -60,11 +60,18 @@ def patch_main(text):
     return insert(text, '    id: masterWindow\n', 'panel gift', '''
 Loader {
     id: christmasGift; enabled: false; anchors.fill: parent; z: 11
-    active: Christmas.panels && masterWindow.isVisible && masterWindow.currentActive !== "hidden"
+    readonly property bool shown: masterWindow.isVisible && masterWindow.currentActive !== "hidden"
+    // stays loaded a moment after the panel goes, for the outro (reading `item` in `active` would be a binding loop)
+    property bool held: false
+    property Timer linger: Timer { interval: 200; onTriggered: christmasGift.held = false }
+    onShownChanged: if (shown) { linger.stop(); held = true; } else linger.restart()
+    active: Christmas.panels && held
     sourceComponent: ChristmasPanel {
+        open: christmasGift.shown && masterWindow.targetActive !== "hidden"
         panelRect: Qt.rect(masterWindow._animX, masterWindow._animY, masterWindow._animW, masterWindow._animH)
         scene: masterWindow.currentActive
         serial: masterWindow.switchGeneration
+        screenName: masterWindow.screen ? masterWindow.screen.name : ""
         cornerRadius: ThemeBackend.borderRadius
 ''' + '\n'.join('        ' + line for line in PANEL_EDGE.splitlines()) + '''
     }
@@ -75,16 +82,30 @@ Loader {
 def patch_launcher(text):
     return insert(text, '    id: launcherWindow\n', 'launcher gift', '''
 Loader {
-    enabled: false; anchors.fill: parent; z: 201
-    active: Christmas.panels && launcherWindow.isVisible
+    id: christmasGift; enabled: false; anchors.fill: parent; z: 201
+    readonly property bool shown: launcherWindow.isVisible
+    property bool held: false
+    property Timer linger: Timer { interval: 200; onTriggered: christmasGift.held = false }
+    onShownChanged: if (shown) { linger.stop(); held = true; } else linger.restart()
+    active: Christmas.panels && held
     sourceComponent: ChristmasPanel {
         panelRect: Qt.rect(container.x, container.y, container.width, container.height)
         scene: "launcher"
         edge: launcherWindow.attachEdge
         open: launcherWindow.isVisible
+        screenName: launcherWindow.screen ? launcherWindow.screen.name : ""
         cornerRadius: container.dynamicCornerRadius
     }
 }
+''')
+
+
+def patch_draggable(text):
+    text = insert(text, '    id: root\n', 'slider wheel option', '''
+property bool christmasDisableWheel: false
+''')
+    return insert(text, '        onWheel: wheel => {\n', 'slider wheel guard', '''
+if (root.christmasDisableWheel) { wheel.accepted = false; return; }
 ''')
 
 
@@ -259,6 +280,7 @@ def transformations(qs):
     result = {qs/'qmldir': patch_qmldir, qs/'Shell.qml': patch_shell, qs/'Main.qml': patch_main,
               qs/'launcher/Launcher.qml': patch_launcher,
               qs/'reusables/guide/SettingsRow.qml': patch_settings_row,
+              qs/'reusables/behavior/Draggable.qml': patch_draggable,
               qs/'reusables/buttons/IconButton.qml': patch_icon_button,
               qs/'reusables/buttons/ClickButton.qml': patch_click_button,
               qs/'reusables/buttons/FillButton.qml': patch_fill_button,

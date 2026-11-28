@@ -298,6 +298,7 @@ Item {
                             }
                         }
                     }
+                    OpacityRow { Layout.fillWidth: true }
                 }
 
                 RowLayout {
@@ -765,6 +766,66 @@ Item {
                 fontSizeMode: Text.HorizontalFit; minimumPixelSize: card.s(8)
                 elide: Text.ElideRight
             }
+        }
+    }
+
+    // The effects' opacity: the volume panel's slider, in gold and across the whole section. A drag is saved when it ends, the
+    // wheel and the arrow keys after a short pause.
+    component OpacityRow: RowLayout {
+        id: fade
+        property int pending: -1
+        function save(): void {
+            saveLater.stop();
+            if (pending < 0) return;
+            Christmas.setEffectOpacity(pending / 100);
+            pending = -1;
+        }
+        spacing: card.s(12)
+        Component.onDestruction: save()
+        Timer { id: saveLater; interval: 400; onTriggered: fade.save() }
+        Text {
+            text: qsTr("Effect opacity")
+            color: card.fg
+            font.family: ThemeBackend.fontFamily; font.pixelSize: card.s(12); font.weight: Font.Bold
+        }
+        Draggable {
+            id: slider
+            Layout.fillWidth: true
+            Layout.preferredHeight: card.s(16)
+            Layout.alignment: Qt.AlignVCenter
+            from: 10
+            to: 100
+            defaultValue: 70
+            value: fade.pending >= 0 ? fade.pending : Math.round(Christmas.effectOpacity * 100)
+            backgroundColor: ThemeBackend.surface1
+            // shaped and coloured like the volume panel's slider, so its handle grows, lights up and flashes the same way
+            accentColor: card.gold
+            gradColor1: card.gold
+            gradColor2: Qt.lighter(card.gold, 1.05)
+            gradColor3: Qt.lighter(card.gold, 1.10)
+            cornerRadius: card.s(5)
+            handleSize: card.s(18)
+            handleColor: Qt.lighter(card.gold, 1.15)
+            handleHoverColor: Qt.lighter(card.gold, 1.5)
+            handleDragColor: Qt.lighter(card.gold, 1.45)
+            handleBorderColor: Qt.rgba(0, 0, 0, 0.2)
+            activeFocusOnTab: true
+            action_highlight: activeFocus
+            Keys.onLeftPressed: nudge(-1)
+            Keys.onRightPressed: nudge(1)
+            Accessible.role: Accessible.Slider
+            Accessible.name: qsTr("Effect opacity")
+            christmasDisableWheel: true
+            onMoved: function(val) { fade.pending = Math.round(val); if (!slider.isDragging) saveLater.restart(); }
+            onDragStarted: saveLater.stop()
+            onDragFinished: fade.save()
+        }
+        Text {
+            Layout.preferredWidth: card.s(36)
+            horizontalAlignment: Text.AlignRight
+            text: Math.round(slider.effectiveValue) + "%"
+            color: card.softText
+            font.family: ThemeBackend.fontFamily; font.pixelSize: card.s(11)
         }
     }
 

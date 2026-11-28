@@ -36,7 +36,7 @@ Candy cane red/white, Nordic ice/silver/pale gold.
 | --- | --- | --- |
 | Switch-on | `Shell.qml` → `ChristmasHost` | A garland drops over the top of every screen, its bulbs light from the middle, a warm glow spills down, then it is drawn back up (~3 s). Only when switched on (or `ipc call christmas intro`), never at shell start. |
 | Bar | `bar/TopBar.qml`, `bar/SideBar.qml` (sections, solid bar), `bar/BarModule.qml` (modules outside a section) | Fairy lights hang from the top inner edge of every pill; on a side bar they point in from the outer edge. They light in a cascade when switched on. |
-| Panels | `Main.qml` (every panel), `launcher/Launcher.qml` | The gift unwrapping, then holly on the corner away from the bar (`ChristmasPanel`). Rate-limited to one opening every 260 ms. |
+| Panels | `Main.qml` (every panel), `launcher/Launcher.qml` | The gift unwrapping, then holly on the corner away from the bar (`ChristmasPanel`). Rate-limited to one opening every 260 ms. Closing wraps the panel into a parcel that leaves toward the bar in a few gold stars (~0.5 s, `ChristmasSendOff`, on the screen layer so it outlives the panel) while the holly folds away. |
 | Settings | `reusables/guide/SettingsRow.qml` | Frost grows in from the left of the hovered row (or a row highlighted by search), melts on leave (`ChristmasFrost`, from `extras/frost-hover`). Banner rows are left alone. |
 | Buttons | `reusables/buttons/IconButton.qml`, `ClickButton.qml`, `FillButton.qml` | Hover glint clipped to the button's shape; gold stars from the press point; icon buttons swing once like a bell; hold-to-confirm buttons pull a cracker (`ChristmasTouch`). |
 | Windows | `ChristmasHost` (Hyprland only) | On a focus change, `hyprctl -j activewindow` gives the frame; lights run along the top from the middle, down both sides and meet at the bottom, then fade (~1.8 s). Fullscreen and tiny windows are skipped; rate-limited to one every 420 ms. |
@@ -49,8 +49,8 @@ Candy cane red/white, Nordic ice/silver/pale gold.
 - The twinkle is one `Timer` at ~12 Hz in the `Christmas` singleton. Strings register while they are visible and lit;
   the timer stops when none is, when Twinkle is off, or in performance mode.
 - Every other effect is a `Loader` that is active only while its area is on, and only for the moment it plays (glint,
-  bursts, unwrapping, window lights). The per-screen layer windows are mapped only while the intro or the window
-  lights play.
+  bursts, unwrapping, window lights). The per-screen layer windows are mapped only while the intro, the window
+  lights or a panel send-off play.
 - Performance mode (Settings → General) keeps the lights lit but steady and skips every animation.
 - Switching off lets the lights go out (~0.9 s) before the effects unload.
 
@@ -62,6 +62,7 @@ Candy cane red/white, Nordic ice/silver/pale gold.
 | `addonsV2ChristmasLights` | `"classic"` | `classic`, `warm`, `candy`, `nordic` |
 | `addonsV2ChristmasTwinkle` | `true` | |
 | `addonsV2ChristmasFx.<area>` | `true` | `bar`, `panels`, `settings`, `buttons`, `windows`, `notifications` |
+| `addonsV2ChristmasOpacity` | `0.7` | 0.1 to 1, for the large effects: panel wrapping (not the holly), window lights, notification wrap, switch-on garland; **Effect opacity** under Decorations (the volume panel's slider, in gold) |
 
 ```sh
 SHELL_QML=~/.local/share/serpantinum/src/quickshell/Shell.qml
@@ -69,6 +70,7 @@ quickshell -p "$SHELL_QML" ipc call christmas toggle
 quickshell -p "$SHELL_QML" ipc call christmas setEnabled true
 quickshell -p "$SHELL_QML" ipc call christmas setLights nordic
 quickshell -p "$SHELL_QML" ipc call christmas setArea windows false
+quickshell -p "$SHELL_QML" ipc call christmas setOpacity 70
 quickshell -p "$SHELL_QML" ipc call christmas intro
 quickshell -p "$SHELL_QML" ipc call christmas status
 ```

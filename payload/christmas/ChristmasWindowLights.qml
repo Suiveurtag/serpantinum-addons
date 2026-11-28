@@ -42,6 +42,7 @@ Item {
     component Edge: ChristmasLights {
         on: false
         live: false
+        opacity: Christmas.effectOpacity
         transformOrigin: Item.TopLeft
         height: wrap.band
         spacing: wrap.unit * 26

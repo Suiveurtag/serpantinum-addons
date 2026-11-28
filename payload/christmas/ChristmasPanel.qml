@@ -3,8 +3,9 @@ import "../"
 
 // A panel opens like a present. Two satin ribbons cross it with a bow on the knot; the bow pops, the ribbons are
 // pulled apart toward the edges and the bow flies off in a puff of gold. Then a sprig of holly settles on the corner
-// away from the bar and stays there while the panel is open. Sits over the panel in a window-sized layer, never takes
-// input, and is static once the opening has played.
+// away from the bar and stays there while the panel is open. On closing the holly folds up, whatever is still in
+// flight fades, and the host sends the panel off as a parcel (ChristmasSendOff). Sits over the panel in a
+// window-sized layer, never takes input, and is static between the two.
 Item {
     id: gift
     enabled: false
@@ -14,6 +15,7 @@ Item {
     property int serial: 0
     property bool open: true
     property real cornerRadius: 0
+    property string screenName: ""
 
     readonly property real unit: Scaler.s(1)
     readonly property real band: Math.max(unit * 9, Math.min(unit * 20, Math.min(panelRect.width, panelRect.height) * 0.055))
@@ -22,18 +24,40 @@ Item {
     readonly property real knotY: panelRect.height * (edge === "bottom" ? 0.58 : 0.42)
     property real t: 1                  // the unwrapping, 0 tied .. 1 gone
     property real sprigGrowth: 0
+    property real veil: 1               // fades the whole layer out while the panel leaves
+    readonly property real sheer: Christmas.effectOpacity   // of the wrapping; the holly stays solid
 
     function play(): void {
-        if (!open || !Christmas.motion) { t = 1; sprigGrowth = 1; return; }
+        if (!open) return;
+        Christmas.panelOpened(screenName);
+        fold.stop();
+        veil = 1;
+        if (!Christmas.motion) { t = 1; sprigGrowth = 1; return; }
         if (!Christmas.allow("unwrap", 260)) {
             if (!unwrap.running) { t = 1; sprigGrowth = 1; }
             return;
         }
         unwrap.restart();
     }
-    onSerialChanged: play()
-    onOpenChanged: if (open) play()
+    function leave(): void {
+        unwrap.stop();
+        Christmas.panelClosed(screenName, panelRect, edge, cornerRadius);
+        if (Christmas.motion) fold.restart();
+        else veil = 0;
+    }
+    // A closing panel bumps the serial too, just before `open` drops: look again once both have settled.
+    onSerialChanged: Qt.callLater(play)
+    onOpenChanged: open ? play() : leave()
     Component.onCompleted: play()
+
+    ParallelAnimation {
+        id: fold
+        NumberAnimation { target: gift; property: "sprigGrowth"; to: 0; duration: 180; easing.type: Easing.InQuad }
+        SequentialAnimation {
+            PauseAnimation { duration: 60 }
+            NumberAnimation { target: gift; property: "veil"; to: 0; duration: 120; easing.type: Easing.InQuad }
+        }
+    }
 
     SequentialAnimation {
         id: unwrap
@@ -63,7 +87,8 @@ Item {
         width: gift.panelRect.width; height: gift.panelRect.height
         clip: true
         visible: gift.t < 1
-        opacity: 1 - gift.phase(0.7, 0.3)
+        opacity: (1 - gift.phase(0.7, 0.3)) * gift.veil * gift.sheer
+        layer.enabled: visible
 
         component Satin: Rectangle {
             property bool across: true
@@ -98,7 +123,9 @@ Item {
         visible: gift.t < 1
         rotation: gift.lift * 28
         scale: (gift.pop < 1 ? 1.18 * Math.sin(gift.pop * Math.PI * 0.6) / Math.sin(Math.PI * 0.6) : 1.18 - 0.18 * gift.phase(0.22, 0.1)) * (1 - 0.35 * gift.lift)
-        opacity: 1 - gift.lift
+        opacity: (1 - gift.lift) * gift.veil * gift.sheer
+        layer.enabled: visible
+        layer.smooth: true
     }
     Loader {
         id: sparkle
@@ -107,6 +134,7 @@ Item {
         y: gift.panelRect.y + gift.knotY - span / 2
         width: span; height: span
         active: false
+        opacity: gift.veil * gift.sheer
         function play(): void { active = false; active = true; }
         sourceComponent: ChristmasBurst {
             count: 9
@@ -128,6 +156,7 @@ Item {
         y: gift.panelRect.y + (atBottom ? gift.panelRect.height - inset : inset) - size / 2
         rotation: (atRight ? 1 : -1) * (atBottom ? 1 : -1) * 12 * (1 - gift.sprigGrowth)
         grown: gift.sprigGrowth
-        visible: gift.open && gift.sprigGrowth > 0 && gift.panelRect.width > size * 2
+        opacity: gift.veil
+        visible: gift.sprigGrowth > 0 && gift.veil > 0 && gift.panelRect.width > size * 2
     }
 }
