@@ -30,6 +30,7 @@ import bar_outline
 import bootintro
 import release_ui
 import seasonal
+import snowhush
 import tokens
 import userpath
 import seasonal_surfaces
@@ -1134,6 +1135,7 @@ def patch_shell(text):
         '    // BEGIN serpantinum-addons-v2 desktop draw\n    AddonDesktopDraw {}\n    // END serpantinum-addons-v2 desktop draw\n',
         '    // BEGIN serpantinum-addons-v2 desktop zoom\n    AddonDesktopZoom {}\n    // END serpantinum-addons-v2 desktop zoom\n',
         '    // BEGIN serpantinum-addons-v2 mouse spotlight\n    AddonMouseSpotlight {}\n    // END serpantinum-addons-v2 mouse spotlight\n',
+        '    // BEGIN serpantinum-addons-v2 snow hush\n    readonly property var snowHush: SnowHush\n    // END serpantinum-addons-v2 snow hush\n',
     ]
     # These IPC handlers must be direct ShellRoot children. Keeping them in
     # screenshotLoader makes every shortcut fail until a screenshot activates it.
@@ -1826,6 +1828,9 @@ PAYLOAD_FILES = {
     'AddonGlassSurface.qml': 'reusables/AddonGlassSurface.qml',
     'AddonDesktopGlass.qml': 'AddonDesktopGlass.qml',
     'AddonButtonEffect.qml': 'reusables/AddonButtonEffect.qml',
+    'snowhush/SnowHush.qml': 'snowhush/SnowHush.qml',
+    'snowhush/SnowHushCard.qml': 'snowhush/SnowHushCard.qml',
+    'snowhush/SnowHushSurface.qml': 'snowhush/SnowHushSurface.qml',
 }
 # Upstream files that the payload replaces outright (they exist upstream, so uninstall restores rather than deletes them).
 OVERWRITES = ('calendar/CalendarPopup.qml',)
@@ -1926,6 +1931,9 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
     for path, transform in bar_outline.transformations(QS).items():
         pending[path] = patch_file(path, transform, staged(path))
 
+    for path, transform in snowhush.transformations(QS).items():
+        pending[path] = patch_file(path, transform, staged(path))
+
     # Boot intro (Addons → General, on by default): always patched, like the bar outlines.
     for path, transform in bootintro.transformations(QS).items():
         pending[path] = patch_file(path, transform, staged(path))
@@ -1949,7 +1957,9 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
                                (QS/'guide/qmldir', [c + ' 1.0 ' + c + '.qml' for c in ('AddonCursorSettings', 'AddonCursorPreview', 'AddonCursorRole', 'AddonCursorTestArea')] + ['DnsControl 1.0 DnsControl.qml']),
                                (QS/'network/qmldir', ['DnsControl 1.0 DnsControl.qml']),
                                (QS/'qmldir', ['singleton AddonDesktopGlass 1.0 AddonDesktopGlass.qml', 'AddonColorPicker 1.0 AddonColorPicker.qml', 'AddonMouseSpotlight 1.0 AddonMouseSpotlight.qml', 'AddonDesktopZoom 1.0 AddonDesktopZoom.qml',
-                                              'AddonDesktopDraw 1.0 AddonDesktopDraw.qml', 'AddonAwake 1.0 AddonAwake.qml', 'AddonWindowOutline 1.0 AddonWindowOutline.qml'])]:
+                                              'AddonDesktopDraw 1.0 AddonDesktopDraw.qml', 'AddonAwake 1.0 AddonAwake.qml', 'AddonWindowOutline 1.0 AddonWindowOutline.qml',
+                                              'singleton SnowHush 1.0 snowhush/SnowHush.qml', 'SnowHushCard 1.0 snowhush/SnowHushCard.qml',
+                                              'SnowHushSurface 1.0 snowhush/SnowHushSurface.qml'])]:
         original = pending[path] if path in pending else (read(path) if path.exists() else '')
         for declaration in declarations:
             if declaration not in original:
@@ -2047,6 +2057,9 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
             plan.blobs.append((path, blob, removing))
             if not removing:
                 plan.created.add(path)
+    snow_hush_art = 'snowhush/winter.jpg'
+    plan.blobs.append((QS/snow_hush_art, (SOURCE/'payload'/snow_hush_art).read_bytes(), False))
+    plan.created.add(QS/snow_hush_art)
     plan.shader_dirs = [(QS/'seasonal/shaders', 'atmosphere', shader_name), (QS/'capri/shaders', 'sprite', sprite_name)]
     plan.options = options
     return plan
@@ -2621,6 +2634,11 @@ def _uninstall_locked(report, purge, check):
             report['removed'].append(str(DEPLOY/leftover))
     state_dir = release.state_dir()
     if purge:
+        cache_home = Path(os.environ.get('XDG_CACHE_HOME') or HOME/'.cache')
+        snow_hush_cache = cache_home/'serpantinum-addons-v2/snowhush'
+        if snow_hush_cache.exists() or snow_hush_cache.is_symlink():
+            remove_path(snow_hush_cache)
+            report['removed'].append(str(snow_hush_cache))
         for path in addon_state_dirs():
             if path.exists():
                 if not within_addon_data(path):

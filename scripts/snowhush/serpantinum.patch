@@ -1,0 +1,884 @@
+Required Notice: Copyright 2026 Mykhailo Bezruchko (https://github.com/mbezruchko/Snowhush)
+
+License: PolyForm Noncommercial 1.0.0 (https://polyformproject.org/licenses/noncommercial/1.0.0)
+
+diff --git a/core/src/simulation.rs b/core/src/simulation.rs
+index 95bcfad..cb6cd70 100644
+--- a/core/src/simulation.rs
++++ b/core/src/simulation.rs
+@@ -1444,7 +1444,11 @@ impl SnowSimulation {
+                 flake.position.x -= self.width + 60.0;
+             }
+ 
+-            if flake.settles
++            // The sway rate is fixed for the lifetime of a flake. Give the ground a
++            // share of the snow even when a window spans the display.
++            let ground_only = self.ground_settles && flake.kind == Mode::Snow && flake.sway_rate < 0.95;
++            if !ground_only
++                && flake.settles
+                 && self.accumulates
+                 && flake.blown == 0.0
+                 && flake.kind == Mode::Snow
+@@ -1459,6 +1463,7 @@ impl SnowSimulation {
+             // miss the surface it is coming down to.
+             if (i.wrapping_add(self.picture.turn)) & 3 == 0
+                 && flake.settles
++                && !ground_only
+                 && self.picture_depth
+                 && flake.blown == 0.0
+                 && flake.kind == Mode::Snow
+@@ -1469,9 +1474,10 @@ impl SnowSimulation {
+             }
+             if flake.settles && (self.accumulates || flake.rain()) && flake.blown == 0.0 {
+                 let ground = self.ground_settles || flake.rain();
+-                let hit = landing(&self.layers, flake.position.x, previous_y, flake.position.y, !self.crossed(flake.position), ground);
++                let hit = landing(&self.layers, flake.position.x, previous_y, flake.position.y, !ground_only && !self.crossed(flake.position), ground);
+                 // Only snow is handed over: leaves and rain on a window kept by another display fall on past it.
+-                if !flake.rain()
++                if !ground_only
++                    && !flake.rain()
+                     && flake.leaf <= 0.0
+                     && self.lands_on_borrowed(hit, flake.position.x, previous_y, flake.position.y, flake.size * flake.size * DEPOSITION * flake.mass)
+                 {
+@@ -1502,7 +1508,8 @@ impl SnowSimulation {
+                         self.lay(flake.size, flake.leaf, petal, bulk, flake.position.x, li, turn, flip, flake.velocity.x);
+                     } else {
+                         let layer = &mut self.layers[li];
+-                        let amount = flake.size * flake.size * DEPOSITION * flake.mass * layer.fill(column);
++                        let deposition = if li == 0 { DEPOSITION * 0.4 } else { DEPOSITION };
++                        let amount = flake.size * flake.size * deposition * flake.mass * layer.fill(column);
+                         layer.deposit(amount, flake.position.x, true, Blend::SNOW);
+                     }
+                     self.air.heights_changed = true;
+diff --git a/linux/src/main.rs b/linux/src/main.rs
+index 5d56274..7c62544 100644
+--- a/linux/src/main.rs
++++ b/linux/src/main.rs
+@@ -10,6 +10,7 @@ mod picture;
+ mod prefs;
+ mod render;
+ mod screen;
++mod serpantinum;
+ mod snow;
+ mod source;
+ mod sway;
+diff --git a/linux/src/prefs.rs b/linux/src/prefs.rs
+index 3cf9aa8..d2a9fde 100644
+--- a/linux/src/prefs.rs
++++ b/linux/src/prefs.rs
+@@ -76,7 +76,7 @@ impl Settings {
+             melt: read("meltSnow").is_none_or(|v| v != 0),
+             snow_on_windows: settled && read("snowOnWindows").is_none_or(|v| v != 0),
+             behind_windows: read("behindWindows").is_some_and(|v| v != 0),
+-            over_full_screen: read("showOverFullScreen").is_some_and(|v| v != 0),
++            over_full_screen: read("showOverFullScreen").is_none_or(|v| v != 0),
+             show_in_screenshots: read("showInScreenshots").is_some_and(|v| v != 0),
+             installed_at: stamped.unwrap_or_else(|| if text.is_empty() { now() } else { 0 }),
+             halloween: Choice { on: read("halloweenOn").is_some_and(|v| v != 0), skipped: read("halloweenSkipped").unwrap_or(0) },
+diff --git a/linux/src/screen.rs b/linux/src/screen.rs
+index 8a50d25..ff7536c 100644
+--- a/linux/src/screen.rs
++++ b/linux/src/screen.rs
+@@ -26,7 +26,7 @@ pub enum PowerBudget {
+     Full,
+     /// On battery: no frame rates above 60, which are hard to tell apart in snow anyway.
+     Battery,
+-    /// Power saver: a little less snow, drawn a little less often.
++    /// Power saver: a little less snow, with the same frame rate as on battery.
+     Saver,
+ }
+ 
+@@ -72,9 +72,9 @@ pub struct Screen {
+     ground_moved: Option<f32>,
+     size: (u32, u32),
+     last_step: Option<Instant>,
+-    idle_frames: u32,
+-    interactive_rate: u32,
+-    /// Every frame at `interactive_rate`, whatever the snow is doing and whatever the power.
++    pub refresh_rate: u32,
++    output_power: Option<bool>,
++    /// Use the interactive rate while drawing, whatever the snow is doing and whatever the power.
+     pub max_rate: bool,
+     surfaces: Vec<WindowSurface>,
+     windows_seen: u64,
+@@ -142,8 +142,8 @@ impl Screen {
+             ground_moved: None,
+             size: (bounds.w as u32, bounds.h as u32),
+             last_step: None,
+-            idle_frames: 0,
+-            interactive_rate: refresh.clamp(60, 120),
++            refresh_rate: refresh.max(1),
++            output_power: None,
+             max_rate: false,
+             surfaces: Vec::new(),
+             windows_seen: 0,
+@@ -269,6 +269,35 @@ impl Screen {
+         Area { x: self.bounds.x + self.margins.3 as f64, y: self.bounds.y + self.margins.0 as f64, w: self.size.0 as f64, h: self.size.1 as f64 }
+     }
+ 
++    pub fn ready_at(&self) -> Instant {
++        // A lit display can keep drawing if its compositor misses a callback.
++        let wait = if self.output_power == Some(true) {
++            Duration::from_secs_f64(2.0 / f64::from(self.refresh_rate))
++        } else {
++            STALLED
++        };
++        self.shown_pending.map_or(self.next_due, |at| self.next_due.max(at + wait))
++    }
++
++    pub fn next_update_at(&self) -> Instant {
++        let overlay = self.ready_at();
++        if self.output_off() {
++            return overlay;
++        }
++        self.picture.as_ref().and_then(PictureSnow::fight_due_at).map_or(overlay, |fight| fight.min(overlay))
++    }
++
++    pub fn set_output_power(&mut self, powered: Option<bool>) {
++        if self.output_power != powered {
++            self.output_power = powered;
++            self.resume();
++        }
++    }
++
++    pub fn output_off(&self) -> bool {
++        self.output_power == Some(false)
++    }
++
+     /// Steps the snow and draws it if anything visible changed; returns whether it drew.
+     /// `report` is KWin's latest, its generation and whether a window is being dragged; the windows in it
+     /// only collect snow with `snow_on_windows`, the panel always.
+@@ -287,7 +316,12 @@ impl Screen {
+     ) -> Result<bool, String> {
+         // The display is off or the overlay hidden, as behind a lock screen: the snow waits there as it does while
+         // locked, and a frame now and then asks to be shown again.
+-        if self.shown_pending.is_some_and(|pending| now - pending >= STALLED) {
++        if self.output_off() {
++            self.last_step = None;
++            self.next_due = now + RESTING;
++            return Ok(false);
++        }
++        if self.output_power.is_none() && self.shown_pending.is_some_and(|pending| now - pending >= STALLED) {
+             self.stalled = true;
+             self.last_step = None;
+             self.next_due = now + STALLED;
+@@ -320,35 +354,24 @@ impl Screen {
+             return Ok(false);
+         }
+ 
+-        let fastest = if budget == PowerBudget::Full { self.interactive_rate } else { self.interactive_rate.min(60) };
+-        // 24 only where it divides the display's rate evenly; elsewhere it would judder.
+-        let calm = if budget == PowerBudget::Saver && self.interactive_rate % 24 == 0 { 24 } else { 30 };
+-        let rate = match self.simulation.pace() {
+-            Pace::Calm => calm,
+-            Pace::Lively => fastest.min(60),
+-            Pace::Interactive => fastest,
+-        };
+-        let rate = if self.max_rate {
+-            self.interactive_rate
+-        } else if lantern_moved || fading {
+-            rate.max(fastest.min(60))
+-        } else {
+-            rate
+-        };
+-        self.next_due = now + Duration::from_secs_f64(1.0 / rate as f64);
+-        self.idle_frames = if changed || lantern_moved { 0 } else { self.idle_frames + 1 };
+-        // A still pile only needs a slow refresh for its glints, and the pumpkins for their candles' flicker; once
+-        // they are gone, until a frame without them is shown.
++        let interactive = budget == PowerBudget::Full && matches!(self.simulation.pace(), Pace::Interactive);
++        let rate = self.refresh_rate.min(if self.max_rate || interactive { 120 } else { 60 });
++        // Keep the timer's phase on fast displays. A slightly late wake should not delay every subsequent frame.
++        let period = Duration::from_secs_f64(1.0 / f64::from(rate));
++        let next = self.next_due + period;
++        self.next_due = if next > now { next } else { now + period };
++        // Settled snow and pumpkins still animate their glints and flames. Draw once to clear the last pumpkin.
+         let pumpkins = !self.simulation.pumpkins().is_empty();
+-        let slow_refresh = self.simulation.has_snow() || pumpkins || self.pumpkins_shown;
+-        if !(changed || lantern_moved || fading || (slow_refresh && self.idle_frames % 2 == 0)) {
++        if !(changed || lantern_moved || fading || self.simulation.has_snow() || pumpkins || self.pumpkins_shown) {
+             return Ok(false);
+         }
+-        // The compositor hasn't shown the last frame yet: drawing another would only be thrown away.
+-        if self.shown_pending.is_some() {
+-            return Ok(false);
++        let waiting = self.shown_pending.is_some();
++        let result = self.present(gpu, qh, now, ambient, lantern, time, pumpkins);
++        // At the display's refresh rate the frame callback is the clock.
++        if matches!(result, Ok(true)) && rate == self.refresh_rate && !waiting {
++            self.next_due = now;
+         }
+-        self.present(gpu, qh, now, ambient, lantern, time, pumpkins)
++        result
+     }
+ 
+     /// Draws the snow as it is and asks the compositor to say when it shows it.
+@@ -367,8 +390,10 @@ impl Screen {
+             return Ok(false);
+         }
+         let wl_surface = self.layer.wl_surface();
+-        wl_surface.frame(qh, FrameCallbackData(wl_surface.clone()));
+-        self.shown_pending = Some(now);
++        if self.shown_pending.is_none() || self.stalled {
++            wl_surface.frame(qh, FrameCallbackData(wl_surface.clone()));
++            self.shown_pending = Some(now);
++        }
+         let panel = self.shelf.map(|shelf| {
+             // Below the rounded corners only, so snow curling round them stays in front.
+             let r = windows::local_rect(&shelf.rect, &self.area());
+@@ -455,14 +480,13 @@ impl Screen {
+             self.simulation.forget_closed(|id| windows::exists(report, id));
+         }
+         let area = self.area();
+-        let listed = if snow_on_windows { report } else { &Report::default() };
+-        let mut surfaces = windows::surfaces(listed, &area, self.shelf.as_ref().filter(|_| self.panel), &self.name);
++        let mut surfaces = windows::surfaces(report, &area, self.shelf.as_ref().filter(|_| self.panel), &self.name, snow_on_windows, self.panel);
+         if report.switching {
+             // Windows that came with the new desktop get their snow back once they have slid in; windows on every
+             // desktop keep theirs throughout.
+             surfaces.retain(|surface| self.surfaces.iter().any(|shown| shown.id == surface.id));
+         }
+-        self.simulation.covers = windows::covers(listed, &area);
++        self.simulation.covers = windows::covers(report, &area);
+         if surfaces == self.surfaces {
+             return;
+         }
+@@ -482,15 +506,6 @@ impl Screen {
+         self.windows_changed_at = now;
+     }
+ 
+-    /// Lets the snow on windows fall, keeping what lies on the panel.
+-    pub fn drop_window_snow(&mut self) {
+-        let surfaces = windows::surfaces(&Report::default(), &self.area(), self.shelf.as_ref().filter(|_| self.panel), &self.name);
+-        self.simulation.update_windows(&surfaces, 0.1, &HashSet::new(), &HashSet::new(), false);
+-        self.simulation.covers.clear();
+-        self.surfaces = surfaces;
+-        self.windows_seen = 0;
+-    }
+-
+     /// Reads the windows again at the next frame, as when snow on windows comes back on.
+     pub fn rewatch(&mut self) {
+         self.windows_seen = 0;
+@@ -602,10 +617,14 @@ impl Screen {
+         hint: &str,
+         now: Instant,
+     ) {
++        if self.output_off() {
++            return;
++        }
+         let area = self.area();
+         if let Some(picture) = &mut self.picture {
+             picture.visible = !self.covered;
+-            picture.tick(gpu, compositor, &mut self.simulation, &self.bounds, &area, frost && !self.covered, fighting, room, main, hint, now);
++            let period = Duration::from_secs_f64(1.0 / f64::from(self.refresh_rate.min(60)));
++            picture.tick(gpu, compositor, &mut self.simulation, &self.bounds, &area, frost && !self.covered, fighting, room, main, hint, now, period);
+         }
+     }
+ 
+diff --git a/linux/src/serpantinum.rs b/linux/src/serpantinum.rs
+new file mode 100644
+index 0000000..74c8063
+--- /dev/null
++++ b/linux/src/serpantinum.rs
+@@ -0,0 +1,140 @@
++//! Solid parts of Serpantinum layer surfaces, in logical pixels relative to their output.
++use std::collections::BTreeMap;
++use std::io::{self, BufRead};
++use std::path::PathBuf;
++use std::thread;
++
++use calloop::channel::Sender;
++use serde::Deserialize;
++
++use crate::snow::Command;
++use crate::source::{Report, Window};
++use crate::wallpaper::{Placement, Wallpaper};
++
++#[derive(Clone, Debug, Deserialize, PartialEq)]
++pub struct Surface {
++    id: String,
++    output: String,
++    kind: String,
++    x: f64,
++    y: f64,
++    w: f64,
++    h: f64,
++    radius: f32,
++}
++
++pub fn watch(commands: Sender<Command>) {
++    if std::env::var_os("SERPANTINUM_SNOWHUSH_WALLPAPERS").is_none() {
++        return;
++    }
++    let _ = thread::Builder::new().name("serpantinum surfaces".into()).spawn(move || {
++        for line in io::stdin().lock().lines().map_while(Result::ok) {
++            if let Ok(surfaces) = serde_json::from_str(&line)
++                && commands.send(Command::ShellSurfaces(surfaces)).is_err()
++            {
++                return;
++            }
++        }
++        let _ = commands.send(Command::Quit);
++    });
++}
++
++pub fn is_shell(window: &Window) -> bool {
++    window.id.starts_with("serpantinum:")
++}
++
++pub fn add_surfaces(report: &mut Report, surfaces: &[Surface]) {
++    let mut front = Vec::new();
++    let mut behind = Vec::new();
++    for surface in surfaces {
++        let Some(display) = report.screens.iter().find(|display| display.name == surface.output) else { continue };
++        let x = surface.x.max(0.0);
++        // Keep a narrow falling area even when a bar is flush with the top edge.
++        let y = surface.y.max(2.0);
++        let w = (surface.x + surface.w).min(display.w) - x;
++        let h = (surface.y + surface.h).min(display.h) - y;
++        if w < 32.0 || h < 14.0 || w * h >= 0.9 * display.w * display.h {
++            continue;
++        }
++        let widget = surface.kind == "widgets";
++        let id = format!("serpantinum:{}", surface.id);
++        if widget && report.windows.iter().any(|window| {
++            window.solid && window.x < display.x + display.w && window.x + window.w > display.x
++                && window.y < display.y + display.h && window.y + window.h > display.y
++        }) {
++            report.elsewhere.push(id);
++            continue;
++        }
++        let window = Window {
++            id,
++            class: format!("Serpantinum {}", surface.kind),
++            x: x + display.x,
++            y: y + display.y,
++            w,
++            h,
++            solid: true,
++            full: false,
++            above: !widget,
++            decorated: false,
++            maximized: false,
++            radius: Some(surface.radius.max(0.0)),
++        };
++        if widget { behind.push(window) } else { front.push(window) }
++    }
++    front.sort_by_key(|window| !window.class.ends_with("panels"));
++    front.append(&mut report.windows);
++    front.extend(behind);
++    report.windows = front;
++}
++
++pub fn wallpapers() -> Vec<(String, Wallpaper)> {
++    let Some(file) = std::env::var_os("SERPANTINUM_SNOWHUSH_WALLPAPERS") else { return Vec::new() };
++    let Ok(contents) = std::fs::read(file) else { return Vec::new() };
++    let Ok(paths) = serde_json::from_slice::<BTreeMap<String, PathBuf>>(&contents) else { return Vec::new() };
++    paths
++        .into_iter()
++        .filter_map(|(screen, path)| {
++            let extension = path.extension()?.to_str()?.to_ascii_lowercase();
++            if !matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "webp") {
++                return None;
++            }
++            Wallpaper::new(path, Placement::Fill, [0.0; 3]).map(|wallpaper| (screen, wallpaper))
++        })
++        .collect()
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::source::Display;
++    use crate::windows::{self, Area};
++
++    #[test]
++    fn only_visible_shell_surface_bounds_are_used_and_accumulation_is_independent() {
++        let display = Display { name: "test".into(), x: -1920.0, y: 100.0, w: 1920.0, h: 1080.0, ax: -1920.0, ay: 144.0, aw: 1920.0, ah: 1036.0 };
++        let area = Area::bounds(&display);
++        let mut report = Report { screens: vec![display], ..Default::default() };
++        let surfaces = [
++            Surface { id: "clock".into(), output: "test".into(), kind: "widgets".into(), x: 20.0, y: 60.0, w: 180.0, h: 120.0, radius: 12.0 },
++            Surface { id: "bar".into(), output: "test".into(), kind: "bar".into(), x: 40.0, y: 0.0, w: 120.0, h: 32.0, radius: 8.0 },
++            Surface {
++                id: "transparent-overlay".into(),
++                output: "test".into(),
++                kind: "panels".into(),
++                x: 0.0,
++                y: 0.0,
++                w: 1920.0,
++                h: 1080.0,
++                radius: 0.0,
++            },
++            Surface { id: "unplugged".into(), output: "gone".into(), kind: "widgets".into(), x: 20.0, y: 60.0, w: 180.0, h: 120.0, radius: 12.0 },
++        ];
++        add_surfaces(&mut report, &surfaces);
++        assert_eq!(report.windows.len(), 2);
++        assert_eq!((report.windows[1].x, report.windows[1].y), (-1900.0, 160.0));
++        assert!(windows::surfaces(&report, &area, None, "test", true, false).is_empty());
++        let ledges = windows::surfaces(&report, &area, None, "test", false, true);
++        assert_eq!(ledges.len(), 2);
++        assert_eq!(ledges[1].corner_radius, 12.0);
++    }
++}
+diff --git a/linux/src/snow.rs b/linux/src/snow.rs
+index af2a40c..5067968 100644
+--- a/linux/src/snow.rs
++++ b/linux/src/snow.rs
+@@ -36,12 +36,14 @@ use crate::log;
+ use crate::picture::PictureSnow;
+ use crate::prefs::Settings;
+ use crate::render::{Ambient, Gpu};
++use crate::serpantinum::{self, Surface};
+ use crate::screen::{self, PowerBudget, Screen};
+ use crate::source::{Demand, Report, Shared, Source};
+ use crate::tray::Tray;
+ use crate::windows::{self, Area};
+ 
+ pub enum Command {
++    ShellSurfaces(Vec<Surface>),
+     /// How much falls, 0 to 1.
+     Intensity(f32),
+     /// How opaque what falls is drawn, 0.1 to 1.
+@@ -115,6 +117,9 @@ pub struct App {
+     quit: bool,
+     displays_changed_at: Option<Instant>,
+     report: (u64, Option<Arc<Report>>),
++    source_generation: u64,
++    shell_surfaces: Vec<Surface>,
++    shell_surfaces_changed: bool,
+     /// The display each window's snow belongs to, by name.
+     owners: HashMap<WindowId, String>,
+     budget: PowerBudget,
+@@ -216,6 +221,9 @@ pub fn run(link: Option<String>) -> Result<(), String> {
+         quit: false,
+         displays_changed_at: None,
+         report: (0, None),
++        source_generation: 0,
++        shell_surfaces: Vec::new(),
++        shell_surfaces_changed: false,
+         owners: HashMap::new(),
+         budget: PowerBudget::Full,
+         light: daylight(),
+@@ -245,6 +253,7 @@ pub fn run(link: Option<String>) -> Result<(), String> {
+ 
+         use ksni::blocking::TrayMethods;
+         app.tray = Tray::new(settings, commands.clone()).assume_sni_available(true).spawn().inspect_err(|error| log!("tray: {error}")).ok();
++        serpantinum::watch(commands.clone());
+         watch_lock(&bus, commands);
+ 
+         loop {
+@@ -311,6 +320,12 @@ fn watch_lock(bus: &Bus, commands: calloop::channel::Sender<Command>) {
+ impl App {
+     fn command(&mut self, command: Command) {
+         match command {
++            Command::ShellSurfaces(surfaces) => {
++                if surfaces != self.shell_surfaces {
++                    self.shell_surfaces = surfaces;
++                    self.shell_surfaces_changed = true;
++                }
++            }
+             Command::Quit => self.quit = true,
+             Command::Intensity(intensity) => {
+                 self.settings.intensity = (intensity * 100.0).round() as u32;
+@@ -334,12 +349,14 @@ impl App {
+             }
+             Command::Panel(on) => {
+                 self.settings.panel = on;
+-                let (accumulates, windows) = (self.settings.accumulates(), self.settings.snow_on_windows);
++                let accumulates = self.settings.accumulates();
+                 self.screens.iter_mut().for_each(|screen| {
+                     screen.panel = on;
+                     screen.simulation.accumulates = accumulates;
+-                    if windows { screen.rewatch() } else { screen.drop_window_snow() }
++                    screen.rewatch();
++                    screen.wake(Instant::now());
+                 });
++                self.place_screens();
+             }
+             Command::Wallpaper(on) => {
+                 self.settings.wallpaper = on;
+@@ -359,11 +376,7 @@ impl App {
+                 self.settings.snow_on_windows = on;
+                 let accumulates = self.settings.accumulates();
+                 self.screens.iter_mut().for_each(|screen| screen.simulation.accumulates = accumulates);
+-                if on {
+-                    self.screens.iter_mut().for_each(Screen::rewatch);
+-                } else {
+-                    self.screens.iter_mut().for_each(Screen::drop_window_snow);
+-                }
++                self.screens.iter_mut().for_each(Screen::rewatch);
+             }
+             Command::BehindWindows(on) => {
+                 self.settings.behind_windows = on;
+@@ -460,20 +473,33 @@ impl App {
+         if self.locked {
+             return Some(chores);
+         }
+-        let frame = self.screens.iter().map(|screen| screen.next_due.saturating_duration_since(now)).min();
++        let frame = self.screens.iter().map(|screen| screen.next_update_at().saturating_duration_since(now)).min();
+         Some(frame.map_or(chores, |frame| frame.min(chores)))
+     }
+ 
+     fn tick(&mut self) -> Result<(), String> {
+         let now = Instant::now();
+-        let report = self.shared.report();
+-        if report.0 != self.report.0 {
+-            if let Some(next) = &report.1
+-                && self.report.1.as_deref().map(window_order) != Some(window_order(next))
+-            {
+-                log!("windows front to back: {}", window_list(next));
++        let (generation, compositor) = self.shared.report();
++        let shell_changed = std::mem::take(&mut self.shell_surfaces_changed);
++        if generation != self.source_generation || shell_changed {
++            self.source_generation = generation;
++            let report = compositor.map(|base| {
++                let report = if self.shell_surfaces.is_empty() {
++                    base
++                } else {
++                    let mut enriched = (*base).clone();
++                    serpantinum::add_surfaces(&mut enriched, &self.shell_surfaces);
++                    Arc::new(enriched)
++                };
++                if self.report.1.as_deref().map(window_order) != Some(window_order(&report)) {
++                    log!("windows front to back: {}", window_list(&report));
++                }
++                report
++            });
++            self.report = (self.report.0 + 1, report);
++            if shell_changed {
++                self.screens.iter_mut().for_each(|screen| screen.wake(now));
+             }
+-            self.report = report;
+             self.place_screens();
+             self.hand_over(now);
+         }
+@@ -518,11 +544,13 @@ impl App {
+         // The New Year's countdown and midnight by the clock, and how often rockets go up.
+         let (celebration, rockets) = if self.new_year {
+             let local = light::now();
+-            (new_year::celebration(local, (now - self.started).as_secs_f64()), new_year::fireworks_per_minute(local))
++            let seasonal_rate = new_year::fireworks_per_minute(local);
++            let rate = if self.settings.new_year.on && seasonal_rate == 0.0 { 3.0 } else { seasonal_rate };
++            (new_year::celebration(local, (now - self.started).as_secs_f64()), rate)
+         } else {
+             (None, 0.0)
+         };
+-        for screen in self.screens.iter_mut().filter(|screen| screen.next_due <= now) {
++        for screen in self.screens.iter_mut().filter(|screen| screen.ready_at() <= now) {
+             screen.simulation.celebration = celebration;
+             screen.simulation.fireworks_per_minute = rockets;
+             // Shown over a full-screen app, the snow reaches the display's edges while the app has put the panels away,
+@@ -580,7 +608,7 @@ impl App {
+     /// with snow on windows off too, since the same answers move the ground with the panels.
+     fn tell_demand(&self) {
+         let awake = self.screens.iter().any(|screen| !screen.stalled());
+-        let busy = self.screens.iter().any(|screen| !screen.stalled() && !screen.hidden() && !screen.simulation.is_empty());
++        let busy = self.screens.iter().any(|screen| !screen.stalled() && !screen.hidden() && !screen.output_off() && !screen.simulation.is_empty());
+         let windows = if !awake {
+             Demand::Off
+         } else if busy {
+@@ -648,13 +676,14 @@ impl App {
+             let Some(info) = self.outputs.info(&output) else { continue };
+             let (Some(name), Some(position), Some(size)) = (info.name.clone(), info.logical_position, info.logical_size) else { continue };
+             let bounds = Area { x: position.0 as f64, y: position.1 as f64, w: size.0 as f64, h: size.1 as f64 };
++            let refresh = info.modes.iter().find(|mode| mode.current).map_or(60, |mode| (mode.refresh_rate as f32 / 1000.0).round() as u32).max(1);
+             if let Some(index) = current.iter().position(|screen| screen.name == name && screen.output == output) {
+                 let mut screen = current.swap_remove(index);
+                 screen.bounds = bounds;
++                screen.refresh_rate = refresh;
+                 self.screens.push(screen);
+                 continue;
+             }
+-            let refresh = info.modes.iter().find(|mode| mode.current).map_or(60, |mode| (mode.refresh_rate as f32 / 1000.0).round() as u32);
+             log!("display {name}: {bounds:?}, scale {}, {refresh} Hz", info.scale_factor);
+             let mut simulation = new_simulation(&bounds, &self.settings, self.budget);
+             simulation.set_halloween(self.halloween);
+@@ -720,7 +749,7 @@ impl App {
+     /// Gives each display about to draw the snow of windows reaching over it that another display keeps.
+     fn lend(&mut self, report: &Report, snow_on_windows: bool, now: Instant) {
+         for index in 0..self.screens.len() {
+-            if self.screens[index].next_due > now {
++            if self.screens[index].ready_at() > now {
+                 continue;
+             }
+             let borrowed = if snow_on_windows { self.borrowed(index, report) } else { Vec::new() };
+@@ -792,8 +821,15 @@ impl App {
+     fn place_screens(&mut self) {
+         let Some(report) = self.report.1.clone() else { return };
+         for screen in &mut self.screens {
++            screen.set_output_power(report.output_power.get(&screen.name).copied());
+             let Some(display) = report.screens.iter().find(|display| display.name == screen.name) else { continue };
+-            screen.place(Area::bounds(display), Area::work(display), windows::shelf(&report, display));
++            let bounds = Area::bounds(display);
++            let shell_edges = self.settings.panel && report.windows.iter().any(|window| {
++                serpantinum::is_shell(window) && window.above && window.x < bounds.right() && window.x + window.w > bounds.x
++                    && window.y < bounds.bottom() && window.y + window.h > bounds.y
++            });
++            let work = if shell_edges { bounds } else { Area::work(display) };
++            screen.place(bounds, work, windows::shelf(&report, display));
+             let walls = windows::walls(display, &report.screens);
+             screen.simulation.walls = walls;
+             screen.simulation.neighbours = (!walls.0, !walls.1);
+diff --git a/linux/src/wallpaper.rs b/linux/src/wallpaper.rs
+index fc2e09d..0f44222 100644
+--- a/linux/src/wallpaper.rs
++++ b/linux/src/wallpaper.rs
+@@ -243,8 +243,8 @@ pub fn shown(path: &Path, placement: Placement, fill: [f32; 3], width: u32, heig
+ /// Each display's wallpaper by its output's name, where a wallpaper daemon other than Plasma's draws it: swaybg, as
+ /// Sway and niri start it, swww or hyprpaper.
+ pub fn by_output() -> Vec<(String, Wallpaper)> {
+-    let mut found = swaybg();
+-    for (output, wallpaper) in swww().into_iter().chain(hyprpaper()) {
++    let mut found = crate::serpantinum::wallpapers();
++    for (output, wallpaper) in swaybg().into_iter().chain(swww()).chain(hyprpaper()) {
+         if !found.iter().any(|(name, _)| *name == output) {
+             found.push((output, wallpaper));
+         }
+diff --git a/linux/src/windows.rs b/linux/src/windows.rs
+index e978683..f14d1ae 100644
+--- a/linux/src/windows.rs
++++ b/linux/src/windows.rs
+@@ -7,6 +7,7 @@ use snowhush_core::geometry::Rect;
+ use snowhush_core::simulation::{WindowId, WindowSurface};
+ 
+ use crate::source::{Display, Report, Window};
++use crate::serpantinum;
+ 
+ /// Breeze and its kin round a window's top corners by a few pixels; the exact radius belongs to the
+ /// decoration theme and isn't reported, so this is a close guess. Maximized windows stay square.
+@@ -122,7 +123,7 @@ fn below_display(report: &Report, name: &str, window: &Window) -> bool {
+ /// The windows on the display named `display` that snow can settle on, in its overlay coordinates: y up from
+ /// the bottom of `area`, which the overlay covers one logical pixel to one. Windows whose snow belongs to
+ /// another display only hide snow here. The shelf comes first: the panel is in front.
+-pub fn surfaces(report: &Report, area: &Area, shelf: Option<&Shelf>, display: &str) -> Vec<WindowSurface> {
++pub fn surfaces(report: &Report, area: &Area, shelf: Option<&Shelf>, display: &str, on_windows: bool, on_shell: bool) -> Vec<WindowSurface> {
+     let (width, height) = (area.w as f32, area.h as f32);
+     let mut blockers: Vec<Rect> = Vec::new();
+     let mut surfaces = Vec::new();
+@@ -150,11 +151,14 @@ pub fn surfaces(report: &Report, area: &Area, shelf: Option<&Shelf>, display: &s
+             blockers.push(frame);
+             continue;
+         }
+-        let room_above = ((window.y - area.y) as f32 >= 6.0 && frame.max_y() < height) || below_display(report, display, window);
++        let shell = serpantinum::is_shell(window);
++        let (room, min_width, min_height) = if shell { (1.0, 32.0, 14.0) } else { (6.0, 80.0, 40.0) };
++        let room_above = ((window.y - area.y) as f32 >= room && frame.max_y() < height) || below_display(report, display, window);
+         let on_screen = frame.max_x() > 0.0 && frame.min_x() < width && frame.max_y() > 0.0;
+         let fills_screen = frame.width * frame.height >= width * height * 0.9;
+         let here = owner(report, window).is_none_or(|owner| owner == display);
+-        if here && room_above && on_screen && !fills_screen && window.solid && frame.width >= 80.0 && frame.height >= 40.0 {
++        let settles = if shell { on_shell } else { on_windows };
++        if settles && here && room_above && on_screen && !fills_screen && window.solid && frame.width >= min_width && frame.height >= min_height {
+             let rounded = window.decorated && !window.maximized;
+             let radius = window.radius.unwrap_or(if rounded { CORNER_RADIUS } else { 0.0 }).min(frame.width / 2.0).min(frame.height / 2.0);
+             let region = Rect { x: frame.x, y: frame.max_y() - radius, width: frame.width, height: 40.0 + radius };
+@@ -195,6 +199,9 @@ pub fn covering<'a>(report: &'a Report, bounds: &Area) -> Option<&'a str> {
+         return Some("the compositor");
+     }
+     for window in &report.windows {
++        if serpantinum::is_shell(window) {
++            continue;
++        }
+         if window.x + window.w <= bounds.x || window.x >= bounds.right() || window.y + window.h <= bounds.y || window.y >= bounds.bottom() {
+             continue;
+         }
+diff --git a/locales/de.strings b/locales/de.strings
+index d5b4277..c80998d 100644
+--- a/locales/de.strings
++++ b/locales/de.strings
+@@ -19,7 +19,7 @@
+ "surface.widgets" = "Widgets";
+ "surface.windows" = "Fenster";
+ "surface.wallpaper" = "Hintergrund";
+-"surface.panel" = "Leiste";
++"surface.panel" = "Shell-Oberflächen";
+ "all" = "Alle";
+ "melt.snow" = "Schnee schmilzt";
+ "melt.autumn" = "Laub verwelkt";
+diff --git a/locales/en.strings b/locales/en.strings
+index fa24871..b6aa89c 100644
+--- a/locales/en.strings
++++ b/locales/en.strings
+@@ -23,7 +23,7 @@
+ "surface.widgets" = "Widgets";
+ "surface.windows" = "Windows";
+ "surface.wallpaper" = "Wallpaper";
+-"surface.panel" = "Panel";
++"surface.panel" = "Shell surfaces";
+ "all" = "All";
+ "melt.snow" = "Melt Snow";
+ "melt.autumn" = "Wither Leaves";
+diff --git a/locales/es.strings b/locales/es.strings
+index 12c3e22..44b361b 100644
+--- a/locales/es.strings
++++ b/locales/es.strings
+@@ -19,7 +19,7 @@
+ "surface.widgets" = "Widgets";
+ "surface.windows" = "Ventanas";
+ "surface.wallpaper" = "Fondo";
+-"surface.panel" = "Panel";
++"surface.panel" = "Superficies del escritorio";
+ "all" = "Todo";
+ "melt.snow" = "Derretir la nieve";
+ "melt.autumn" = "Marchitar las hojas";
+diff --git a/locales/fr.strings b/locales/fr.strings
+index 67ebd1b..1ce26df 100644
+--- a/locales/fr.strings
++++ b/locales/fr.strings
+@@ -19,7 +19,7 @@
+ "surface.widgets" = "Widgets";
+ "surface.windows" = "Fenêtres";
+ "surface.wallpaper" = "Fond";
+-"surface.panel" = "Panneau";
++"surface.panel" = "Éléments du shell";
+ "all" = "Tout";
+ "melt.snow" = "Fonte de la neige";
+ "melt.autumn" = "Feuilles qui fanent";
+diff --git a/locales/ja.strings b/locales/ja.strings
+index 5e9065e..4795c07 100644
+--- a/locales/ja.strings
++++ b/locales/ja.strings
+@@ -19,7 +19,7 @@
+ "surface.widgets" = "ウィジェット";
+ "surface.windows" = "ウインドウ";
+ "surface.wallpaper" = "壁紙";
+-"surface.panel" = "パネル";
++"surface.panel" = "シェルの表面";
+ "all" = "すべて";
+ "melt.snow" = "雪を溶かす";
+ "melt.autumn" = "葉を枯らす";
+diff --git a/locales/pt.strings b/locales/pt.strings
+index a26d6ac..466a164 100644
+--- a/locales/pt.strings
++++ b/locales/pt.strings
+@@ -19,7 +19,7 @@
+ "surface.widgets" = "Widgets";
+ "surface.windows" = "Janelas";
+ "surface.wallpaper" = "Fundo";
+-"surface.panel" = "Painel";
++"surface.panel" = "Superfícies do ambiente";
+ "all" = "Tudo";
+ "melt.snow" = "Derreter a neve";
+ "melt.autumn" = "Murchar as folhas";
+diff --git a/locales/ru.strings b/locales/ru.strings
+index a314ede..6a4119b 100644
+--- a/locales/ru.strings
++++ b/locales/ru.strings
+@@ -19,7 +19,7 @@
+ "surface.widgets" = "Виджеты";
+ "surface.windows" = "Окна";
+ "surface.wallpaper" = "Обои";
+-"surface.panel" = "Панель";
++"surface.panel" = "Элементы оболочки";
+ "all" = "Все";
+ "melt.snow" = "Таяние снега";
+ "melt.autumn" = "Увядание листьев";
+diff --git a/locales/uk.strings b/locales/uk.strings
+index c8012d9..e747282 100644
+--- a/locales/uk.strings
++++ b/locales/uk.strings
+@@ -19,7 +19,7 @@
+ "surface.widgets" = "Віджети";
+ "surface.windows" = "Вікна";
+ "surface.wallpaper" = "Шпалери";
+-"surface.panel" = "Панель";
++"surface.panel" = "Елементи оболонки";
+ "all" = "Усі";
+ "melt.snow" = "Танення снігу";
+ "melt.autumn" = "В'янення листя";
+diff --git a/locales/zh-Hans.strings b/locales/zh-Hans.strings
+index aa8a009..78aa97e 100644
+--- a/locales/zh-Hans.strings
++++ b/locales/zh-Hans.strings
+@@ -19,7 +19,7 @@
+ "surface.widgets" = "小组件";
+ "surface.windows" = "窗口";
+ "surface.wallpaper" = "墙纸";
+-"surface.panel" = "面板";
++"surface.panel" = "桌面组件";
+ "all" = "全部";
+ "melt.snow" = "积雪融化";
+ "melt.autumn" = "落叶枯萎";
+diff --git a/linux/src/picture.rs b/linux/src/picture.rs
+index 1025835..2b45ea0 100644
+--- a/linux/src/picture.rs
++++ b/linux/src/picture.rs
+@@ -55,6 +55,7 @@ pub struct PictureSnow {
+     offset: V2,
+     /// Whether the display is seen, not covered by a full-screen window: the bot throws only then.
+     pub visible: bool,
++    next_tick: Instant,
+     started: Instant,
+     /// When the last practice throw went, with SNOWHUSH_FIGHT_PRACTICE=1: one at the first snowman every two seconds, for
+     /// trying the fight out where nothing can click.
+@@ -97,6 +98,7 @@ impl PictureSnow {
+             fight: None,
+             offset: V2::ZERO,
+             visible: true,
++            next_tick: Instant::now(),
+             started: Instant::now(),
+             taking: Vec::new(),
+             practiced: Instant::now(),
+@@ -173,6 +175,10 @@ impl PictureSnow {
+         self.drawn_version = None;
+     }
+ 
++    pub fn fight_due_at(&self) -> Option<Instant> {
++        (self.fight.is_some() && self.visible).then_some(self.next_tick)
++    }
++
+     /// Looks after the picture's snow once the simulation has stepped: takes in what a reading found, reads a wallpaper
+     /// not read yet, gives the simulation the picture where the overlay `area` lies on the display `bounds`, moves the
+     /// snowmen on while `fighting`, and draws what changed. `frost` draws the snow at all; without, the picture is read
+@@ -192,7 +198,15 @@ impl PictureSnow {
+         main: bool,
+         hint: &str,
+         now: Instant,
++        period: Duration,
+     ) {
++        // The wallpaper shares the foreground's EGL context. Buffer releases and
++        // input events can dispatch much faster than the output can show frames.
++        if now < self.next_tick {
++            return;
++        }
++        let next = self.next_tick + period;
++        self.next_tick = if next > now { next } else { now + period };
+         self.take_reading(gpu, simulation, bounds);
+         let Some(scene) = &self.scene else { return };
+         let cell = scene.terrain.cell as f32;
+diff --git a/linux/src/hyprland.rs b/linux/src/hyprland.rs
+index 2c2eea2..2354b5f 100644
+--- a/linux/src/hyprland.rs
++++ b/linux/src/hyprland.rs
+@@ -46,6 +46,8 @@ struct Monitor {
+     reserved: [f64; 4],
+     #[serde(default)]
+     disabled: bool,
++    #[serde(rename = "dpmsStatus", default)]
++    powered: Option<bool>,
+     #[serde(rename = "activeWorkspace")]
+     active_workspace: WorkspaceRef,
+     /// A special workspace shown over the active one; it has no name while none is.
+@@ -278,6 +280,9 @@ fn ask(socket: &Path, decoration: Decoration) -> Result<(Report, HashMap<String,
+     let mut showing = Vec::new();
+     let mut specials = Vec::new();
+     for monitor in monitors.iter().filter(|monitor| !monitor.disabled) {
++        if let Some(powered) = monitor.powered {
++            report.output_power.insert(monitor.name.clone(), powered);
++        }
+         let (width, height) = if monitor.transform % 2 == 1 { (monitor.height, monitor.width) } else { (monitor.width, monitor.height) };
+         let (w, h) = (width / monitor.scale.max(0.1), height / monitor.scale.max(0.1));
+         let [left, top, right, bottom] = monitor.reserved;
+diff --git a/linux/src/source.rs b/linux/src/source.rs
+index 2fbc662..f943c4d 100644
+--- a/linux/src/source.rs
++++ b/linux/src/source.rs
+@@ -61,6 +61,8 @@ pub struct Panel {
+ #[derive(Deserialize, Clone, Debug, Default, PartialEq)]
+ pub struct Report {
+     pub screens: Vec<Display>,
++    #[serde(default)]
++    pub output_power: std::collections::HashMap<String, bool>,
+     pub windows: Vec<Window>,
+     /// Windows on other desktops or activities.
+     pub elsewhere: Vec<String>,

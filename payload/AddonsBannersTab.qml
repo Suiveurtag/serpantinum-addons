@@ -50,6 +50,7 @@ Item {
         ColumnLayout {
             id: settings; width: parent.width; spacing: rootObj.s(8)
             BannerDivider { label: "ACTIVE" }
+            SnowHushCard { rootObj: root.rootObj; Layout.bottomMargin: rootObj.s(6) }
             // BEGIN serpantinum-clawd-v2 option
             ClawdSettings { rootObj: root.rootObj; viewport: addonsViewport; Layout.bottomMargin: rootObj.s(6) }
             // END serpantinum-clawd-v2 option

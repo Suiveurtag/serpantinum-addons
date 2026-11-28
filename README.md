@@ -359,6 +359,14 @@ A small animated companion installed on the desktop, with an illustrated card in
 
 ### 3. Halloween, seasonal effects
 
+#### Snow Hush
+
+Snow Hush lives in **Addons → Banners**. Choose Snow, Autumn leaves, Rain, or New Year to start the desktop effect. New Year brings the decorated fir and fireworks even outside the holidays. The banner expands when enabled and exposes Snowhush’s live controls, including intensity, opacity, accumulation and Cherry Blossom. **Accumulate → Shell surfaces** controls snow on desktop widgets, the dock, bar sections and open shell panels independently of app windows. Widgets collect snow when their display has no visible app windows. With **Accumulate → Ground** enabled, some flakes pass window ledges and reach the floor. Native fullscreen windows show the effect by default.
+
+The first activation builds the pinned Snowhush Linux source with Serpantinum’s geometry bridge. It uses Git, Rust/Cargo, curl, a C compiler, pkg-config and the Wayland development libraries. Subsequent launches use the cached build. The addon starts with the shell when enabled, tracks the static wallpaper on each display, and keeps a separate profile from a standalone installation. Window and pointer behavior depend on the compositor's support in [Snowhush for Linux](https://github.com/mbezruchko/Snowhush/tree/v0.14.0/linux). Snowhush uses the [PolyForm Noncommercial License](https://github.com/mbezruchko/Snowhush/blob/v0.14.0/LICENSE).
+
+#### Halloween
+
 Optional layer, no change to the background. Two independent switches: **Addons → Halloween effects** (motion) and **Theme → Seasonal · Halloween** (the "Halloween Night" palette with the moon illustration).
 
 **Palette and surfaces**
