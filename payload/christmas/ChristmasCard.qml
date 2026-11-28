@@ -267,6 +267,13 @@ Item {
                     order: 1
                     title: qsTr("Decorations")
                     hint: qsTr("Where Christmas shows in the shell")
+                    SwitchRow {
+                        Layout.fillWidth: true
+                        text: qsTr("Frosted settings")
+                        detail: qsTr("Frost appears on small settings when hovered")
+                        on: Christmas.area("settings")
+                        onFlipped: Christmas.setArea("settings", !Christmas.area("settings"))
+                    }
                     GridLayout {
                         Layout.fillWidth: true
                         columns: card.compact ? 1 : 2
@@ -276,7 +283,6 @@ Item {
                             model: [
                                 { key: "bar", name: qsTr("Bar garland"), detail: qsTr("Fairy lights hang in every bar section") },
                                 { key: "panels", name: qsTr("Gift-wrapped panels"), detail: qsTr("Panels open like presents, with holly on a corner") },
-                                { key: "settings", name: qsTr("Frosted settings"), detail: qsTr("Frost grows across the row under the pointer") },
                                 { key: "buttons", name: qsTr("Sparkling buttons"), detail: qsTr("A glint on hover, gold stars on a press") },
                                 { key: "windows", name: qsTr("Lit windows"), detail: qsTr("Lights run around a window as it takes the focus") },
                                 { key: "notifications", name: qsTr("Wrapped notifications"), detail: qsTr("A satin sash and a bow on each one") }

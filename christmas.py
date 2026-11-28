@@ -91,15 +91,16 @@ Loader {
 def patch_settings_row(text):
     # Explicit parent/property: SettingsRow's default children are controls. Banner rows (custom content) stay clear.
     return insert(text, '    id: root\n', 'row frost', '''
+readonly property bool christmasFrostEligible: root.customLeftContent === null && root.height <= root.s(110)
 property HoverHandler christmasHover: HoverHandler {
     parent: root
-    enabled: Christmas.settings && root.customLeftContent === null && root.isOwnTabLive()
+    enabled: Christmas.settings && root.christmasFrostEligible && root.isOwnTabLive()
 }
 property Item christmasFrost: Loader {
     parent: root
     anchors.fill: parent
     enabled: false
-    active: Christmas.settings && root.customLeftContent === null
+    active: Christmas.settings && root.christmasFrostEligible
     sourceComponent: ChristmasFrost {
         visible: root.isOwnTabLive()
         active: Christmas.enabled

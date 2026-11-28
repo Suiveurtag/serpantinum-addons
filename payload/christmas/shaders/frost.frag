@@ -47,6 +47,7 @@ void main() {
     float r = min(cornerRadius, min(halfSize.x, halfSize.y));
     vec2 sq = abs(px - halfSize) - halfSize + vec2(r);
     float dist = length(max(sq, vec2(0))) + min(max(sq.x, sq.y), 0.0) - r;
-    float alpha = clamp(frost(px) * intensity, 0.0, 1.0) * (1.0 - smoothstep(-1.0, 0.0, dist)) * qt_Opacity;
+    float border = smoothstep(-9.0, -3.0, dist) * (1.0 - smoothstep(-1.0, 0.0, dist));
+    float alpha = clamp(frost(px) * intensity, 0.0, 1.0) * border * qt_Opacity;
     fragColor = vec4(tint.rgb * alpha, alpha);
 }

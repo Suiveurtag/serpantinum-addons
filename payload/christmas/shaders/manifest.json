@@ -1,10 +1,10 @@
 {
   "frost": {
-    "source_sha256": "96f3f5d34682c2adbb4b09fe43ac6d0d70ca4e80b8d2ced41a8ae80023b5f94c",
-    "package_sha256": "4c64078f6c72501b8e7995a6d2d9d09d75ca6a5c1db7827560229b4a63dc1986"
+    "source_sha256": "de9d5e05f54a0ff9b40a31f9021a16ad675f5fb19989e13557a3e14eb103b2b7",
+    "package_sha256": "2b65a7574711cb98e338c2592028f843ad51e1f99352ad4c6d84e2313d7f0b88"
   },
   "lights": {
     "source_sha256": "0b5b85b73c96c1d6011e8d43a0b0689ff0576a3635099e7c53b7162ff8bcfd3c",
-    "package_sha256": "53f90c08394e273ee96bbdd5e5963c667afa850b8faa0b3cf460fc142dee3e6d"
+    "package_sha256": "95b0c41c05043e810c15cd5001fd4a4f0a18cda81303bc04fee727672118854a"
   }
 }
