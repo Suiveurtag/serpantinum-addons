@@ -314,13 +314,15 @@ Storyboard: `animations/DREAMS.md` in the Clawd project.
 
 ## Settings card
 
+While Clawd is off the card is only its header: every row below folds away behind a front of ASCII static, and unfolds when he wakes (no animation in performance mode).
+
 | Row | Setting |
 | --- | --- |
-| Enable | `addonsV2Clawd`, default off |
+| Header button (`WAKE CLAWD UP` / `SEND TO SLEEP`) | `addonsV2Clawd`, default off |
 | Scale | `addonsV2ClawdScale`, 2–8× pixels, default 4 |
 | Walk speed | `addonsV2ClawdSpeed`: calm, normal, active |
 | Sleep after | `addonsV2ClawdSleep`, 1–60 minutes, default 5 |
-| Summon on this screen | Respawns him on the focused monitor (disabled while off) |
+| Summon on this screen | Respawns him on the focused monitor (folded away while off) |
 | Shortcut | Opens Keybinds; search `clawd` there to change it |
 | Hooks | Connect / disconnect Claude Code, Codex, OpenCode and Hermes session hooks, and Claude's status relay (`stats`) |
 | Thoughts | `addonsV2ClawdThoughts`: full (default), verbs, off |
@@ -457,7 +459,7 @@ other addons are untouched.
 
 1. `python3 scripts/clawd/sprites.py --check` and
    `python3 -m unittest discover -s tests -v`.
-2. Install, enable the card switch: Clawd spawns at the bottom of the focused
+2. Install, press the card's `WAKE CLAWD UP` button: Clawd spawns at the bottom of the focused
    monitor. `Super+Shift+L` twice hides and shows him.
 3. Drag him to another monitor (including ones with negative offsets) and
    release: he falls to that screen's floor. The rest of the desktop stays

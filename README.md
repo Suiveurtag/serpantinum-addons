@@ -20,7 +20,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Suiveurtag/serpantinum-a
 6. [Feature list](#feature-list)
    1. [Clawd, coding agent mascot](#1-clawd-coding-agent-mascot)
    2. [Capri, desktop companion](#2-capri-desktop-companion)
-   3. [Halloween, seasonal effects](#3-halloween-seasonal-effects)
+   3. [Seasonal effects: Christmas, Snow Hush, Halloween](#3-seasonal-effects-christmas-snow-hush-halloween)
    4. [AI Tokens, token counter](#4-ai-tokens-token-counter)
    5. [Mouse, cursors and trackpad](#5-mouse-cursors-and-trackpad)
    6. [Keybinds and keyboard layout](#6-keybinds-and-keyboard-layout)
@@ -113,7 +113,8 @@ Uninstall restores the shell and removes the services, hooks and addon files. Yo
 The other addons stay in place:
 
 ```sh
-python3 install.py --without-halloween   # seasonal effects
+python3 install.py --without-halloween   # Halloween seasonal effects
+python3 install.py --without-christmas   # Christmas lights and decorations
 python3 install.py --without-capri       # Capri
 python3 install.py --without-clawd       # Clawd (also removes its agent hooks and the status relay)
 python3 install.py --without-tokens      # AI Tokens widget and its service (the database stays)
@@ -357,13 +358,30 @@ A small animated companion installed on the desktop, with an illustrated card in
 
 **Documentation**: [`docs/capri.md`](docs/capri.md).
 
-### 3. Halloween, seasonal effects
+### 3. Seasonal effects: Christmas, Snow Hush, Halloween
+
+#### Christmas
+
+Christmas lives at the top of **Addons → Banners**. Press the glass bauble: it swings, the string of lights across the banner lights up bulb by bulb from above it, and the last door of an Advent calendar swings open on Viggo Johansen’s *Glade jul* (1891, public domain). The same moment drops a long garland over the top of every screen for about three seconds. Nothing falls from the sky: Snow Hush already does that.
+
+Once on, the banner unfolds two panels:
+
+- **Lights**: Classic (red, gold, green, blue C9 bulbs), Warm white, Candy cane and Nordic, plus **Twinkle** (bulbs breathe and one sparkles now and then; off keeps them steady).
+- **Decorations**, each switchable:
+  - **Bar garland**: fairy lights hang inside every bar section (and along a solid bar; from the outer edge on a side bar).
+  - **Gift-wrapped panels**: every panel (network, clock, system, settings, music, launcher…) opens like a present. Two satin ribbons cross it, the bow pops in a puff of gold stars, the ribbons are pulled off the edges and a sprig of holly settles on the corner away from the bar.
+  - **Frosted settings**: frost crystals grow across the settings row under the pointer and melt when it leaves.
+  - **Sparkling buttons**: a glint of candlelight runs across a button on hover; a press bursts gold stars from under the pointer, an icon button rings once like a bell, and a hold-to-confirm button pulls a cracker (stars and paper confetti).
+  - **Lit windows** (Hyprland): when a window takes the focus, lights run along its top from the middle, down both sides and meet again at the bottom, then fade.
+  - **Wrapped notifications**: a satin sash with a bow across each notification’s corner, in gold for urgent ones.
+
+Lights twinkle on one shared clock at about 12 Hz that only runs while a string is on screen, and every other effect is loaded only for the moment it plays; the performance mode of Settings → General keeps the decorations but stills them. `--without-christmas` removes the layer.
 
 #### Snow Hush
 
-Snow Hush lives in **Addons → Banners**. Choose Snow, Autumn leaves, Rain, or New Year to start the desktop effect. New Year brings the decorated fir and fireworks even outside the holidays. The banner expands when enabled and exposes Snowhush’s live controls, including intensity, opacity, accumulation and Cherry Blossom. **Accumulate → Shell surfaces** controls snow on desktop widgets, the dock, bar sections and open shell panels independently of app windows. Widgets collect snow when their display has no visible app windows. With **Accumulate → Ground** enabled, some flakes pass window ledges and reach the floor. Native fullscreen windows show the effect by default.
+Snow Hush lives in **Addons → Banners**. Press the snow globe to start the weather, then pick Snow, Autumn leaves, Rain or Cherry Blossom from the tiles below it. With Snow picked, Halloween and Festive unfold from its tile, and the emblem inside the globe follows the active effect. Festive brings the decorated fir and fireworks even outside the holidays. The banner expands when enabled and exposes Snowhush’s live controls, including intensity, opacity, accumulation and Cherry Blossom. Under **Accumulate**, **Widgets**, **Bar** and **Shell surfaces** (the dock and open shell panels) are separate switches, independent of app windows. Widgets collect snow when their display has no visible app windows, along the shape they paint: round gauges, dials and discs catch it on their curve, while faces drawn on the bare wallpaper (text, digital clocks, visualizers, simple lyrics, timers, snake) and cards at zero element opacity let it fall through. With **Accumulate → Ground** enabled, some flakes pass window ledges and reach the floor. Native fullscreen windows show the effect by default.
 
-The first activation builds the pinned Snowhush Linux source with Serpantinum’s geometry bridge. It uses Git, Rust/Cargo, curl, a C compiler, pkg-config and the Wayland development libraries. Subsequent launches use the cached build. The addon starts with the shell when enabled, tracks the static wallpaper on each display, and keeps a separate profile from a standalone installation. Window and pointer behavior depend on the compositor's support in [Snowhush for Linux](https://github.com/mbezruchko/Snowhush/tree/v0.14.0/linux). Snowhush uses the [PolyForm Noncommercial License](https://github.com/mbezruchko/Snowhush/blob/v0.14.0/LICENSE).
+The first activation builds the pinned Snowhush Linux source with Serpantinum’s geometry bridge. It uses Git, Rust/Cargo, curl, a C compiler, pkg-config and the Wayland development libraries. The banner shows each build step with a progress bar and elapsed time; the compile keeps the CPU busy for a few minutes at low priority (`nice 10`), and pressing the globe again cancels it. Subsequent launches use the cached build, and older cached builds are removed once a new one succeeds. Snowhush's online snowball fight (snowmen in the wallpaper, invite links) is disabled in this build. The addon starts with the shell when enabled, tracks the static wallpaper on each display, and keeps a separate profile from a standalone installation. Window and pointer behavior depend on the compositor's support in [Snowhush for Linux](https://github.com/mbezruchko/Snowhush/tree/v0.14.0/linux). Snowhush uses the [PolyForm Noncommercial License](https://github.com/mbezruchko/Snowhush/blob/v0.14.0/LICENSE).
 
 #### Halloween
 
@@ -565,17 +583,13 @@ Tab **Addons → Mouse** (sub-tab "Mouse").
 
 ### 12. General settings (Addons → General)
 
-**Live desktop in Liquid Glass** is off by default. When enabled on Hyprland 0.57 or newer, Liquid Glass samples the active workspace's windows over the wallpaper. Capture is shared per monitor, capped at 10 frames per second, and stopped when disabled. The first use builds a small QML module and requires CMake, a C/C++ compiler, `pkg-config`, `wayland-scanner`, and Qt 6 and Wayland development files. If the build or capture is unavailable, the wallpaper remains the backdrop.
-
-Hyprland's windows-only capture excludes pinned windows and other shell layers. Lock-screen glass always uses the wallpaper; standalone Settings also keeps the wallpaper to avoid capturing its own window.
-
 - **Themed window outline**: thin Hyprland border in the colours of the active palette, seasonal colours included. Off by default.
 - **Skip intro at login**: the native Serpantinum welcome plays once when the shell opens after you log in, never on a shell reload. Turn this on to skip it automatically at every login. Any key or click also skips the intro while it is playing. **Preview** plays it now; a second switch mutes its sounds. Off by default.
 - **Hide weather location**: the city name in the weather widget is continuously scrambled (random characters), without changing the data.
 - **Mullvad DNS**: switch to Mullvad DNS-over-TLS on the active connection (see [Network and idle](#10-network-and-idle)).
 - **Animated bar outlines**: the bar button whose panel is open gets a flowing outline in the theme colours (the whole module for the styles that have no button, one shared outline for grouped modules such as clock + weather); the settings and launcher buttons are outlined while open, and the AI Tokens bar item on hover. Off by default.
 - **Passive addons**: list of tools without a switch, with their shortcut (Capri, Clawd, drawing, zoom, colour picker, capture, monitors, shortcuts, Beamer, Vibrant/Vivid).
-- **Halloween**: switch for the seasonal effects (see [Halloween](#3-halloween-seasonal-effects)).
+- **Halloween**: switch for the seasonal effects (see [Halloween](#halloween)).
 - **Capri** and **Clawd**: cards with a switch and options (see above).
 - The lines are findable in the Settings search (including collapsed options).
 
@@ -660,6 +674,7 @@ quickshell -p "$SHELL_QML" ipc call addonDesktopZoom zoomOut
 quickshell -p "$SHELL_QML" ipc call addonMouseSpotlight toggle
 quickshell -p "$SHELL_QML" ipc call addonBootIntro play    # also: skip, forget (replay at the next shell start)
 quickshell -p "$SHELL_QML" ipc call addonCalendar toggle   # also: open, newEvent, sync, openEvent <id>
+quickshell -p "$SHELL_QML" ipc call christmas toggle       # also: setEnabled true, setLights warm, setArea windows false, intro, status
 ```
 
 ## Tests and validation
@@ -681,6 +696,7 @@ python3 scripts/clawd/sprites.py --check                  # Clawd sprites up to 
 | `scripts/build-capri-assets.py` | Generates Capri's assets |
 | `scripts/build-capri-sounds.py` | Synthesises Capri's sounds as WAV |
 | `scripts/build-seasonal-shaders.py` | Recompiles the Halloween shaders (`.qsb`) |
+| `scripts/christmas/shaders.py` | Recompiles the Christmas shaders (lights, frost; `--check` verifies) |
 | `scripts/clawd/sprites.py` | Generates Clawd's sprites from ASCII images (`--check` verifies) |
 | `scripts/clawd/shaders.py` | Recompiles Clawd's shaders |
 | `scripts/clawd/codex_limits.py` | Reads Codex limits from local logs |
@@ -700,6 +716,7 @@ python3 scripts/clawd/sprites.py --check                  # Clawd sprites up to 
 
 - [`docs/clawd.md`](docs/clawd.md) — Clawd: controls, sprites, scenes, validation
 - [`docs/capri.md`](docs/capri.md) — Capri: controls, hooks, providers, validation
+- [`docs/christmas.md`](docs/christmas.md) — Christmas: design, hooks, performance and validation
 - [`docs/halloween.md`](docs/halloween.md) — Halloween effects: design and validation
 - [`docs/tokens.md`](docs/tokens.md) — AI Tokens: sources, calculation, recovery
 - [`docs/calendar.md`](docs/calendar.md) — Calendar: Google setup, iCal, sync, troubleshooting

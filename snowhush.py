@@ -1,5 +1,7 @@
 """Export the solid, visible geometry of Serpantinum's layer surfaces."""
 
+import re
+
 MARK = 'serpantinum-addons-v2 snow hush surface'
 
 
@@ -15,21 +17,16 @@ def insert(text, anchor, block, suffix=''):
 
 
 def widget(text):
+    # An earlier install's block is replaced, not kept.
+    text = re.sub(rf'[ \t]*// BEGIN {MARK}\n.*?// END {MARK}\n', '', text, flags=re.S)
     return insert(text, '    WlrLayershell.namespace: "qs-widget-" + wType + "-" + wId\n', '''
-SnowHushSurface {
+SnowHushWidgetSurface {
     name: root.wId
-    kind: "widgets"
     screen: root.screen
     shown: root.visible && faceLoader.status === Loader.Ready && root.wOpacity > 0.05
-    readonly property real radians: faceLoader.rotation * Math.PI / 180
-    readonly property real cosine: Math.abs(Math.cos(radians))
-    readonly property real sine: Math.abs(Math.sin(radians))
-    readonly property real faceWidth: Math.min(root.width - 2 * root.auraMargin, cosine * faceLoader.width + sine * faceLoader.height)
-    readonly property real faceHeight: Math.min(root.height - 2 * root.auraMargin, sine * faceLoader.width + cosine * faceLoader.height)
-    bounds: Qt.rect(root.animX + (root.width - 2 * root.auraMargin - faceWidth) / 2,
-                    root.animY + (root.height - 2 * root.auraMargin - faceHeight) / 2,
-                    faceWidth, faceHeight)
-    radius: faceLoader.item && faceLoader.item.isRound ? Math.min(faceWidth, faceHeight) / 2 : ThemeBackend.borderRadius
+    face: faceLoader
+    center: Qt.point(root.animX + root.width / 2 - root.auraMargin, root.animY + root.height / 2 - root.auraMargin)
+    limit: Qt.size(root.width - 2 * root.auraMargin, root.height - 2 * root.auraMargin)
 }
 ''')
 

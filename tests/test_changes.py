@@ -118,6 +118,15 @@ class ChangeTests(unittest.TestCase):
                 self.assertIn(f'{indent}AddonPaletteEditor {{ tab: themeTabRoot }}', patched)
                 self.assertEqual(patched, installer.patch_theme_view(patched))
 
+    def test_retired_desktop_glass_is_stripped(self):
+        clean = 'Item {\n                    Rectangle {}\n}\n'
+        block = ('                    // BEGIN serpantinum-addons-v2 desktop glass\n'
+                 '                    Loader {}\n'
+                 '                    // END serpantinum-addons-v2 desktop glass\n\n')
+        old = clean.replace('                    Rectangle', block + '                    Rectangle')
+        self.assertEqual(installer.remove_desktop_glass(old), clean)
+        self.assertEqual(installer.remove_desktop_glass(clean), clean)
+
     def test_theme_uses_original_tile_delegate(self):
         theme = installer.QS/'guide/theme/ThemeTabState.qml'
         text = (theme if theme.exists() else installer.QS/'guide/theme/ThemeTab.qml').read_text()

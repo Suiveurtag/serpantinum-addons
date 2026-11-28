@@ -236,12 +236,12 @@ class RoundTripTests(unittest.TestCase):
         self.assertIn('-- my own Alt+Tab note', upgraded)
 
     def test_without_flags_strip_the_banners_tab(self):
-        self.assertEqual(self.run_cli('--without-capri', '--without-clawd', '--without-halloween')[0], 0)
+        self.assertEqual(self.run_cli('--without-capri', '--without-clawd', '--without-halloween', '--without-christmas')[0], 0)
         banners = (self.shell/'src/quickshell/guide/AddonsBannersTab.qml').read_text()
-        for name in ('CapriSettings', 'ClawdSettings', 'HalloweenCard'):
+        for name in ('CapriSettings', 'ClawdSettings', 'HalloweenCard', 'ChristmasSettings'):
             self.assertNotIn(name, banners)
         state = json.loads((self.state/'serpantinum-addons-v2/install.json').read_text())
-        self.assertEqual(sorted(state['without']), ['capri', 'clawd', 'halloween'])
+        self.assertEqual(sorted(state['without']), ['capri', 'christmas', 'clawd', 'halloween'])
         self.assertEqual(self.run_cli('--uninstall')[0], 0)
         self.assertEqual(snapshot(self.shell/'src'), self.before)
 

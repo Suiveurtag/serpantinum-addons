@@ -444,11 +444,28 @@ PanelWindow {
             shadowVerticalOffset: root.s(6)
         }
 
+        // The expanded disc turns into Liquid Glass over the frozen capture.
+        GlassFill {
+            id: loupeGlass
+            anchors.fill: parent
+            radius: width / 2
+            backdropOverride: frozenBackdrop
+            allowed: loupeContainer.surfaceMix > 0
+            opacity: loupeContainer.surfaceMix
+            tintColor: ThemeBackend.base
+            tintStrength: 1
+            frost: 2.6
+            shadow: 0.35
+            pulse: root.copyImpact
+        }
+
         Rectangle {
             id: loupeFrame
             anchors.fill: parent
             radius: width / 2
-            color: Qt.tint(root.hexColor, Qt.alpha(ThemeBackend.base, loupeContainer.surfaceMix))
+            // On glass, a base veil keeps the labels readable over any capture.
+            color: !loupeGlass.active ? Qt.tint(root.hexColor, Qt.alpha(ThemeBackend.base, loupeContainer.surfaceMix))
+                : Qt.tint(Qt.alpha(root.hexColor, 1 - loupeContainer.surfaceMix), Qt.alpha(ThemeBackend.base, 0.45 * loupeContainer.surfaceMix))
             border.width: root.s(1.3) / loupeContainer.scale
             border.color: Qt.tint(Qt.alpha(root.swatchInk, 0.30), Qt.alpha(root.hexColor, loupeContainer.surfaceMix))
 
@@ -564,6 +581,7 @@ PanelWindow {
         id: control
         property color fill: "transparent"
         property color ink: ThemeBackend.text
+        property bool glass: false
         hoverEnabled: true
         scale: !root.reducedMotion && down ? 0.93 : 1
         Behavior on scale {
@@ -580,9 +598,22 @@ PanelWindow {
             verticalAlignment: Text.AlignVCenter
         }
         background: Rectangle {
-            radius: height / 2
-            color: control.down ? Qt.tint(control.fill, Qt.alpha(ThemeBackend.text, 0.22))
+            readonly property color shade: control.down ? Qt.tint(control.fill, Qt.alpha(ThemeBackend.text, 0.22))
                 : control.hovered ? Qt.tint(control.fill, Qt.alpha(ThemeBackend.text, 0.12)) : control.fill
+            radius: height / 2
+            color: buttonGlass.active ? "transparent" : shade
+            GlassFill {
+                id: buttonGlass
+                anchors.fill: parent
+                radius: parent.radius
+                backdropOverride: frozenBackdrop
+                allowed: control.glass
+                // Sits on the glass disc: use the nested, see-through material.
+                forceClear: true
+                tintColor: parent.shade
+                press: control.down ? 1 : 0
+                pulse: control.hovered ? 0.12 : 0
+            }
             border.width: control.activeFocus ? root.s(2) : 0
             border.color: ThemeBackend.text
         }
@@ -637,6 +668,7 @@ PanelWindow {
                 y: root.s(105)
                 width: root.s(173); height: root.s(41)
                 fill: ThemeBackend.surface0
+                glass: true
                 text: root.hexColor + "  󰆏"
                 Accessible.name: "Copy HEX " + root.hexColor
                 font.pixelSize: root.s(20)
@@ -849,6 +881,8 @@ PanelWindow {
                 PickerButton {
                     width: root.s(43); height: root.s(31)
                     text: "Back"
+                    fill: ThemeBackend.liquidGlass ? ThemeBackend.surface0 : "transparent"
+                    glass: true
                     onClicked: root.toggleEditor()
                 }
                 PickerButton {

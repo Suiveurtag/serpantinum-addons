@@ -17,6 +17,7 @@ from test_changes import ROOT, installer
 
 sys.path.insert(0, str(ROOT))
 import capri  # noqa: E402
+import christmas  # noqa: E402
 import clawd  # noqa: E402
 import seasonal  # noqa: E402
 
@@ -1097,6 +1098,11 @@ console.log(JSON.stringify({type: 'turn.completed', usage: {input_tokens: 1, out
                 shutil.copytree(installer.QS/'reusables', fixture/'reusables')
                 shutil.copytree(ROOT/'payload/seasonal', fixture/'seasonal')
                 (fixture/'qmldir').write_text(seasonal.patch_qmldir((fixture/'qmldir').read_text()))
+                # the installed buttons and rows carry the Christmas hooks
+                for path, blob in christmas.resources(ROOT/'payload/christmas', fixture):
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(blob)
+                (fixture/'qmldir').write_text(christmas.patch_qmldir((fixture/'qmldir').read_text()))
             (fixture/'Config.qml').write_text('''pragma Singleton
 import QtQuick
 QtObject {

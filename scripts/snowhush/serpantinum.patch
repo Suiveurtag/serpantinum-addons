@@ -50,6 +50,29 @@ index 95bcfad..cb6cd70 100644
                          layer.deposit(amount, flake.position.x, true, Blend::SNOW);
                      }
                      self.air.heights_changed = true;
+diff --git a/linux/src/hyprland.rs b/linux/src/hyprland.rs
+index 2c2eea2..2354b5f 100644
+--- a/linux/src/hyprland.rs
++++ b/linux/src/hyprland.rs
+@@ -46,6 +46,8 @@ struct Monitor {
+     reserved: [f64; 4],
+     #[serde(default)]
+     disabled: bool,
++    #[serde(rename = "dpmsStatus", default)]
++    powered: Option<bool>,
+     #[serde(rename = "activeWorkspace")]
+     active_workspace: WorkspaceRef,
+     /// A special workspace shown over the active one; it has no name while none is.
+@@ -278,6 +280,9 @@ fn ask(socket: &Path, decoration: Decoration) -> Result<(Report, HashMap<String,
+     let mut showing = Vec::new();
+     let mut specials = Vec::new();
+     for monitor in monitors.iter().filter(|monitor| !monitor.disabled) {
++        if let Some(powered) = monitor.powered {
++            report.output_power.insert(monitor.name.clone(), powered);
++        }
+         let (width, height) = if monitor.transform % 2 == 1 { (monitor.height, monitor.width) } else { (monitor.width, monitor.height) };
+         let (w, h) = (width / monitor.scale.max(0.1), height / monitor.scale.max(0.1));
+         let [left, top, right, bottom] = monitor.reserved;
 diff --git a/linux/src/main.rs b/linux/src/main.rs
 index 5d56274..7c62544 100644
 --- a/linux/src/main.rs
@@ -62,11 +85,96 @@ index 5d56274..7c62544 100644
  mod snow;
  mod source;
  mod sway;
+diff --git a/linux/src/picture.rs b/linux/src/picture.rs
+index 1025835..2b45ea0 100644
+--- a/linux/src/picture.rs
++++ b/linux/src/picture.rs
+@@ -55,6 +55,7 @@ pub struct PictureSnow {
+     offset: V2,
+     /// Whether the display is seen, not covered by a full-screen window: the bot throws only then.
+     pub visible: bool,
++    next_tick: Instant,
+     started: Instant,
+     /// When the last practice throw went, with SNOWHUSH_FIGHT_PRACTICE=1: one at the first snowman every two seconds, for
+     /// trying the fight out where nothing can click.
+@@ -97,6 +98,7 @@ impl PictureSnow {
+             fight: None,
+             offset: V2::ZERO,
+             visible: true,
++            next_tick: Instant::now(),
+             started: Instant::now(),
+             taking: Vec::new(),
+             practiced: Instant::now(),
+@@ -173,6 +175,10 @@ impl PictureSnow {
+         self.drawn_version = None;
+     }
+ 
++    pub fn fight_due_at(&self) -> Option<Instant> {
++        (self.fight.is_some() && self.visible).then_some(self.next_tick)
++    }
++
+     /// Looks after the picture's snow once the simulation has stepped: takes in what a reading found, reads a wallpaper
+     /// not read yet, gives the simulation the picture where the overlay `area` lies on the display `bounds`, moves the
+     /// snowmen on while `fighting`, and draws what changed. `frost` draws the snow at all; without, the picture is read
+@@ -192,7 +198,15 @@ impl PictureSnow {
+         main: bool,
+         hint: &str,
+         now: Instant,
++        period: Duration,
+     ) {
++        // The wallpaper shares the foreground's EGL context. Buffer releases and
++        // input events can dispatch much faster than the output can show frames.
++        if now < self.next_tick {
++            return;
++        }
++        let next = self.next_tick + period;
++        self.next_tick = if next > now { next } else { now + period };
+         self.take_reading(gpu, simulation, bounds);
+         let Some(scene) = &self.scene else { return };
+         let cell = scene.terrain.cell as f32;
 diff --git a/linux/src/prefs.rs b/linux/src/prefs.rs
-index 3cf9aa8..d2a9fde 100644
+index 3cf9aa8..e77731a 100644
 --- a/linux/src/prefs.rs
 +++ b/linux/src/prefs.rs
-@@ -76,7 +76,7 @@ impl Settings {
+@@ -22,6 +22,9 @@ pub struct Settings {
+     /// The snow stays over full-screen apps instead of fading out of their way.
+     pub over_full_screen: bool,
+     pub show_in_screenshots: bool,
++    /// Snow settles on Serpantinum's desktop widgets and on its bar; `panel` covers its other surfaces.
++    pub widgets: bool,
++    pub bar: bool,
+     /// Unix seconds of the first run, or 0 for an install older than the stamp.
+     pub installed_at: u32,
+     pub halloween: Choice,
+@@ -45,7 +48,7 @@ pub struct Settings {
+ impl Settings {
+     /// Whether snow settles anywhere.
+     pub fn accumulates(&self) -> bool {
+-        self.ground || self.panel || self.snow_on_windows || self.wallpaper
++        self.ground || self.panel || self.widgets || self.bar || self.snow_on_windows || self.wallpaper
+     }
+ 
+     /// Whether the wallpaper is read at all: for the snow lying in it, its depth or both.
+@@ -53,9 +56,10 @@ impl Settings {
+         self.wallpaper || self.depth
+     }
+ 
+-    /// Whether snowmen live in the wallpaper's picture for a snowball fight: only with its depth.
++    /// Whether snowmen live in the wallpaper's picture for a snowball fight. Serpantinum leaves the fight out: no
++    /// snowmen, no throwing hint, no online rooms; the picture's depth still lets snow settle in it.
+     pub fn fights(&self) -> bool {
+-        self.depth
++        false
+     }
+ 
+     pub fn load() -> Settings {
+@@ -73,10 +77,13 @@ impl Settings {
+             intensity: read("intensity").map(|v| v.clamp(0, 100)).or(stop.map(|i| [0, 25, 50, 75, 50][i])).unwrap_or(if calm { 25 } else { 50 }),
+             ground: read("settleGround").map_or(settled, |v| v != 0),
+             panel: read("settlePanel").map_or(settled, |v| v != 0),
++            // Before they had their own switches, widgets and the bar followed the panel's.
++            widgets: read("settleWidgets").or(read("settlePanel")).map_or(settled, |v| v != 0),
++            bar: read("settleBar").or(read("settlePanel")).map_or(settled, |v| v != 0),
              melt: read("meltSnow").is_none_or(|v| v != 0),
              snow_on_windows: settled && read("snowOnWindows").is_none_or(|v| v != 0),
              behind_windows: read("behindWindows").is_some_and(|v| v != 0),
@@ -75,11 +183,39 @@ index 3cf9aa8..d2a9fde 100644
              show_in_screenshots: read("showInScreenshots").is_some_and(|v| v != 0),
              installed_at: stamped.unwrap_or_else(|| if text.is_empty() { now() } else { 0 }),
              halloween: Choice { on: read("halloweenOn").is_some_and(|v| v != 0), skipped: read("halloweenSkipped").unwrap_or(0) },
+@@ -102,7 +109,7 @@ impl Settings {
+             .ok()
+             .and_then(|text| text.lines().find_map(|line| line.strip_prefix("fightThrows=").and_then(|v| v.trim().parse::<u32>().ok())));
+         let text = format!(
+-            "intensity={}\nsettleGround={}\nsettlePanel={}\nmeltSnow={}\nsnowOnWindows={}\nbehindWindows={}\nshowOverFullScreen={}\nshowInScreenshots={}\ninstalledAt={}\nhalloweenOn={}\nhalloweenSkipped={}\nnewYearOn={}\nnewYearSkipped={}\nmode={}\nmixed={}\nmix0={}\nmix1={}\nautumn={}\nperformance={}\nfallingOpacity={}\nsettleWallpaper={}\nwallpaperDepth={}\npictureLevel={}\nfightThrows={}\n",
++            "intensity={}\nsettleGround={}\nsettlePanel={}\nmeltSnow={}\nsnowOnWindows={}\nbehindWindows={}\nshowOverFullScreen={}\nshowInScreenshots={}\ninstalledAt={}\nhalloweenOn={}\nhalloweenSkipped={}\nnewYearOn={}\nnewYearSkipped={}\nmode={}\nmixed={}\nmix0={}\nmix1={}\nautumn={}\nperformance={}\nfallingOpacity={}\nsettleWallpaper={}\nwallpaperDepth={}\npictureLevel={}\nfightThrows={}\nsettleWidgets={}\nsettleBar={}\n",
+             self.intensity,
+             self.ground as u32,
+             self.panel as u32,
+@@ -126,7 +133,9 @@ impl Settings {
+             self.wallpaper as u32,
+             self.depth as u32,
+             self.picture_level,
+-            self.fight_throws.max(thrown.unwrap_or(0)).min(3)
++            self.fight_throws.max(thrown.unwrap_or(0)).min(3),
++            self.widgets as u32,
++            self.bar as u32
+         );
+         let _ = std::fs::create_dir_all(&folder);
+         let _ = write_whole(&folder.join("settings"), text.as_bytes());
 diff --git a/linux/src/screen.rs b/linux/src/screen.rs
-index 8a50d25..ff7536c 100644
+index 8a50d25..1c8ff19 100644
 --- a/linux/src/screen.rs
 +++ b/linux/src/screen.rs
-@@ -26,7 +26,7 @@ pub enum PowerBudget {
+@@ -12,6 +12,7 @@ use wayland_client::protocol::wl_output::WlOutput;
+ use snowhush_core::geometry::V2;
+ use snowhush_core::simulation::{Pace, SnowSimulation, WindowId, WindowSurface};
+ 
++use crate::serpantinum;
+ use crate::light::{self, Backdrop, Shade};
+ use crate::log;
+ use crate::picture::PictureSnow;
+@@ -26,7 +27,7 @@ pub enum PowerBudget {
      Full,
      /// On battery: no frame rates above 60, which are hard to tell apart in snow anyway.
      Battery,
@@ -88,7 +224,7 @@ index 8a50d25..ff7536c 100644
      Saver,
  }
  
-@@ -72,9 +72,9 @@ pub struct Screen {
+@@ -72,10 +73,13 @@ pub struct Screen {
      ground_moved: Option<f32>,
      size: (u32, u32),
      last_step: Option<Instant>,
@@ -99,9 +235,13 @@ index 8a50d25..ff7536c 100644
 +    output_power: Option<bool>,
 +    /// Use the interactive rate while drawing, whatever the snow is doing and whatever the power.
      pub max_rate: bool,
++    /// Snow settles on Serpantinum's widgets and on its bar; `panel` covers the rest.
++    pub widgets: bool,
++    pub bar: bool,
      surfaces: Vec<WindowSurface>,
      windows_seen: u64,
-@@ -142,8 +142,8 @@ impl Screen {
+     windows_changed_at: Instant,
+@@ -142,9 +146,11 @@ impl Screen {
              ground_moved: None,
              size: (bounds.w as u32, bounds.h as u32),
              last_step: None,
@@ -110,9 +250,12 @@ index 8a50d25..ff7536c 100644
 +            refresh_rate: refresh.max(1),
 +            output_power: None,
              max_rate: false,
++            widgets: false,
++            bar: false,
              surfaces: Vec::new(),
              windows_seen: 0,
-@@ -269,6 +269,35 @@ impl Screen {
+             windows_changed_at: Instant::now(),
+@@ -269,6 +275,35 @@ impl Screen {
          Area { x: self.bounds.x + self.margins.3 as f64, y: self.bounds.y + self.margins.0 as f64, w: self.size.0 as f64, h: self.size.1 as f64 }
      }
  
@@ -148,7 +291,7 @@ index 8a50d25..ff7536c 100644
      /// Steps the snow and draws it if anything visible changed; returns whether it drew.
      /// `report` is KWin's latest, its generation and whether a window is being dragged; the windows in it
      /// only collect snow with `snow_on_windows`, the panel always.
-@@ -287,7 +316,12 @@ impl Screen {
+@@ -287,7 +322,12 @@ impl Screen {
      ) -> Result<bool, String> {
          // The display is off or the overlay hidden, as behind a lock screen: the snow waits there as it does while
          // locked, and a frame now and then asks to be shown again.
@@ -162,7 +305,7 @@ index 8a50d25..ff7536c 100644
              self.stalled = true;
              self.last_step = None;
              self.next_due = now + STALLED;
-@@ -320,35 +354,24 @@ impl Screen {
+@@ -320,35 +360,24 @@ impl Screen {
              return Ok(false);
          }
  
@@ -212,7 +355,7 @@ index 8a50d25..ff7536c 100644
      }
  
      /// Draws the snow as it is and asks the compositor to say when it shows it.
-@@ -367,8 +390,10 @@ impl Screen {
+@@ -367,8 +396,10 @@ impl Screen {
              return Ok(false);
          }
          let wl_surface = self.layer.wl_surface();
@@ -225,13 +368,14 @@ index 8a50d25..ff7536c 100644
          let panel = self.shelf.map(|shelf| {
              // Below the rounded corners only, so snow curling round them stays in front.
              let r = windows::local_rect(&shelf.rect, &self.area());
-@@ -455,14 +480,13 @@ impl Screen {
+@@ -455,14 +486,14 @@ impl Screen {
              self.simulation.forget_closed(|id| windows::exists(report, id));
          }
          let area = self.area();
 -        let listed = if snow_on_windows { report } else { &Report::default() };
 -        let mut surfaces = windows::surfaces(listed, &area, self.shelf.as_ref().filter(|_| self.panel), &self.name);
-+        let mut surfaces = windows::surfaces(report, &area, self.shelf.as_ref().filter(|_| self.panel), &self.name, snow_on_windows, self.panel);
++        let mut surfaces = windows::surfaces(report, &area, self.shelf.as_ref().filter(|_| self.panel), &self.name, snow_on_windows,
++            serpantinum::Settles { panel: self.panel, widgets: self.widgets, bar: self.bar });
          if report.switching {
              // Windows that came with the new desktop get their snow back once they have slid in; windows on every
              // desktop keep theirs throughout.
@@ -242,7 +386,7 @@ index 8a50d25..ff7536c 100644
          if surfaces == self.surfaces {
              return;
          }
-@@ -482,15 +506,6 @@ impl Screen {
+@@ -482,15 +513,6 @@ impl Screen {
          self.windows_changed_at = now;
      }
  
@@ -258,7 +402,7 @@ index 8a50d25..ff7536c 100644
      /// Reads the windows again at the next frame, as when snow on windows comes back on.
      pub fn rewatch(&mut self) {
          self.windows_seen = 0;
-@@ -602,10 +617,14 @@ impl Screen {
+@@ -602,10 +624,14 @@ impl Screen {
          hint: &str,
          now: Instant,
      ) {
@@ -276,10 +420,10 @@ index 8a50d25..ff7536c 100644
  
 diff --git a/linux/src/serpantinum.rs b/linux/src/serpantinum.rs
 new file mode 100644
-index 0000000..74c8063
+index 0000000..af9de5f
 --- /dev/null
 +++ b/linux/src/serpantinum.rs
-@@ -0,0 +1,140 @@
+@@ -0,0 +1,160 @@
 +//! Solid parts of Serpantinum layer surfaces, in logical pixels relative to their output.
 +use std::collections::BTreeMap;
 +use std::io::{self, BufRead};
@@ -319,6 +463,24 @@ index 0000000..74c8063
 +        }
 +        let _ = commands.send(Command::Quit);
 +    });
++}
++
++/// Which of the shell's surfaces snow settles on.
++#[derive(Clone, Copy, Debug, Default)]
++pub struct Settles {
++    pub panel: bool,
++    pub widgets: bool,
++    pub bar: bool,
++}
++
++impl Settles {
++    pub fn on(&self, window: &Window) -> bool {
++        match window.class.strip_prefix("Serpantinum ") {
++            Some("widgets") => self.widgets,
++            Some("bar") => self.bar,
++            _ => self.panel,
++        }
++    }
 +}
 +
 +pub fn is_shell(window: &Window) -> bool {
@@ -414,17 +576,19 @@ index 0000000..74c8063
 +        add_surfaces(&mut report, &surfaces);
 +        assert_eq!(report.windows.len(), 2);
 +        assert_eq!((report.windows[1].x, report.windows[1].y), (-1900.0, 160.0));
-+        assert!(windows::surfaces(&report, &area, None, "test", true, false).is_empty());
-+        let ledges = windows::surfaces(&report, &area, None, "test", false, true);
++        assert!(windows::surfaces(&report, &area, None, "test", true, Settles::default()).is_empty());
++        let bar_only = windows::surfaces(&report, &area, None, "test", false, Settles { bar: true, ..Default::default() });
++        assert_eq!(bar_only.len(), 1);
++        let ledges = windows::surfaces(&report, &area, None, "test", false, Settles { panel: false, widgets: true, bar: true });
 +        assert_eq!(ledges.len(), 2);
 +        assert_eq!(ledges[1].corner_radius, 12.0);
 +    }
 +}
 diff --git a/linux/src/snow.rs b/linux/src/snow.rs
-index af2a40c..5067968 100644
+index af2a40c..ba636b0 100644
 --- a/linux/src/snow.rs
 +++ b/linux/src/snow.rs
-@@ -36,12 +36,14 @@ use crate::log;
+@@ -36,18 +36,22 @@ use crate::log;
  use crate::picture::PictureSnow;
  use crate::prefs::Settings;
  use crate::render::{Ambient, Gpu};
@@ -439,7 +603,15 @@ index af2a40c..5067968 100644
      /// How much falls, 0 to 1.
      Intensity(f32),
      /// How opaque what falls is drawn, 0.1 to 1.
-@@ -115,6 +117,9 @@ pub struct App {
+     FallingOpacity(f32),
+     Ground(bool),
+     Panel(bool),
++    Widgets(bool),
++    Bar(bool),
+     /// Accumulate's Wallpaper, and Deep Interaction: the snow lying in the wallpaper's picture, and the flakes falling
+     /// into its depth.
+     Wallpaper(bool),
+@@ -115,6 +119,9 @@ pub struct App {
      quit: bool,
      displays_changed_at: Option<Instant>,
      report: (u64, Option<Arc<Report>>),
@@ -449,7 +621,7 @@ index af2a40c..5067968 100644
      /// The display each window's snow belongs to, by name.
      owners: HashMap<WindowId, String>,
      budget: PowerBudget,
-@@ -216,6 +221,9 @@ pub fn run(link: Option<String>) -> Result<(), String> {
+@@ -216,6 +223,9 @@ pub fn run(link: Option<String>) -> Result<(), String> {
          quit: false,
          displays_changed_at: None,
          report: (0, None),
@@ -459,7 +631,7 @@ index af2a40c..5067968 100644
          owners: HashMap::new(),
          budget: PowerBudget::Full,
          light: daylight(),
-@@ -245,6 +253,7 @@ pub fn run(link: Option<String>) -> Result<(), String> {
+@@ -245,6 +255,7 @@ pub fn run(link: Option<String>) -> Result<(), String> {
  
          use ksni::blocking::TrayMethods;
          app.tray = Tray::new(settings, commands.clone()).assume_sni_available(true).spawn().inspect_err(|error| log!("tray: {error}")).ok();
@@ -467,7 +639,7 @@ index af2a40c..5067968 100644
          watch_lock(&bus, commands);
  
          loop {
-@@ -311,6 +320,12 @@ fn watch_lock(bus: &Bus, commands: calloop::channel::Sender<Command>) {
+@@ -311,6 +322,12 @@ fn watch_lock(bus: &Bus, commands: calloop::channel::Sender<Command>) {
  impl App {
      fn command(&mut self, command: Command) {
          match command {
@@ -480,7 +652,7 @@ index af2a40c..5067968 100644
              Command::Quit => self.quit = true,
              Command::Intensity(intensity) => {
                  self.settings.intensity = (intensity * 100.0).round() as u32;
-@@ -334,12 +349,14 @@ impl App {
+@@ -334,12 +351,35 @@ impl App {
              }
              Command::Panel(on) => {
                  self.settings.panel = on;
@@ -494,10 +666,31 @@ index af2a40c..5067968 100644
 +                    screen.wake(Instant::now());
                  });
 +                self.place_screens();
++            }
++            Command::Widgets(on) => {
++                self.settings.widgets = on;
++                let accumulates = self.settings.accumulates();
++                self.screens.iter_mut().for_each(|screen| {
++                    screen.widgets = on;
++                    screen.simulation.accumulates = accumulates;
++                    screen.rewatch();
++                    screen.wake(Instant::now());
++                });
++            }
++            Command::Bar(on) => {
++                self.settings.bar = on;
++                let accumulates = self.settings.accumulates();
++                self.screens.iter_mut().for_each(|screen| {
++                    screen.bar = on;
++                    screen.simulation.accumulates = accumulates;
++                    screen.rewatch();
++                    screen.wake(Instant::now());
++                });
++                self.place_screens();
              }
              Command::Wallpaper(on) => {
                  self.settings.wallpaper = on;
-@@ -359,11 +376,7 @@ impl App {
+@@ -359,11 +399,7 @@ impl App {
                  self.settings.snow_on_windows = on;
                  let accumulates = self.settings.accumulates();
                  self.screens.iter_mut().for_each(|screen| screen.simulation.accumulates = accumulates);
@@ -510,7 +703,7 @@ index af2a40c..5067968 100644
              }
              Command::BehindWindows(on) => {
                  self.settings.behind_windows = on;
-@@ -460,20 +473,33 @@ impl App {
+@@ -460,20 +496,33 @@ impl App {
          if self.locked {
              return Some(chores);
          }
@@ -552,7 +745,7 @@ index af2a40c..5067968 100644
              self.place_screens();
              self.hand_over(now);
          }
-@@ -518,11 +544,13 @@ impl App {
+@@ -518,11 +567,13 @@ impl App {
          // The New Year's countdown and midnight by the clock, and how often rockets go up.
          let (celebration, rockets) = if self.new_year {
              let local = light::now();
@@ -568,7 +761,7 @@ index af2a40c..5067968 100644
              screen.simulation.celebration = celebration;
              screen.simulation.fireworks_per_minute = rockets;
              // Shown over a full-screen app, the snow reaches the display's edges while the app has put the panels away,
-@@ -580,7 +608,7 @@ impl App {
+@@ -580,7 +631,7 @@ impl App {
      /// with snow on windows off too, since the same answers move the ground with the panels.
      fn tell_demand(&self) {
          let awake = self.screens.iter().any(|screen| !screen.stalled());
@@ -577,7 +770,7 @@ index af2a40c..5067968 100644
          let windows = if !awake {
              Demand::Off
          } else if busy {
-@@ -648,13 +676,14 @@ impl App {
+@@ -648,13 +699,14 @@ impl App {
              let Some(info) = self.outputs.info(&output) else { continue };
              let (Some(name), Some(position), Some(size)) = (info.name.clone(), info.logical_position, info.logical_size) else { continue };
              let bounds = Area { x: position.0 as f64, y: position.1 as f64, w: size.0 as f64, h: size.1 as f64 };
@@ -593,7 +786,16 @@ index af2a40c..5067968 100644
              log!("display {name}: {bounds:?}, scale {}, {refresh} Hz", info.scale_factor);
              let mut simulation = new_simulation(&bounds, &self.settings, self.budget);
              simulation.set_halloween(self.halloween);
-@@ -720,7 +749,7 @@ impl App {
+@@ -670,6 +722,8 @@ impl App {
+             );
+             screen.max_rate = self.settings.max_performance;
+             screen.panel = self.settings.panel;
++            screen.widgets = self.settings.widgets;
++            screen.bar = self.settings.bar;
+             if self.settings.reads_wallpaper() {
+                 let picture = PictureSnow::new((&self.compositor, &self.layer_shell, &self.qh), &output, &screen.name);
+                 screen.picture = Some(picture);
+@@ -720,7 +774,7 @@ impl App {
      /// Gives each display about to draw the snow of windows reaching over it that another display keeps.
      fn lend(&mut self, report: &Report, snow_on_windows: bool, now: Instant) {
          for index in 0..self.screens.len() {
@@ -602,7 +804,7 @@ index af2a40c..5067968 100644
                  continue;
              }
              let borrowed = if snow_on_windows { self.borrowed(index, report) } else { Vec::new() };
-@@ -792,8 +821,15 @@ impl App {
+@@ -792,8 +846,16 @@ impl App {
      fn place_screens(&mut self) {
          let Some(report) = self.report.1.clone() else { return };
          for screen in &mut self.screens {
@@ -610,8 +812,9 @@ index af2a40c..5067968 100644
              let Some(display) = report.screens.iter().find(|display| display.name == screen.name) else { continue };
 -            screen.place(Area::bounds(display), Area::work(display), windows::shelf(&report, display));
 +            let bounds = Area::bounds(display);
-+            let shell_edges = self.settings.panel && report.windows.iter().any(|window| {
-+                serpantinum::is_shell(window) && window.above && window.x < bounds.right() && window.x + window.w > bounds.x
++            let settles = serpantinum::Settles { panel: self.settings.panel, widgets: false, bar: self.settings.bar };
++            let shell_edges = report.windows.iter().any(|window| {
++                serpantinum::is_shell(window) && window.above && settles.on(window) && window.x < bounds.right() && window.x + window.w > bounds.x
 +                    && window.y < bounds.bottom() && window.y + window.h > bounds.y
 +            });
 +            let work = if shell_edges { bounds } else { Area::work(display) };
@@ -619,6 +822,54 @@ index af2a40c..5067968 100644
              let walls = windows::walls(display, &report.screens);
              screen.simulation.walls = walls;
              screen.simulation.neighbours = (!walls.0, !walls.1);
+diff --git a/linux/src/source.rs b/linux/src/source.rs
+index 2fbc662..f943c4d 100644
+--- a/linux/src/source.rs
++++ b/linux/src/source.rs
+@@ -61,6 +61,8 @@ pub struct Panel {
+ #[derive(Deserialize, Clone, Debug, Default, PartialEq)]
+ pub struct Report {
+     pub screens: Vec<Display>,
++    #[serde(default)]
++    pub output_power: std::collections::HashMap<String, bool>,
+     pub windows: Vec<Window>,
+     /// Windows on other desktops or activities.
+     pub elsewhere: Vec<String>,
+diff --git a/linux/src/tray.rs b/linux/src/tray.rs
+index 20e61d7..1d90c65 100644
+--- a/linux/src/tray.rs
++++ b/linux/src/tray.rs
+@@ -248,6 +248,30 @@ impl ksni::Tray for Tray {
+                 ..Default::default()
+             }
+             .into(),
++            CheckmarkItem {
++                label: tr("surface.widgets").into(),
++                checked: settings.widgets,
++                activate: Box::new(|tray: &mut Tray| {
++                    tray.change(|settings| {
++                        settings.widgets = !settings.widgets;
++                        Command::Widgets(settings.widgets)
++                    })
++                }),
++                ..Default::default()
++            }
++            .into(),
++            CheckmarkItem {
++                label: tr("surface.bar").into(),
++                checked: settings.bar,
++                activate: Box::new(|tray: &mut Tray| {
++                    tray.change(|settings| {
++                        settings.bar = !settings.bar;
++                        Command::Bar(settings.bar)
++                    })
++                }),
++                ..Default::default()
++            }
++            .into(),
+             CheckmarkItem {
+                 label: tr("surface.ground").into(),
+                 checked: settings.ground,
 diff --git a/linux/src/wallpaper.rs b/linux/src/wallpaper.rs
 index fc2e09d..0f44222 100644
 --- a/linux/src/wallpaper.rs
@@ -635,7 +886,7 @@ index fc2e09d..0f44222 100644
              found.push((output, wallpaper));
          }
 diff --git a/linux/src/windows.rs b/linux/src/windows.rs
-index e978683..f14d1ae 100644
+index e978683..08d3832 100644
 --- a/linux/src/windows.rs
 +++ b/linux/src/windows.rs
 @@ -7,6 +7,7 @@ use snowhush_core::geometry::Rect;
@@ -651,7 +902,7 @@ index e978683..f14d1ae 100644
  /// the bottom of `area`, which the overlay covers one logical pixel to one. Windows whose snow belongs to
  /// another display only hide snow here. The shelf comes first: the panel is in front.
 -pub fn surfaces(report: &Report, area: &Area, shelf: Option<&Shelf>, display: &str) -> Vec<WindowSurface> {
-+pub fn surfaces(report: &Report, area: &Area, shelf: Option<&Shelf>, display: &str, on_windows: bool, on_shell: bool) -> Vec<WindowSurface> {
++pub fn surfaces(report: &Report, area: &Area, shelf: Option<&Shelf>, display: &str, on_windows: bool, on_shell: serpantinum::Settles) -> Vec<WindowSurface> {
      let (width, height) = (area.w as f32, area.h as f32);
      let mut blockers: Vec<Rect> = Vec::new();
      let mut surfaces = Vec::new();
@@ -667,7 +918,7 @@ index e978683..f14d1ae 100644
          let fills_screen = frame.width * frame.height >= width * height * 0.9;
          let here = owner(report, window).is_none_or(|owner| owner == display);
 -        if here && room_above && on_screen && !fills_screen && window.solid && frame.width >= 80.0 && frame.height >= 40.0 {
-+        let settles = if shell { on_shell } else { on_windows };
++        let settles = if shell { on_shell.on(window) } else { on_windows };
 +        if settles && here && room_above && on_screen && !fills_screen && window.solid && frame.width >= min_width && frame.height >= min_height {
              let rounded = window.decorated && !window.maximized;
              let radius = window.radius.unwrap_or(if rounded { CORNER_RADIUS } else { 0.0 }).min(frame.width / 2.0).min(frame.height / 2.0);
@@ -683,202 +934,128 @@ index e978683..f14d1ae 100644
              continue;
          }
 diff --git a/locales/de.strings b/locales/de.strings
-index d5b4277..c80998d 100644
+index d5b4277..9a38d66 100644
 --- a/locales/de.strings
 +++ b/locales/de.strings
-@@ -19,7 +19,7 @@
+@@ -19,7 +19,8 @@
  "surface.widgets" = "Widgets";
  "surface.windows" = "Fenster";
  "surface.wallpaper" = "Hintergrund";
 -"surface.panel" = "Leiste";
 +"surface.panel" = "Shell-Oberflächen";
++"surface.bar" = "Leiste";
  "all" = "Alle";
  "melt.snow" = "Schnee schmilzt";
  "melt.autumn" = "Laub verwelkt";
 diff --git a/locales/en.strings b/locales/en.strings
-index fa24871..b6aa89c 100644
+index fa24871..d27a581 100644
 --- a/locales/en.strings
 +++ b/locales/en.strings
-@@ -23,7 +23,7 @@
+@@ -23,7 +23,8 @@
  "surface.widgets" = "Widgets";
  "surface.windows" = "Windows";
  "surface.wallpaper" = "Wallpaper";
 -"surface.panel" = "Panel";
 +"surface.panel" = "Shell surfaces";
++"surface.bar" = "Bar";
  "all" = "All";
  "melt.snow" = "Melt Snow";
  "melt.autumn" = "Wither Leaves";
 diff --git a/locales/es.strings b/locales/es.strings
-index 12c3e22..44b361b 100644
+index 12c3e22..886ab48 100644
 --- a/locales/es.strings
 +++ b/locales/es.strings
-@@ -19,7 +19,7 @@
+@@ -19,7 +19,8 @@
  "surface.widgets" = "Widgets";
  "surface.windows" = "Ventanas";
  "surface.wallpaper" = "Fondo";
 -"surface.panel" = "Panel";
 +"surface.panel" = "Superficies del escritorio";
++"surface.bar" = "Barra";
  "all" = "Todo";
  "melt.snow" = "Derretir la nieve";
  "melt.autumn" = "Marchitar las hojas";
 diff --git a/locales/fr.strings b/locales/fr.strings
-index 67ebd1b..1ce26df 100644
+index 67ebd1b..96f732b 100644
 --- a/locales/fr.strings
 +++ b/locales/fr.strings
-@@ -19,7 +19,7 @@
+@@ -19,7 +19,8 @@
  "surface.widgets" = "Widgets";
  "surface.windows" = "Fenêtres";
  "surface.wallpaper" = "Fond";
 -"surface.panel" = "Panneau";
 +"surface.panel" = "Éléments du shell";
++"surface.bar" = "Barre";
  "all" = "Tout";
  "melt.snow" = "Fonte de la neige";
  "melt.autumn" = "Feuilles qui fanent";
 diff --git a/locales/ja.strings b/locales/ja.strings
-index 5e9065e..4795c07 100644
+index 5e9065e..5565199 100644
 --- a/locales/ja.strings
 +++ b/locales/ja.strings
-@@ -19,7 +19,7 @@
+@@ -19,7 +19,8 @@
  "surface.widgets" = "ウィジェット";
  "surface.windows" = "ウインドウ";
  "surface.wallpaper" = "壁紙";
 -"surface.panel" = "パネル";
 +"surface.panel" = "シェルの表面";
++"surface.bar" = "バー";
  "all" = "すべて";
  "melt.snow" = "雪を溶かす";
  "melt.autumn" = "葉を枯らす";
 diff --git a/locales/pt.strings b/locales/pt.strings
-index a26d6ac..466a164 100644
+index a26d6ac..6229134 100644
 --- a/locales/pt.strings
 +++ b/locales/pt.strings
-@@ -19,7 +19,7 @@
+@@ -19,7 +19,8 @@
  "surface.widgets" = "Widgets";
  "surface.windows" = "Janelas";
  "surface.wallpaper" = "Fundo";
 -"surface.panel" = "Painel";
 +"surface.panel" = "Superfícies do ambiente";
++"surface.bar" = "Barra";
  "all" = "Tudo";
  "melt.snow" = "Derreter a neve";
  "melt.autumn" = "Murchar as folhas";
 diff --git a/locales/ru.strings b/locales/ru.strings
-index a314ede..6a4119b 100644
+index a314ede..011ace5 100644
 --- a/locales/ru.strings
 +++ b/locales/ru.strings
-@@ -19,7 +19,7 @@
+@@ -19,7 +19,8 @@
  "surface.widgets" = "Виджеты";
  "surface.windows" = "Окна";
  "surface.wallpaper" = "Обои";
 -"surface.panel" = "Панель";
 +"surface.panel" = "Элементы оболочки";
++"surface.bar" = "Панель";
  "all" = "Все";
  "melt.snow" = "Таяние снега";
  "melt.autumn" = "Увядание листьев";
 diff --git a/locales/uk.strings b/locales/uk.strings
-index c8012d9..e747282 100644
+index c8012d9..a80c02c 100644
 --- a/locales/uk.strings
 +++ b/locales/uk.strings
-@@ -19,7 +19,7 @@
+@@ -19,7 +19,8 @@
  "surface.widgets" = "Віджети";
  "surface.windows" = "Вікна";
  "surface.wallpaper" = "Шпалери";
 -"surface.panel" = "Панель";
 +"surface.panel" = "Елементи оболонки";
++"surface.bar" = "Панель";
  "all" = "Усі";
  "melt.snow" = "Танення снігу";
  "melt.autumn" = "В'янення листя";
 diff --git a/locales/zh-Hans.strings b/locales/zh-Hans.strings
-index aa8a009..78aa97e 100644
+index aa8a009..453fe4f 100644
 --- a/locales/zh-Hans.strings
 +++ b/locales/zh-Hans.strings
-@@ -19,7 +19,7 @@
+@@ -19,7 +19,8 @@
  "surface.widgets" = "小组件";
  "surface.windows" = "窗口";
  "surface.wallpaper" = "墙纸";
 -"surface.panel" = "面板";
 +"surface.panel" = "桌面组件";
++"surface.bar" = "顶栏";
  "all" = "全部";
  "melt.snow" = "积雪融化";
  "melt.autumn" = "落叶枯萎";
-diff --git a/linux/src/picture.rs b/linux/src/picture.rs
-index 1025835..2b45ea0 100644
---- a/linux/src/picture.rs
-+++ b/linux/src/picture.rs
-@@ -55,6 +55,7 @@ pub struct PictureSnow {
-     offset: V2,
-     /// Whether the display is seen, not covered by a full-screen window: the bot throws only then.
-     pub visible: bool,
-+    next_tick: Instant,
-     started: Instant,
-     /// When the last practice throw went, with SNOWHUSH_FIGHT_PRACTICE=1: one at the first snowman every two seconds, for
-     /// trying the fight out where nothing can click.
-@@ -97,6 +98,7 @@ impl PictureSnow {
-             fight: None,
-             offset: V2::ZERO,
-             visible: true,
-+            next_tick: Instant::now(),
-             started: Instant::now(),
-             taking: Vec::new(),
-             practiced: Instant::now(),
-@@ -173,6 +175,10 @@ impl PictureSnow {
-         self.drawn_version = None;
-     }
- 
-+    pub fn fight_due_at(&self) -> Option<Instant> {
-+        (self.fight.is_some() && self.visible).then_some(self.next_tick)
-+    }
-+
-     /// Looks after the picture's snow once the simulation has stepped: takes in what a reading found, reads a wallpaper
-     /// not read yet, gives the simulation the picture where the overlay `area` lies on the display `bounds`, moves the
-     /// snowmen on while `fighting`, and draws what changed. `frost` draws the snow at all; without, the picture is read
-@@ -192,7 +198,15 @@ impl PictureSnow {
-         main: bool,
-         hint: &str,
-         now: Instant,
-+        period: Duration,
-     ) {
-+        // The wallpaper shares the foreground's EGL context. Buffer releases and
-+        // input events can dispatch much faster than the output can show frames.
-+        if now < self.next_tick {
-+            return;
-+        }
-+        let next = self.next_tick + period;
-+        self.next_tick = if next > now { next } else { now + period };
-         self.take_reading(gpu, simulation, bounds);
-         let Some(scene) = &self.scene else { return };
-         let cell = scene.terrain.cell as f32;
-diff --git a/linux/src/hyprland.rs b/linux/src/hyprland.rs
-index 2c2eea2..2354b5f 100644
---- a/linux/src/hyprland.rs
-+++ b/linux/src/hyprland.rs
-@@ -46,6 +46,8 @@ struct Monitor {
-     reserved: [f64; 4],
-     #[serde(default)]
-     disabled: bool,
-+    #[serde(rename = "dpmsStatus", default)]
-+    powered: Option<bool>,
-     #[serde(rename = "activeWorkspace")]
-     active_workspace: WorkspaceRef,
-     /// A special workspace shown over the active one; it has no name while none is.
-@@ -278,6 +280,9 @@ fn ask(socket: &Path, decoration: Decoration) -> Result<(Report, HashMap<String,
-     let mut showing = Vec::new();
-     let mut specials = Vec::new();
-     for monitor in monitors.iter().filter(|monitor| !monitor.disabled) {
-+        if let Some(powered) = monitor.powered {
-+            report.output_power.insert(monitor.name.clone(), powered);
-+        }
-         let (width, height) = if monitor.transform % 2 == 1 { (monitor.height, monitor.width) } else { (monitor.width, monitor.height) };
-         let (w, h) = (width / monitor.scale.max(0.1), height / monitor.scale.max(0.1));
-         let [left, top, right, bottom] = monitor.reserved;
-diff --git a/linux/src/source.rs b/linux/src/source.rs
-index 2fbc662..f943c4d 100644
---- a/linux/src/source.rs
-+++ b/linux/src/source.rs
-@@ -61,6 +61,8 @@ pub struct Panel {
- #[derive(Deserialize, Clone, Debug, Default, PartialEq)]
- pub struct Report {
-     pub screens: Vec<Display>,
-+    #[serde(default)]
-+    pub output_power: std::collections::HashMap<String, bool>,
-     pub windows: Vec<Window>,
-     /// Windows on other desktops or activities.
-     pub elsewhere: Vec<String>,

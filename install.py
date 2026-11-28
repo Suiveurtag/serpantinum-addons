@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Install only v2 addons, preserving upstream files and unrelated v1 work.
 
-Usage: install.py [--without-halloween|--without-capri|--without-clawd|--without-tokens|--without-calendar|--without-beamer]
+Usage: install.py [--without-halloween|--without-christmas|--without-capri|--without-clawd|--without-tokens|--without-calendar|--without-beamer]
                   [--check] [--json] [--force] | --uninstall [--purge]
 Exit codes: 0 ok, 2 incompatible Serpantinum version or patch/anchor error, 3 another install is running.
 """
@@ -24,7 +24,7 @@ import urllib.request
 import agenda
 import animation_perf
 import capri
-import desktop_glass
+import christmas
 import clawd
 import bar_outline
 import bootintro
@@ -1717,6 +1717,10 @@ EDGE_GUARD_BEGIN = '            // BEGIN serpantinum-addons-v2 beamer edge guard
 EDGE_GUARD_END = '            // END serpantinum-addons-v2 beamer edge guard\n'
 
 
+def remove_desktop_glass(text):
+    return re.sub(r'(?ms)^[ \t]*// BEGIN serpantinum-addons-v2 desktop glass\n.*?^[ \t]*// END serpantinum-addons-v2 desktop glass\n\n?', '', text)
+
+
 def remove_beamer_edge_guard(text):
     text = patch_floating(text)
     while EDGE_GUARD_BEGIN in text:
@@ -1814,6 +1818,7 @@ COMPANIONS = [
     Companion('clawd', clawd, 'without_clawd'),
     Companion('tokens', tokens, 'without_tokens'),
     Companion('calendar', agenda, 'without_calendar'),
+    Companion('christmas', christmas, 'without_christmas'),
 ]
 
 PAYLOAD_FILES = {
@@ -1826,11 +1831,12 @@ PAYLOAD_FILES = {
     'AddonPaletteEditor.qml': 'guide/theme/AddonPaletteEditor.qml',
     'AddonQuickEdges.qml': 'guide/general/AddonQuickEdges.qml',
     'AddonGlassSurface.qml': 'reusables/AddonGlassSurface.qml',
-    'AddonDesktopGlass.qml': 'AddonDesktopGlass.qml',
     'AddonButtonEffect.qml': 'reusables/AddonButtonEffect.qml',
     'snowhush/SnowHush.qml': 'snowhush/SnowHush.qml',
     'snowhush/SnowHushCard.qml': 'snowhush/SnowHushCard.qml',
+    'snowhush/SnowHushEmblem.qml': 'snowhush/SnowHushEmblem.qml',
     'snowhush/SnowHushSurface.qml': 'snowhush/SnowHushSurface.qml',
+    'snowhush/SnowHushWidgetSurface.qml': 'snowhush/SnowHushWidgetSurface.qml',
 }
 # Upstream files that the payload replaces outright (they exist upstream, so uninstall restores rather than deletes them).
 OVERWRITES = ('calendar/CalendarPopup.qml',)
@@ -1838,6 +1844,8 @@ OVERWRITES = ('calendar/CalendarPopup.qml',)
 WALLPAPER_FILES = ('singletons/theme/Wallpaper.qml', 'wallpaper/WallpaperEngine.qml', 'reusables/display/WallpaperBlur.qml')
 RETIRED_WALLPAPER_MARKER = 'BEGIN serpantinum-wallpaper-engine'
 BANNER_TAB = 'guide/AddonsBannersTab.qml'
+RETIRED_GLASS_MARKER = 'BEGIN serpantinum-addons-v2 desktop glass'
+RETIRED_GLASS_DECLARATION = 'singleton AddonDesktopGlass 1.0 AddonDesktopGlass.qml\n'
 
 
 class Plan:
@@ -1850,11 +1858,12 @@ class Plan:
         self.keybinds = keybinds_path()
 
 
-def build_plan(without_halloween=False, without_capri=False, without_clawd=False, without_tokens=False, restore_retired=True, without_beamer=False, without_calendar=False):
+def build_plan(without_halloween=False, without_capri=False, without_clawd=False, without_tokens=False, restore_retired=True, without_beamer=False, without_calendar=False,
+               without_christmas=False):
     """Compute every change in memory. Fail closed: any unknown upstream shape raises InstallError, nothing is written."""
     options = {'without_halloween': without_halloween, 'without_capri': without_capri,
                'without_clawd': without_clawd, 'without_tokens': without_tokens, 'without_beamer': without_beamer,
-               'without_calendar': without_calendar}
+               'without_calendar': without_calendar, 'without_christmas': without_christmas}
     plan = Plan()
     pending = plan.pending
     theme_state = QS/'guide/theme/ThemeTabState.qml'
@@ -1883,8 +1892,11 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
                 raise InstallError(f'Cannot restore {show_path(path)} from Serpantinum {commit}: {error}', show_path(path), 'wallpaper', 'Go online or set SERPANTINUM_UPSTREAM_CACHE, then run the installer again. Nothing was modified.') from error
             if blob is None: raise InstallError(f'Cannot restore {show_path(path)}: missing upstream copy', show_path(path), 'wallpaper', 'Run the installer again once Serpantinum is reachable.')
             pending[path] = blob.decode('utf-8')
+    # Retired live desktop glass: strip what an earlier install left behind.
     glass_path = QS/'reusables/display/WallpaperBlur.qml'
-    pending[glass_path] = patch_file(glass_path, desktop_glass.patch, pending.get(glass_path))
+    if glass_path.is_file() and RETIRED_GLASS_MARKER in (pending.get(glass_path) or read(glass_path)):
+        pending[glass_path] = patch_file(glass_path, remove_desktop_glass, pending.get(glass_path))
+    plan.blobs.append((QS/'AddonDesktopGlass.qml', b'', True))
     plan.screenshot = QS.parent/'scripts/screenshot.sh'
     text = patch_file(plan.screenshot, patch_screenshot_script)
     text = patch_file(plan.screenshot, patch_screenshot_cleanup, text)
@@ -1956,11 +1968,13 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
                                (QS/'reusables/qmldir', ['AddonGlassSurface 1.0 AddonGlassSurface.qml', 'AddonButtonEffect 1.0 AddonButtonEffect.qml']),
                                (QS/'guide/qmldir', [c + ' 1.0 ' + c + '.qml' for c in ('AddonCursorSettings', 'AddonCursorPreview', 'AddonCursorRole', 'AddonCursorTestArea')] + ['DnsControl 1.0 DnsControl.qml']),
                                (QS/'network/qmldir', ['DnsControl 1.0 DnsControl.qml']),
-                               (QS/'qmldir', ['singleton AddonDesktopGlass 1.0 AddonDesktopGlass.qml', 'AddonColorPicker 1.0 AddonColorPicker.qml', 'AddonMouseSpotlight 1.0 AddonMouseSpotlight.qml', 'AddonDesktopZoom 1.0 AddonDesktopZoom.qml',
+                               (QS/'qmldir', ['AddonColorPicker 1.0 AddonColorPicker.qml', 'AddonMouseSpotlight 1.0 AddonMouseSpotlight.qml', 'AddonDesktopZoom 1.0 AddonDesktopZoom.qml',
                                               'AddonDesktopDraw 1.0 AddonDesktopDraw.qml', 'AddonAwake 1.0 AddonAwake.qml', 'AddonWindowOutline 1.0 AddonWindowOutline.qml',
                                               'singleton SnowHush 1.0 snowhush/SnowHush.qml', 'SnowHushCard 1.0 snowhush/SnowHushCard.qml',
-                                              'SnowHushSurface 1.0 snowhush/SnowHushSurface.qml'])]:
+                                              'SnowHushSurface 1.0 snowhush/SnowHushSurface.qml', 'SnowHushEmblem 1.0 snowhush/SnowHushEmblem.qml',
+                                              'SnowHushWidgetSurface 1.0 snowhush/SnowHushWidgetSurface.qml'])]:
         original = pending[path] if path in pending else (read(path) if path.exists() else '')
+        original = original.replace(RETIRED_GLASS_DECLARATION, '')
         for declaration in declarations:
             if declaration not in original:
                 original = original.rstrip() + '\n' + declaration + '\n'
@@ -2044,6 +2058,7 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
         clawd_resources = clawd.resources(SOURCE/'payload/clawd', QS)
         tokens_resources = tokens.resources(SOURCE/'payload/tokens', QS)
         calendar_resources = agenda.resources(SOURCE/'payload/gcal', QS)
+        christmas_resources = christmas.resources(SOURCE/'payload/christmas', QS)
         bootintro_resources = bootintro.resources(QS, SOURCE/'payload/bootintro')
     except InstallError:
         raise
@@ -2051,15 +2066,16 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
         raise InstallError(str(error), 'payload', 'resources', 'Rebuild the generated assets named above (see docs), then run the installer again.') from error
     groups = [(resource_payloads, without_halloween), (capri_resources, without_capri),
               (clawd_resources, without_clawd), (tokens_resources, without_tokens), (calendar_resources, without_calendar),
-              (bootintro_resources, False)]
+              (christmas_resources, without_christmas), (bootintro_resources, False)]
     for blobs, removing in groups:
         for path, blob in blobs:
             plan.blobs.append((path, blob, removing))
             if not removing:
                 plan.created.add(path)
-    snow_hush_art = 'snowhush/winter.jpg'
-    plan.blobs.append((QS/snow_hush_art, (SOURCE/'payload'/snow_hush_art).read_bytes(), False))
-    plan.created.add(QS/snow_hush_art)
+    for name in ('winter.jpg', 'Shrikhand-Regular.ttf', 'Shrikhand-OFL.txt'):
+        path = 'snowhush/' + name
+        plan.blobs.append((QS/path, (SOURCE/'payload'/path).read_bytes(), False))
+        plan.created.add(QS/path)
     plan.shader_dirs = [(QS/'seasonal/shaders', 'atmosphere', shader_name), (QS/'capri/shaders', 'sprite', sprite_name)]
     plan.options = options
     return plan
@@ -2100,7 +2116,8 @@ def shell_ops(plan):
             owned = path.name == stem + '.frag.qsb' or re.fullmatch(stem + r'\.[a-f0-9]{12}\.frag\.qsb', path.name)
             if owned and path.name != keep and ('delete', path) not in ops:
                 ops.append(('delete', path))
-    for path in clawd.stale_shaders(QS, everything=plan.options['without_clawd']) + bootintro.stale_shaders(QS):
+    for path in (clawd.stale_shaders(QS, everything=plan.options['without_clawd']) + bootintro.stale_shaders(QS)
+                 + christmas.stale_shaders(QS, everything=plan.options['without_christmas'])):
         if ('delete', path) not in ops:
             ops.append(('delete', path))
     return ops
@@ -2269,7 +2286,7 @@ def say(report, message):
 
 # --------------------------------------------------------------------------- install
 def install(without_halloween=False, without_capri=False, without_clawd=False, without_tokens=False, check=False, force=False, quiet=False, without_beamer=False,
-            without_calendar=False):
+            without_calendar=False, without_christmas=False):
     """Install (or, with check=True, only compute) the addons. Raises InstallError; returns a report dict."""
     report = {'quiet': quiet, 'changes': 0, 'changed_files': [], 'warnings': [], 'backup': None}
     configure_paths()
@@ -2277,14 +2294,15 @@ def install(without_halloween=False, without_capri=False, without_clawd=False, w
     for warning in report['warnings']:
         say(report, f'warning: {warning}')
     if check:
-        return _install_locked(report, state, check, without_halloween, without_capri, without_clawd, without_tokens, without_beamer, without_calendar)
+        return _install_locked(report, state, check, without_halloween, without_capri, without_clawd, without_tokens, without_beamer, without_calendar, without_christmas)
     with Lock():
-        return _install_locked(report, state, check, without_halloween, without_capri, without_clawd, without_tokens, without_beamer, without_calendar)
+        return _install_locked(report, state, check, without_halloween, without_capri, without_clawd, without_tokens, without_beamer, without_calendar, without_christmas)
 
 
-def _install_locked(report, state, check, without_halloween, without_capri, without_clawd, without_tokens, without_beamer, without_calendar=False):
+def _install_locked(report, state, check, without_halloween, without_capri, without_clawd, without_tokens, without_beamer, without_calendar=False, without_christmas=False):
     # Calculate all transformations first. Never partly apply an unknown upstream revision.
-    plan = build_plan(without_halloween, without_capri, without_clawd, without_tokens, without_beamer=without_beamer, without_calendar=without_calendar)
+    plan = build_plan(without_halloween, without_capri, without_clawd, without_tokens, without_beamer=without_beamer, without_calendar=without_calendar,
+                      without_christmas=without_christmas)
     ops = shell_ops(plan)
     extra = deploy_ops()
     report['changes'] = len(ops) + len(extra)
@@ -2513,6 +2531,7 @@ def sweep_shaders():
         if shader_dir.is_dir():
             found += [p for p in sorted(shader_dir.iterdir()) if p.name == stem + '.frag.qsb' or re.fullmatch(stem + r'\.[a-f0-9]{12}\.frag\.qsb', p.name)]
     found += clawd.stale_shaders(QS, everything=True)
+    found += christmas.stale_shaders(QS, everything=True)
     found += bootintro.stale_shaders(QS, everything=True)
     return found
 
@@ -2678,6 +2697,7 @@ def print_error(error):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--without-halloween', action='store_true', help='Remove the seasonal layer while retaining other v2 addons')
+    parser.add_argument('--without-christmas', action='store_true', help='Remove the Christmas seasonal effects while retaining other v2 addons')
     parser.add_argument('--without-capri', action='store_true', help='Remove the Capri desktop pet while retaining other v2 addons')
     parser.add_argument('--without-clawd', action='store_true', help='Remove the Clawd desktop pet while retaining other v2 addons')
     parser.add_argument('--without-tokens', action='store_true', help='Remove the AI token widget and its collector service while retaining other v2 addons')
@@ -2700,7 +2720,7 @@ def main(argv=None):
         else:
             report = install(without_halloween=args.without_halloween, without_capri=args.without_capri, without_clawd=args.without_clawd,
                              without_tokens=args.without_tokens, without_beamer=args.without_beamer, without_calendar=args.without_calendar,
-                             check=args.check, force=args.force, quiet=args.json)
+                             without_christmas=args.without_christmas, check=args.check, force=args.force, quiet=args.json)
     except InstallError as error:
         errors, code = [error], error.code
         if not args.json: print_error(error)

@@ -24,6 +24,11 @@ Rectangle {
     readonly property color faint: ThemeBackend.overlay1
     readonly property var naps: [1, 2, 3, 5, 10, 15, 20, 30, 45, 60]
     property bool cursorOn: true
+    // 0: folded down to the header while he is off; 1: every option unfolded
+    property real open: Clawd.enabled ? 1 : 0
+    readonly property bool folding: open > 0 && open < 1
+    property int noiseTick: 0
+    Behavior on open { enabled: card.animate; NumberAnimation { duration: Clawd.enabled ? 700 : 560; easing.type: Easing.InOutQuad } }
     property bool summoned: false
     property string hookNote: ""
     property bool hookFailed: false
@@ -147,6 +152,62 @@ Rectangle {
             onClicked: key.activated()
         }
     }
+    // The rows of static at the edge of the fold: sparse at the top, solid where the card closes.
+    function noise(rows, tick) {
+        const shades = ["·.:'", "+*/<>{}", "░╌┼✻", "▒░#", "▓▒█"];
+        let out = [];
+        for (let r = 0; r < rows; r++) {
+            let row = "";
+            for (let c = 0; c < cols; c++) {
+                const roll = Math.random(), set = shades[r];
+                row += roll < (r + 1) / (rows + 0.5) ? set[(c + tick + Math.floor(roll * 97)) % set.length] : " ";
+            }
+            out.push(row);
+        }
+        return out.join("\n");
+    }
+    // The power switch: a ╔═╗ block in the header, solid while he is off so it is the first thing seen.
+    component Power: Item {
+        id: power
+        readonly property bool lit: area.containsMouse || activeFocus
+        readonly property bool solid: !Clawd.enabled
+        readonly property int cells: 30
+        readonly property color glyphs: solid ? ThemeBackend.base : card.accent
+        readonly property string title: Clawd.enabled ? "■  SEND TO SLEEP"
+            : card.cursorOn || !card.animate ? "▶  WAKE CLAWD UP  ◀" : "▶   WAKE CLAWD UP   ◀"
+        signal activated()
+        width: cells * card.cw
+        height: 3 * card.lh
+        scale: area.pressed ? 0.96 : 1
+        activeFocusOnTab: true
+        Accessible.role: Accessible.CheckBox
+        Accessible.name: "Clawd"
+        Accessible.checkable: true
+        Accessible.checked: Clawd.enabled
+        Accessible.onPressAction: activated()
+        Keys.onSpacePressed: activated()
+        Keys.onReturnPressed: activated()
+        Keys.onEnterPressed: activated()
+        Rectangle {
+            anchors.fill: parent
+            color: power.solid ? (power.lit ? Qt.lighter(card.accent, 1.12) : card.accent) : Qt.alpha(card.accent, power.lit ? 0.22 : 0.08)
+        }
+        T { color: power.glyphs; text: "╔" + "═".repeat(power.cells - 2) + "╗" }
+        T { y: card.lh; color: power.glyphs; text: "║" }
+        T { x: (power.cells - 1) * card.cw; y: card.lh; color: power.glyphs; text: "║" }
+        T { y: 2 * card.lh; color: power.glyphs; text: "╚" + "═".repeat(power.cells - 2) + "╝" }
+        T { anchors.centerIn: parent; color: power.glyphs; font.bold: true; text: power.title }
+        Rectangle {
+            anchors.fill: parent; anchors.margins: -Math.max(2, Math.round(card.rootObj.s(3)))
+            visible: power.activeFocus; color: "transparent"
+            border.width: Math.max(1, Math.round(card.rootObj.s(1))); border.color: card.ink
+        }
+        MouseArea {
+            id: area
+            anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+            onClicked: power.activated()
+        }
+    }
     // "> label   controls…", the prompt lights up with the row under the pointer.
     component Line: Item {
         id: line
@@ -170,7 +231,9 @@ Rectangle {
             id: header
             readonly property int frameH: Clawd.manifest ? Clawd.manifest.frame.h : 0
             title: "Clawd v1"
-            lines: 5
+            // the button sits at the right of the header; a narrow card puts it underneath, centred
+            readonly property bool stacked: card.cols < 84
+            lines: stacked ? 9 : 5
             Item {
                 id: stage
                 y: card.lh
@@ -205,7 +268,7 @@ Rectangle {
             Column {
                 x: stage.width + 2 * card.cw
                 y: card.lh
-                width: parent.width - x
+                width: (header.stacked ? parent.width : power.x - 2 * card.cw) - x
                 Row {
                     height: card.lh
                     T { text: "✻ "; color: card.accent; font.bold: true }
@@ -219,424 +282,453 @@ Rectangle {
                         : "○ off · tucked away in this card"
                 }
             }
-        }
-        Item { width: 1; height: card.lh * 0.5 }
-        Line {
-            label: "clawd"
-            Key {
+            Power {
+                id: power
                 objectName: "clawdEnable"
-                label: Clawd.enabled ? "[x] on" : "[ ] off"
-                accessibleName: "Clawd"
-                checkable: true; checked: Clawd.enabled
+                x: header.stacked ? Math.round((parent.width - width) / 2) : parent.width - width - card.cw
+                y: (header.stacked ? 5 : 1) * card.lh
                 onActivated: Config.setSetting("addonsV2Clawd", !Clawd.enabled)
             }
-            T { color: card.dim; text: Clawd.enabled ? "   roaming the desktop" : "   tick to let him out" }
         }
-        Line {
-            label: "scale"
-            Key { objectName: "clawdScaleDown"; label: "◀"; accessibleName: "Smaller"; enabled: Clawd.scale > 2; onActivated: card.setScale(Clawd.scale - 1) }
-            T { text: " ×" + Clawd.scale + " "; font.bold: true }
-            Key { objectName: "clawdScaleUp"; label: "▶"; accessibleName: "Larger"; enabled: Clawd.scale < 8; onActivated: card.setScale(Clawd.scale + 1) }
-            T { text: "   " }
-            Repeater {
-                model: 7
-                Key {
-                    required property int index
-                    label: index + 2 <= Clawd.scale ? "█" : "░"
-                    accessibleName: "×" + (index + 2)
-                    selected: index + 2 <= Clawd.scale
-                    idleColor: card.faint
-                    tabStop: false
-                    onActivated: card.setScale(index + 2)
-                }
-            }
-        }
-        Line {
-            label: "pace"
-            Repeater {
-                model: ["calm", "normal", "active"]
-                Row {
-                    required property string modelData
-                    required property int index
-                    T { visible: index > 0; text: " · "; color: card.faint }
-                    Key {
-                        objectName: "clawdSpeed_" + modelData
-                        label: modelData
-                        selected: Clawd.speed === modelData
-                        onActivated: Config.setSetting("addonsV2ClawdSpeed", modelData)
+        // everything below the header folds away while he is off, one text row at a time
+        Item {
+            id: fold
+            objectName: "clawdOptions"
+            width: parent.width
+            height: card.open >= 1 ? options.implicitHeight : Math.floor(options.implicitHeight * card.open / card.lh) * card.lh
+            visible: card.open > 0
+            enabled: Clawd.enabled
+            clip: true
+            Column {
+                id: options
+                width: parent.width
+                Item { width: 1; height: card.lh * 0.5 }
+                Line {
+                    label: "scale"
+                    Key { objectName: "clawdScaleDown"; label: "◀"; accessibleName: "Smaller"; enabled: Clawd.scale > 2; onActivated: card.setScale(Clawd.scale - 1) }
+                    T { text: " ×" + Clawd.scale + " "; font.bold: true }
+                    Key { objectName: "clawdScaleUp"; label: "▶"; accessibleName: "Larger"; enabled: Clawd.scale < 8; onActivated: card.setScale(Clawd.scale + 1) }
+                    T { text: "   " }
+                    Repeater {
+                        model: 7
+                        Key {
+                            required property int index
+                            label: index + 2 <= Clawd.scale ? "█" : "░"
+                            accessibleName: "×" + (index + 2)
+                            selected: index + 2 <= Clawd.scale
+                            idleColor: card.faint
+                            tabStop: false
+                            onActivated: card.setScale(index + 2)
+                        }
                     }
                 }
-            }
-        }
-        Line {
-            label: "nap after"
-            Key { objectName: "clawdSleepDown"; label: "◀"; accessibleName: "Sooner"; enabled: Clawd.sleepMinutes > 1; onActivated: card.nap(-1) }
-            T { text: " " + Clawd.sleepMinutes + " min "; font.bold: true }
-            Key { objectName: "clawdSleepUp"; label: "▶"; accessibleName: "Later"; enabled: Clawd.sleepMinutes < 60; onActivated: card.nap(1) }
-            T { visible: !card.compact; color: card.dim; text: "   of quiet, then zZ" }
-        }
-        Line {
-            // windows: perches on them, peeks behind them, reacts to them; follow: goes to the cursor's screen
-            label: "world"
-            Key {
-                objectName: "clawdWorld"
-                label: (Clawd.world ? "[x]" : "[ ]") + " windows"
-                accessibleName: "Windows"
-                checkable: true; checked: Clawd.world
-                onActivated: Config.setSetting("addonsV2ClawdWorld", !Clawd.world)
-            }
-            T { text: " · "; color: card.faint }
-            Key {
-                objectName: "clawdFollow"
-                label: (Clawd.follow ? "[x]" : "[ ]") + " follow"
-                accessibleName: "Follow the cursor"
-                checkable: true; checked: Clawd.follow
-                onActivated: Config.setSetting("addonsV2ClawdFollow", !Clawd.follow)
-            }
-            T { visible: !card.compact; color: card.dim; text: "  ⎿ perches on windows, follows your cursor" }
-        }
-        Line {
-            // his colour (and the spinner's) follows the effort of the session at work
-            label: "effort"
-            Key {
-                objectName: "clawdEffort"
-                label: (Clawd.effortColors ? "[x]" : "[ ]") + " colours"
-                accessibleName: "Effort colours"
-                checkable: true; checked: Clawd.effortColors
-                onActivated: Config.setSetting("addonsV2ClawdEffort", !Clawd.effortColors)
-            }
-            T { visible: !card.compact; color: card.dim; text: "  ⎿ tints him by the effort of the working session" }
-        }
-        Line {
-            // which effort levels tint him, per agent; each name is drawn letter by letter, cycling its palette like a terminal
-            label: "codex"
-            Repeater {
-                model: [
-                    { key: "low", name: "Light", palette: ["#FFFFFF"] },
-                    { key: "medium", name: "Medium", palette: ["#ACFFD8"] },
-                    { key: "high", name: "High", palette: ["#0093FF"] },
-                    { key: "xhigh", name: "Extra High", palette: ["#FF6363", "#FFFFFF"], sweep: true },
-                    { key: "max", name: "Max", palette: ["#FFD34D", "#FFF2B8"] },
-                    { key: "ultra", name: "Ultra", palette: ["#9B7BFF", "#6FB6FF"] }
-                ]
-                Row {
-                    required property var modelData
-                    required property int index
-                    T { visible: index > 0; text: " · "; color: card.faint }
-                    Item {
-                        id: opt
-                        objectName: "clawdEffort_codex_" + modelData.key
-                        readonly property var fx: modelData
-                        readonly property bool on: Config.getSetting("addonsV2ClawdEffort_codex_" + modelData.key, true) !== false
-                        readonly property bool animated: on && fx.palette.length > 1
-                        property int tick: 0
-                        Timer { running: opt.animated && Clawd.effortColors; interval: 140; repeat: true; onTriggered: opt.tick++ }
-                        implicitWidth: word.width
-                        implicitHeight: word.height
-                        opacity: Clawd.effortColors ? 1 : 0.4
-                        function paint() {
-                            let h = "";
-                            const name = opt.fx.name;
-                            for (let i = 0; i < name.length; i++) {
-                                let c = card.faint;
-                                if (opt.on && !opt.animated) c = opt.fx.palette[0];
-                                else if (opt.on && opt.fx.sweep) c = (opt.tick % (name.length + 2)) === i ? opt.fx.palette[1] : opt.fx.palette[0];
-                                else if (opt.on) c = opt.fx.palette[(opt.tick + i) % opt.fx.palette.length];
-                                h += '<font color="' + c + '">' + (name[i] === " " ? "&nbsp;" : name[i]) + "</font>";
+                Line {
+                    label: "pace"
+                    Repeater {
+                        model: ["calm", "normal", "active"]
+                        Row {
+                            required property string modelData
+                            required property int index
+                            T { visible: index > 0; text: " · "; color: card.faint }
+                            Key {
+                                objectName: "clawdSpeed_" + modelData
+                                label: modelData
+                                selected: Clawd.speed === modelData
+                                onActivated: Config.setSetting("addonsV2ClawdSpeed", modelData)
                             }
-                            return h;
-                        }
-                        T {
-                            id: word
-                            textFormat: Text.RichText
-                            font.bold: true
-                            text: opt.paint()
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: Config.setSetting("addonsV2ClawdEffort_codex_" + modelData.key, !opt.on)
                         }
                     }
                 }
-            }
-        }
-        Line {
-            label: "claude"
-            Repeater {
-                model: [
-                    { key: "low", name: "Low", palette: ["#FFC107"] },
-                    { key: "medium", name: "Medium", palette: ["#4EBA65"] },
-                    { key: "high", name: "High", palette: ["#B1B9F9"] },
-                    { key: "xhigh", name: "Xhigh", palette: ["#AF87FF", "#FFFFFF"], sweep: true },
-                    { key: "max", name: "Max", palette: ["#FF9E7A", "#FFD966", "#8FE3A0", "#9BD3FF", "#C9B5FF", "#FF9CB0"] },
-                    { key: "ultracode", name: "Ultracode subagent", palette: ["#EB83FF", "#FFFFFF"] },
-                    { key: "ultracode_workflow", name: "Ultracode Workflow", palette: ["#9BF6FF", "#FFFFFF"] }
-                ]
-                Row {
-                    required property var modelData
-                    required property int index
-                    T { visible: index > 0; text: " · "; color: card.faint }
-                    Item {
-                        id: opt
-                        objectName: "clawdEffort_claude_" + modelData.key
-                        readonly property var fx: modelData
-                        readonly property bool on: Config.getSetting("addonsV2ClawdEffort_claude_" + modelData.key, true) !== false
-                        readonly property bool animated: on && fx.palette.length > 1
-                        property int tick: 0
-                        Timer { running: opt.animated && Clawd.effortColors; interval: 140; repeat: true; onTriggered: opt.tick++ }
-                        implicitWidth: word.width
-                        implicitHeight: word.height
-                        opacity: Clawd.effortColors ? 1 : 0.4
-                        function paint() {
-                            let h = "";
-                            const name = opt.fx.name;
-                            for (let i = 0; i < name.length; i++) {
-                                let c = card.faint;
-                                if (opt.on && !opt.animated) c = opt.fx.palette[0];
-                                else if (opt.on && opt.fx.sweep) c = (opt.tick % (name.length + 2)) === i ? opt.fx.palette[1] : opt.fx.palette[0];
-                                else if (opt.on) c = opt.fx.palette[(opt.tick + i) % opt.fx.palette.length];
-                                h += '<font color="' + c + '">' + (name[i] === " " ? "&nbsp;" : name[i]) + "</font>";
-                            }
-                            return h;
-                        }
-                        T {
-                            id: word
-                            textFormat: Text.RichText
-                            font.bold: true
-                            text: opt.paint()
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: Config.setSetting("addonsV2ClawdEffort_claude_" + modelData.key, !opt.on)
-                        }
-                    }
+                Line {
+                    label: "nap after"
+                    Key { objectName: "clawdSleepDown"; label: "◀"; accessibleName: "Sooner"; enabled: Clawd.sleepMinutes > 1; onActivated: card.nap(-1) }
+                    T { text: " " + Clawd.sleepMinutes + " min "; font.bold: true }
+                    Key { objectName: "clawdSleepUp"; label: "▶"; accessibleName: "Later"; enabled: Clawd.sleepMinutes < 60; onActivated: card.nap(1) }
+                    T { visible: !card.compact; color: card.dim; text: "   of quiet, then zZ" }
                 }
-            }
-        }
-        Line {
-            // how much he reacts to the shell: all, quiet (urgent, bubbles, moods), off (urgent only)
-            label: "reacts"
-            Repeater {
-                model: ["all", "quiet", "off"]
-                Row {
-                    required property string modelData
-                    required property int index
-                    T { visible: index > 0; text: " · "; color: card.faint }
+                Line {
+                    // windows: perches on them, peeks behind them, reacts to them; follow: goes to the cursor's screen
+                    label: "world"
                     Key {
-                        objectName: "clawdReacts_" + modelData
-                        label: modelData
-                        selected: Clawd.reactions === modelData
-                        onActivated: Config.setSetting("addonsV2ClawdReactions", modelData)
+                        objectName: "clawdWorld"
+                        label: (Clawd.world ? "[x]" : "[ ]") + " windows"
+                        accessibleName: "Windows"
+                        checkable: true; checked: Clawd.world
+                        onActivated: Config.setSetting("addonsV2ClawdWorld", !Clawd.world)
+                    }
+                    T { text: " · "; color: card.faint }
+                    Key {
+                        objectName: "clawdFollow"
+                        label: (Clawd.follow ? "[x]" : "[ ]") + " follow"
+                        accessibleName: "Follow the cursor"
+                        checkable: true; checked: Clawd.follow
+                        onActivated: Config.setSetting("addonsV2ClawdFollow", !Clawd.follow)
+                    }
+                    T { visible: !card.compact; color: card.dim; text: "  ⎿ perches on windows, follows your cursor" }
+                }
+                Line {
+                    // his colour (and the spinner's) follows the effort of the session at work
+                    label: "effort"
+                    Key {
+                        objectName: "clawdEffort"
+                        label: (Clawd.effortColors ? "[x]" : "[ ]") + " colours"
+                        accessibleName: "Effort colours"
+                        checkable: true; checked: Clawd.effortColors
+                        onActivated: Config.setSetting("addonsV2ClawdEffort", !Clawd.effortColors)
+                    }
+                    T { visible: !card.compact; color: card.dim; text: "  ⎿ tints him by the effort of the working session" }
+                }
+                Line {
+                    // which effort levels tint him, per agent; each name is drawn letter by letter, cycling its palette like a terminal
+                    label: "codex"
+                    Repeater {
+                        model: [
+                            { key: "low", name: "Light", palette: ["#FFFFFF"] },
+                            { key: "medium", name: "Medium", palette: ["#ACFFD8"] },
+                            { key: "high", name: "High", palette: ["#0093FF"] },
+                            { key: "xhigh", name: "Extra High", palette: ["#FF6363", "#FFFFFF"], sweep: true },
+                            { key: "max", name: "Max", palette: ["#FFD34D", "#FFF2B8"] },
+                            { key: "ultra", name: "Ultra", palette: ["#9B7BFF", "#6FB6FF"] }
+                        ]
+                        Row {
+                            required property var modelData
+                            required property int index
+                            T { visible: index > 0; text: " · "; color: card.faint }
+                            Item {
+                                id: opt
+                                objectName: "clawdEffort_codex_" + modelData.key
+                                readonly property var fx: modelData
+                                readonly property bool on: Config.getSetting("addonsV2ClawdEffort_codex_" + modelData.key, true) !== false
+                                readonly property bool animated: on && fx.palette.length > 1
+                                property int tick: 0
+                                Timer { running: opt.animated && Clawd.effortColors; interval: 140; repeat: true; onTriggered: opt.tick++ }
+                                implicitWidth: word.width
+                                implicitHeight: word.height
+                                opacity: Clawd.effortColors ? 1 : 0.4
+                                function paint() {
+                                    let h = "";
+                                    const name = opt.fx.name;
+                                    for (let i = 0; i < name.length; i++) {
+                                        let c = card.faint;
+                                        if (opt.on && !opt.animated) c = opt.fx.palette[0];
+                                        else if (opt.on && opt.fx.sweep) c = (opt.tick % (name.length + 2)) === i ? opt.fx.palette[1] : opt.fx.palette[0];
+                                        else if (opt.on) c = opt.fx.palette[(opt.tick + i) % opt.fx.palette.length];
+                                        h += '<font color="' + c + '">' + (name[i] === " " ? "&nbsp;" : name[i]) + "</font>";
+                                    }
+                                    return h;
+                                }
+                                T {
+                                    id: word
+                                    textFormat: Text.RichText
+                                    font.bold: true
+                                    text: opt.paint()
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: Config.setSetting("addonsV2ClawdEffort_codex_" + modelData.key, !opt.on)
+                                }
+                            }
+                        }
                     }
                 }
-            }
-            T { visible: !card.compact; color: card.dim; text: "  ⎿ music, notifications, volume…" }
-        }
-        Line {
-            label: "summon"
-            Key {
-                objectName: "clawdSummon"
-                label: "[ summon on this screen ]"
-                enabled: Clawd.enabled
-                onActivated: card.summon()
-            }
-            T {
-                color: card.summoned ? card.accent : card.faint
-                text: card.summoned ? "  ⎿ on his way" : Clawd.enabled ? "" : "  needs clawd on"
-            }
-        }
-        Line {
-            label: "shortcut"
-            T { text: "super+shift+l" }
-            T { text: "  " }
-            Key {
-                objectName: "clawdShortcut"
-                visible: typeof card.rootObj.gotoTab === "function"
-                label: "[ keybinds ]"
-                onActivated: card.rootObj.gotoTab("addon_keybinds")
-            }
-            T { visible: !card.compact; color: card.dim; text: "  search “clawd”" }
-        }
-        Line {
-            label: "hooks"
-            Repeater {
-                // statusline: Claude's status line relays model, context, cost and limits ("stats")
-                model: ["claude", "codex", "opencode", "hermes", "statusline"]
-                Row {
-                    id: hook
-                    required property string modelData
-                    required property int index
-                    readonly property string name: ({ claude: "claude", codex: "codex", opencode: "OpenCode", hermes: "Hermes", statusline: "stats" })[modelData]
-                    readonly property string agent: ({ claude: "Claude Code", codex: "Codex", opencode: "OpenCode", hermes: "Hermes", statusline: "Claude Code" })[modelData]
-                    readonly property string shortName: ({ claude: "Cl", codex: "Co", opencode: "OC", hermes: "He", statusline: "St" })[modelData]
-                    readonly property bool abbreviated: card.cols < 76
-                    property var info: null    // hooks.py status, or {error}
-                    property bool busy: false  // Process.running only flips once the process has started
-                    function run(action) { busy = true; card.hookRuns++; proc.command = ["python3", Clawd.scripts + "/hooks.py", action, modelData]; proc.running = true; }
-                    Component.onCompleted: run("status")
+                Line {
+                    label: "claude"
+                    Repeater {
+                        model: [
+                            { key: "low", name: "Low", palette: ["#FFC107"] },
+                            { key: "medium", name: "Medium", palette: ["#4EBA65"] },
+                            { key: "high", name: "High", palette: ["#B1B9F9"] },
+                            { key: "xhigh", name: "Xhigh", palette: ["#AF87FF", "#FFFFFF"], sweep: true },
+                            { key: "max", name: "Max", palette: ["#FF9E7A", "#FFD966", "#8FE3A0", "#9BD3FF", "#C9B5FF", "#FF9CB0"] },
+                            { key: "ultracode", name: "Ultracode subagent", palette: ["#EB83FF", "#FFFFFF"] },
+                            { key: "ultracode_workflow", name: "Ultracode Workflow", palette: ["#9BF6FF", "#FFFFFF"] }
+                        ]
+                        Row {
+                            required property var modelData
+                            required property int index
+                            T { visible: index > 0; text: " · "; color: card.faint }
+                            Item {
+                                id: opt
+                                objectName: "clawdEffort_claude_" + modelData.key
+                                readonly property var fx: modelData
+                                readonly property bool on: Config.getSetting("addonsV2ClawdEffort_claude_" + modelData.key, true) !== false
+                                readonly property bool animated: on && fx.palette.length > 1
+                                property int tick: 0
+                                Timer { running: opt.animated && Clawd.effortColors; interval: 140; repeat: true; onTriggered: opt.tick++ }
+                                implicitWidth: word.width
+                                implicitHeight: word.height
+                                opacity: Clawd.effortColors ? 1 : 0.4
+                                function paint() {
+                                    let h = "";
+                                    const name = opt.fx.name;
+                                    for (let i = 0; i < name.length; i++) {
+                                        let c = card.faint;
+                                        if (opt.on && !opt.animated) c = opt.fx.palette[0];
+                                        else if (opt.on && opt.fx.sweep) c = (opt.tick % (name.length + 2)) === i ? opt.fx.palette[1] : opt.fx.palette[0];
+                                        else if (opt.on) c = opt.fx.palette[(opt.tick + i) % opt.fx.palette.length];
+                                        h += '<font color="' + c + '">' + (name[i] === " " ? "&nbsp;" : name[i]) + "</font>";
+                                    }
+                                    return h;
+                                }
+                                T {
+                                    id: word
+                                    textFormat: Text.RichText
+                                    font.bold: true
+                                    text: opt.paint()
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: Config.setSetting("addonsV2ClawdEffort_claude_" + modelData.key, !opt.on)
+                                }
+                            }
+                        }
+                    }
+                }
+                Line {
+                    // how much he reacts to the shell: all, quiet (urgent, bubbles, moods), off (urgent only)
+                    label: "reacts"
+                    Repeater {
+                        model: ["all", "quiet", "off"]
+                        Row {
+                            required property string modelData
+                            required property int index
+                            T { visible: index > 0; text: " · "; color: card.faint }
+                            Key {
+                                objectName: "clawdReacts_" + modelData
+                                label: modelData
+                                selected: Clawd.reactions === modelData
+                                onActivated: Config.setSetting("addonsV2ClawdReactions", modelData)
+                            }
+                        }
+                    }
+                    T { visible: !card.compact; color: card.dim; text: "  ⎿ music, notifications, volume…" }
+                }
+                Line {
+                    label: "summon"
+                    Key {
+                        objectName: "clawdSummon"
+                        label: "[ summon on this screen ]"
+                        enabled: Clawd.enabled
+                        onActivated: card.summon()
+                    }
+                    T {
+                        color: card.summoned ? card.accent : card.faint
+                        text: card.summoned ? "  ⎿ on his way" : ""
+                    }
+                }
+                Line {
+                    label: "shortcut"
+                    T { text: "super+shift+l" }
+                    T { text: "  " }
+                    Key {
+                        objectName: "clawdShortcut"
+                        visible: typeof card.rootObj.gotoTab === "function"
+                        label: "[ keybinds ]"
+                        onActivated: card.rootObj.gotoTab("addon_keybinds")
+                    }
+                    T { visible: !card.compact; color: card.dim; text: "  search “clawd”" }
+                }
+                Line {
+                    label: "hooks"
+                    Repeater {
+                        // statusline: Claude's status line relays model, context, cost and limits ("stats")
+                        model: ["claude", "codex", "opencode", "hermes", "statusline"]
+                        Row {
+                            id: hook
+                            required property string modelData
+                            required property int index
+                            readonly property string name: ({ claude: "claude", codex: "codex", opencode: "OpenCode", hermes: "Hermes", statusline: "stats" })[modelData]
+                            readonly property string agent: ({ claude: "Claude Code", codex: "Codex", opencode: "OpenCode", hermes: "Hermes", statusline: "Claude Code" })[modelData]
+                            readonly property string shortName: ({ claude: "Cl", codex: "Co", opencode: "OC", hermes: "He", statusline: "St" })[modelData]
+                            readonly property bool abbreviated: card.cols < 76
+                            property var info: null    // hooks.py status, or {error}
+                            property bool busy: false  // Process.running only flips once the process has started
+                            function run(action) { busy = true; card.hookRuns++; proc.command = ["python3", Clawd.scripts + "/hooks.py", action, modelData]; proc.running = true; }
+                            Component.onCompleted: run("status")
+                            Process {
+                                id: proc
+                                stdout: StdioCollector {
+                                    onStreamFinished: {
+                                        let r = null;
+                                        try { r = JSON.parse(text); } catch (error) {}
+                                        hook.busy = false;
+                                        card.hookRuns = Math.max(0, card.hookRuns - 1);
+                                        hook.info = r && r.ok ? r.data : { error: r && r.error || "hooks.py failed" };
+                                        card.hookFailed = !!hook.info.error;
+                                        card.hookNote = hook.info.error ? hook.agent + ": " + hook.info.error : r.data.changed ? (modelData === "hermes" || modelData === "opencode" ? "restart " + hook.agent : "start a new " + hook.agent + " session") : card.hookNote;
+                                    }
+                                }
+                            }
+                            T { visible: index > 0; text: hook.abbreviated ? " " : " · "; color: card.faint }
+                            Key {
+                                objectName: "clawdHook_" + modelData
+                                label: hook.abbreviated
+                                    ? (hook.busy || !hook.info ? "…" : hook.info.error ? "!" : hook.info.installed ? "●" : "○") + hook.shortName
+                                    : (hook.busy || !hook.info ? "[…] " : hook.info.error ? "[!] " : hook.info.installed ? "[x] " : "[ ] ") + hook.name
+                                accessibleName: hook.modelData === "statusline" ? "Claude status line stats" : hook.agent + " session hooks"
+                                checkable: true; checked: !!hook.info && hook.info.installed === true
+                                enabled: !hook.busy && !!hook.info && card.hookRuns === 0
+                                onActivated: hook.run(checked ? "uninstall" : "install")
+                            }
+                        }
+                    }
+                    T {
+                        visible: !card.compact
+                        color: card.hookFailed ? ThemeBackend.red : card.dim
+                        text: "  ⎿ " + (card.hookNote || "he reacts to your agents")
+                    }
+                }
+                // On a narrow card, abbreviate the provider toggles and put the note below them.
+                T {
+                    visible: card.compact && card.hookNote !== ""
+                    x: 13 * card.cw; width: parent.width - x; height: card.lh; elide: Text.ElideRight
+                    color: card.hookFailed ? ThemeBackend.red : card.dim
+                    text: "⎿ " + card.hookNote
+                }
+                Line {
+                    label: "thoughts"
+                    Repeater {
+                        model: ["full", "verbs", "off"]
+                        Row {
+                            required property string modelData
+                            required property int index
+                            T { visible: index > 0; text: " · "; color: card.faint }
+                            Key {
+                                objectName: "clawdThoughts_" + modelData
+                                label: modelData
+                                selected: Clawd.thoughts === modelData
+                                onActivated: Config.setSetting("addonsV2ClawdThoughts", modelData)
+                            }
+                        }
+                    }
+                    T { visible: !card.compact; color: card.dim; text: "  ⎿ above his head while claude works" }
+                }
+                Line {
+                    label: "chat"
+                    Key {
+                        objectName: "clawdChatToggle"
+                        label: (Clawd.chat ? "[x]" : "[ ]") + " on"
+                        accessibleName: "Chat"
+                        checkable: true; checked: Clawd.chat
+                        onActivated: Config.setSetting("addonsV2ClawdChat", !Clawd.chat)
+                    }
                     Process {
-                        id: proc
+                        id: chatStatus
+                        command: ["node", Clawd.scripts + "/brain.js", "status", Clawd.chatProvider, Clawd.chatUrl, Clawd.chatModel]
+                        running: true
                         stdout: StdioCollector {
                             onStreamFinished: {
-                                let r = null;
-                                try { r = JSON.parse(text); } catch (error) {}
-                                hook.busy = false;
-                                card.hookRuns = Math.max(0, card.hookRuns - 1);
-                                hook.info = r && r.ok ? r.data : { error: r && r.error || "hooks.py failed" };
-                                card.hookFailed = !!hook.info.error;
-                                card.hookNote = hook.info.error ? hook.agent + ": " + hook.info.error : r.data.changed ? (modelData === "hermes" || modelData === "opencode" ? "restart " + hook.agent : "start a new " + hook.agent + " session") : card.hookNote;
+                                try { const r = JSON.parse(text); card.chatSigned = r.ok && r.data ? r.data.signedIn === true : false; card.chatNote = r.ok && r.data && r.data.note ? String(r.data.note) : ""; } catch (error) { card.chatSigned = false; card.chatNote = ""; }
                             }
                         }
                     }
-                    T { visible: index > 0; text: hook.abbreviated ? " " : " · "; color: card.faint }
-                    Key {
-                        objectName: "clawdHook_" + modelData
-                        label: hook.abbreviated
-                            ? (hook.busy || !hook.info ? "…" : hook.info.error ? "!" : hook.info.installed ? "●" : "○") + hook.shortName
-                            : (hook.busy || !hook.info ? "[…] " : hook.info.error ? "[!] " : hook.info.installed ? "[x] " : "[ ] ") + hook.name
-                        accessibleName: hook.modelData === "statusline" ? "Claude status line stats" : hook.agent + " session hooks"
-                        checkable: true; checked: !!hook.info && hook.info.installed === true
-                        enabled: !hook.busy && !!hook.info && card.hookRuns === 0
-                        onActivated: hook.run(checked ? "uninstall" : "install")
+                    Connections {
+                        target: Clawd
+                        function onChatProviderChanged() { card.recheckChat(); }
                     }
+                    T { visible: !card.compact; color: card.dim; text: "  ⎿ " + (Clawd.chatProvider === "codex" ? "ChatGPT via Codex · " + (card.chatSigned === null ? "checking" : card.chatSigned ? "signed in" : "run codex login")
+                        : (Clawd.chatProvider === "api" ? "OpenAI-compatible API · " : "local server · ") + (card.chatSigned === null ? "checking" : card.chatSigned ? "ready " + card.chatNote : card.chatNote || "unavailable")) }
                 }
-            }
-            T {
-                visible: !card.compact
-                color: card.hookFailed ? ThemeBackend.red : card.dim
-                text: "  ⎿ " + (card.hookNote || "he reacts to your agents")
-            }
-        }
-        // On a narrow card, abbreviate the provider toggles and put the note below them.
-        T {
-            visible: card.compact && card.hookNote !== ""
-            x: 13 * card.cw; width: parent.width - x; height: card.lh; elide: Text.ElideRight
-            color: card.hookFailed ? ThemeBackend.red : card.dim
-            text: "⎿ " + card.hookNote
-        }
-        Line {
-            label: "thoughts"
-            Repeater {
-                model: ["full", "verbs", "off"]
-                Row {
-                    required property string modelData
-                    required property int index
-                    T { visible: index > 0; text: " · "; color: card.faint }
-                    Key {
-                        objectName: "clawdThoughts_" + modelData
-                        label: modelData
-                        selected: Clawd.thoughts === modelData
-                        onActivated: Config.setSetting("addonsV2ClawdThoughts", modelData)
+                Line {
+                    label: "provider"
+                    Repeater {
+                        model: ["codex", "api", "local"]
+                        Row {
+                            required property string modelData
+                            required property int index
+                            T { visible: index > 0; text: " · "; color: card.faint }
+                            Key {
+                                objectName: "clawdChatProvider_" + modelData
+                                label: modelData
+                                selected: Clawd.chatProvider === modelData
+                                onActivated: Config.setSetting("addonsV2ClawdChatProvider", modelData)
+                            }
+                        }
                     }
-                }
-            }
-            T { visible: !card.compact; color: card.dim; text: "  ⎿ above his head while claude works" }
-        }
-        Line {
-            label: "chat"
-            Key {
-                objectName: "clawdChatToggle"
-                label: (Clawd.chat ? "[x]" : "[ ]") + " on"
-                accessibleName: "Chat"
-                checkable: true; checked: Clawd.chat
-                onActivated: Config.setSetting("addonsV2ClawdChat", !Clawd.chat)
-            }
-            Process {
-                id: chatStatus
-                command: ["node", Clawd.scripts + "/brain.js", "status", Clawd.chatProvider, Clawd.chatUrl, Clawd.chatModel]
-                running: true
-                stdout: StdioCollector {
-                    onStreamFinished: {
-                        try { const r = JSON.parse(text); card.chatSigned = r.ok && r.data ? r.data.signedIn === true : false; card.chatNote = r.ok && r.data && r.data.note ? String(r.data.note) : ""; } catch (error) { card.chatSigned = false; card.chatNote = ""; }
-                    }
-                }
-            }
-            Connections {
-                target: Clawd
-                function onChatProviderChanged() { card.recheckChat(); }
-            }
-            T { visible: !card.compact; color: card.dim; text: "  ⎿ " + (Clawd.chatProvider === "codex" ? "ChatGPT via Codex · " + (card.chatSigned === null ? "checking" : card.chatSigned ? "signed in" : "run codex login")
-                : (Clawd.chatProvider === "api" ? "OpenAI-compatible API · " : "local server · ") + (card.chatSigned === null ? "checking" : card.chatSigned ? "ready " + card.chatNote : card.chatNote || "unavailable")) }
-        }
-        Line {
-            label: "provider"
-            Repeater {
-                model: ["codex", "api", "local"]
-                Row {
-                    required property string modelData
-                    required property int index
-                    T { visible: index > 0; text: " · "; color: card.faint }
-                    Key {
-                        objectName: "clawdChatProvider_" + modelData
-                        label: modelData
-                        selected: Clawd.chatProvider === modelData
-                        onActivated: Config.setSetting("addonsV2ClawdChatProvider", modelData)
-                    }
-                }
-            }
 
-        }
-        Line {
-            visible: Clawd.chatProvider !== "codex"
-            label: "model"
-            Field {
-                objectName: "clawdChatModel"
-                value: Clawd.chatModel
-                placeholder: Clawd.chatProvider === "api" ? "gpt-4o-mini" : "llama3.2"
-                onCommitted: text => { Config.setSetting("addonsV2ClawdChatModel", text); card.recheckChat(); }
+                }
+                Line {
+                    visible: Clawd.chatProvider !== "codex"
+                    label: "model"
+                    Field {
+                        objectName: "clawdChatModel"
+                        value: Clawd.chatModel
+                        placeholder: Clawd.chatProvider === "api" ? "gpt-4o-mini" : "llama3.2"
+                        onCommitted: text => { Config.setSetting("addonsV2ClawdChatModel", text); card.recheckChat(); }
+                    }
+                    T { visible: !card.compact; color: card.dim; text: "  ⎿ empty = default" }
+                }
+                Line {
+                    visible: Clawd.chatProvider !== "codex"
+                    label: "url"
+                    Field {
+                        objectName: "clawdChatUrl"
+                        cells: 32
+                        value: Clawd.chatUrl
+                        placeholder: Clawd.chatProvider === "api" ? "https://api.openai.com/v1" : "http://127.0.0.1:11434/v1"
+                        onCommitted: text => { Config.setSetting("addonsV2ClawdChatUrl", text); card.recheckChat(); }
+                    }
+                }
+                Line {
+                    visible: Clawd.chatProvider === "api"
+                    label: "api key"
+                    Field {
+                        id: keyField
+                        objectName: "clawdChatKey"
+                        secret: true
+                        placeholder: "paste key, Enter"
+                        onCommitted: text => {
+                            if (!text) return;
+                            keyWriter.running = true;
+                            keyWriter.write(text + "\n");
+                            keyField.input.text = "";
+                            keySaved.restart();
+                        }
+                    }
+                    T { color: card.dim; text: keySaved.running ? "  ⎿ saved" : card.compact ? "" : "  ⎿ stored in ~/.config/serpantinum/clawd/api-key" }
+                    Timer { id: keySaved; interval: 2500 }
+                    Process {
+                        id: keyWriter
+                        command: ["sh", "-c", "umask 077; d=\"${XDG_CONFIG_HOME:-$HOME/.config}/serpantinum/clawd\"; mkdir -p \"$d\" && head -n1 > \"$d/api-key\""]
+                        stdinEnabled: true
+                        onExited: card.recheckChat()
+                    }
+                }
+                Item { width: 1; height: card.lh * 0.5 }
+                Frame {
+                    T { text: ">"; color: card.accent; font.bold: true }
+                    Rectangle {
+                        x: 2 * card.cw; y: (card.lh - height) / 2
+                        width: card.cw; height: Math.round(card.lh * 0.9)
+                        color: card.ink
+                        visible: card.cursorOn || !card.animate
+                    }
+                    T {
+                        x: 4 * card.cw; width: parent.width - x; elide: Text.ElideRight
+                        color: card.faint; text: "try: quickshell -p <Shell.qml> ipc call clawd play sit"
+                    }
+                }
+                T { x: 2 * card.cw; width: parent.width - x; elide: Text.ElideRight; color: card.faint; text: "? drag him anywhere · right-click him for his menu" }
             }
-            T { visible: !card.compact; color: card.dim; text: "  ⎿ empty = default" }
-        }
-        Line {
-            visible: Clawd.chatProvider !== "codex"
-            label: "url"
-            Field {
-                objectName: "clawdChatUrl"
-                cells: 32
-                value: Clawd.chatUrl
-                placeholder: Clawd.chatProvider === "api" ? "https://api.openai.com/v1" : "http://127.0.0.1:11434/v1"
-                onCommitted: text => { Config.setSetting("addonsV2ClawdChatUrl", text); card.recheckChat(); }
-            }
-        }
-        Line {
-            visible: Clawd.chatProvider === "api"
-            label: "api key"
-            Field {
-                id: keyField
-                objectName: "clawdChatKey"
-                secret: true
-                placeholder: "paste key, Enter"
-                onCommitted: text => {
-                    if (!text) return;
-                    keyWriter.running = true;
-                    keyWriter.write(text + "\n");
-                    keyField.input.text = "";
-                    keySaved.restart();
+            Rectangle {
+                visible: card.folding
+                anchors.bottom: parent.bottom
+                width: parent.width; height: static_.height
+                gradient: Gradient {
+                    GradientStop { position: 0; color: Qt.alpha(card.color, 0) }
+                    GradientStop { position: 0.8; color: card.color }
                 }
             }
-            T { color: card.dim; text: keySaved.running ? "  ⎿ saved" : card.compact ? "" : "  ⎿ stored in ~/.config/serpantinum/clawd/api-key" }
-            Timer { id: keySaved; interval: 2500 }
-            Process {
-                id: keyWriter
-                command: ["sh", "-c", "umask 077; d=\"${XDG_CONFIG_HOME:-$HOME/.config}/serpantinum/clawd\"; mkdir -p \"$d\" && head -n1 > \"$d/api-key\""]
-                stdinEnabled: true
-                onExited: card.recheckChat()
-            }
-        }
-        Item { width: 1; height: card.lh * 0.5 }
-        Frame {
-            T { text: ">"; color: card.accent; font.bold: true }
-            Rectangle {
-                x: 2 * card.cw; y: (card.lh - height) / 2
-                width: card.cw; height: Math.round(card.lh * 0.9)
-                color: card.ink
-                visible: card.cursorOn || !card.animate
-            }
             T {
-                x: 4 * card.cw; width: parent.width - x; elide: Text.ElideRight
-                color: card.faint; text: "try: quickshell -p <Shell.qml> ipc call clawd play sit"
+                id: static_
+                visible: card.folding
+                anchors.bottom: parent.bottom
+                height: 5 * card.lh
+                lineHeightMode: Text.FixedHeight; lineHeight: card.lh
+                color: card.accent
+                text: visible ? card.noise(5, card.noiseTick) : ""
             }
+            Timer { interval: 45; repeat: true; running: card.folding && card.animate; onTriggered: card.noiseTick++ }
         }
-        T { x: 2 * card.cw; width: parent.width - x; elide: Text.ElideRight; color: card.faint; text: "? drag him anywhere · right-click him for his menu" }
     }
 }
