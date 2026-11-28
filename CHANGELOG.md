@@ -7,8 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
-- Snow Hush: the banner is redesigned as a riso-printed winter postcard. The artwork becomes a perforated stamp with a turning postmark, a snow globe is the on/off switch (it shakes when pressed, snows inside and across the card while on), and the engine's controls unfold in numbered sections: weather tiles, stepped gauges for intensity and opacity (opacity now reads low to high), accumulation pills and settings switches.
-- Snow Hush: the banner takes the colours of the active effect (snow, autumn, rain, cherry blossom, Christmas for New Year, Halloween): palette, falling particles (leaves, rain streaks, petals, gold sparks), tinted stamp and globe. Halloween and New Year are grouped with the Snow tile they depend on, and Mixed sits apart as a switch over all kinds. The globe gets a centred vector flake and a flared base. Settings switches no longer turn into captions after a toggle.
+- Snow Hush: the banner is redesigned. It sits on the shell's own surfaces, font and corner radius, with a title set in Shrikhand and the artwork as a perforated stamp with a turning postmark. A snow globe is the on/off switch (it shakes when pressed, snows inside and across the card while on), and the engine's controls unfold in panels: square weather buttons, staircase gauges for intensity and opacity (opacity now reads low to high), accumulation buttons and the shell's toggles.
+- Snow Hush: the banner takes the accent of the active effect (snow, autumn, rain, cherry blossom, Christmas, Halloween), with matching falling particles, stamp tint and globe emblem. Mixed sits apart as a switch over all kinds.
+- Snow Hush: Halloween and the New Year switch, now labelled Festive, fold into the Snow tile as two small seals while Snow is not picked, and roll out of it when it is. Pressing Snow again leaves plain snow.
+- Snow Hush: weather tiles no longer vanish, leaving only Snow, after the banner has been hidden or the engine republished its menu.
 - Snow Hush: building the engine shows its steps (tools, source, patch, crates, compile `n / total`, link, install) with a progress bar, elapsed time and a CPU notice; the compile runs at low priority, and a failed build offers its log. Older cached engine builds are removed after a successful one.
 
 ### Removed

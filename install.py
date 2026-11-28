@@ -1832,6 +1832,7 @@ PAYLOAD_FILES = {
     'AddonButtonEffect.qml': 'reusables/AddonButtonEffect.qml',
     'snowhush/SnowHush.qml': 'snowhush/SnowHush.qml',
     'snowhush/SnowHushCard.qml': 'snowhush/SnowHushCard.qml',
+    'snowhush/SnowHushEmblem.qml': 'snowhush/SnowHushEmblem.qml',
     'snowhush/SnowHushSurface.qml': 'snowhush/SnowHushSurface.qml',
 }
 # Upstream files that the payload replaces outright (they exist upstream, so uninstall restores rather than deletes them).
@@ -1966,7 +1967,7 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
                                (QS/'qmldir', ['AddonColorPicker 1.0 AddonColorPicker.qml', 'AddonMouseSpotlight 1.0 AddonMouseSpotlight.qml', 'AddonDesktopZoom 1.0 AddonDesktopZoom.qml',
                                               'AddonDesktopDraw 1.0 AddonDesktopDraw.qml', 'AddonAwake 1.0 AddonAwake.qml', 'AddonWindowOutline 1.0 AddonWindowOutline.qml',
                                               'singleton SnowHush 1.0 snowhush/SnowHush.qml', 'SnowHushCard 1.0 snowhush/SnowHushCard.qml',
-                                              'SnowHushSurface 1.0 snowhush/SnowHushSurface.qml'])]:
+                                              'SnowHushSurface 1.0 snowhush/SnowHushSurface.qml', 'SnowHushEmblem 1.0 snowhush/SnowHushEmblem.qml'])]:
         original = pending[path] if path in pending else (read(path) if path.exists() else '')
         original = original.replace(RETIRED_GLASS_DECLARATION, '')
         for declaration in declarations:
@@ -2065,9 +2066,10 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
             plan.blobs.append((path, blob, removing))
             if not removing:
                 plan.created.add(path)
-    snow_hush_art = 'snowhush/winter.jpg'
-    plan.blobs.append((QS/snow_hush_art, (SOURCE/'payload'/snow_hush_art).read_bytes(), False))
-    plan.created.add(QS/snow_hush_art)
+    for name in ('winter.jpg', 'Shrikhand-Regular.ttf', 'Shrikhand-OFL.txt'):
+        path = 'snowhush/' + name
+        plan.blobs.append((QS/path, (SOURCE/'payload'/path).read_bytes(), False))
+        plan.created.add(QS/path)
     plan.shader_dirs = [(QS/'seasonal/shaders', 'atmosphere', shader_name), (QS/'capri/shaders', 'sprite', sprite_name)]
     plan.options = options
     return plan
