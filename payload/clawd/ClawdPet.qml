@@ -1637,7 +1637,23 @@ Item {
     Timer { id: bubbleTimer; interval: 30000; onTriggered: if (pet.dreamPhase === "bubble") { pet.dreamPhase = ""; pet.dream = null; } }
     Timer { id: mumbleTimer; interval: 3500; onTriggered: pet.mumble = "" }
     Timer { id: drowsy; interval: pet.sleepAfter; onTriggered: { pet.tired = true; if (["sit", "perch"].indexOf(pet.mode) >= 0 || pet.mode === "idle" && pet.animation === "idle") pet.sleep(); } }
-    Timer { interval: 16; repeat: true; running: ["walk", "fall", "hop", "corpse", "climb", "shimmy", "act", "sleepwalk"].indexOf(pet.mode) >= 0 || pet.mode === "land" && pet.slide !== 0; onTriggered: pet.step() }
+    FrameAnimation {
+        readonly property real period: 1 / 60
+        property real pendingTime: 0
+        running: ["walk", "fall", "hop", "corpse", "climb", "shimmy", "act", "sleepwalk"].indexOf(pet.mode) >= 0
+            || (pet.mode === "land" && pet.slide !== 0)
+        onRunningChanged: pendingTime = 0
+        onTriggered: {
+            if (frameTime >= period * 0.7) {
+                pendingTime = 0;
+            } else {
+                pendingTime += frameTime;
+                if (pendingTime + 0.0005 < period) return;
+                pendingTime -= period;
+            }
+            pet.step();
+        }
+    }
     Timer { id: koTimer; interval: 1500; onTriggered: pet.respawn() }
     Timer { id: bonkTimer; interval: 380; onTriggered: pet.bonkUp() }
     Timer { interval: 2000; repeat: true; running: Clawd.world && Clawd.follow && !Clawd.lowMotion && !!pet.world; onTriggered: pet.follow() }

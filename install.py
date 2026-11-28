@@ -22,6 +22,7 @@ import tempfile
 import urllib.error
 import urllib.request
 import agenda
+import animation_perf
 import capri
 import desktop_glass
 import clawd
@@ -1902,6 +1903,10 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
 
     def staged(path):
         return pending[path] if path in pending else read(path)
+
+    for path, transform in animation_perf.transformations(QS).items():
+        if path.is_file():
+            pending[path] = patch_file(path, transform, staged(path))
 
     for companion in COMPANIONS:
         removing = options[companion.option]

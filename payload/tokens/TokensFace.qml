@@ -126,7 +126,7 @@ Item {
                 GradientStop { position: 0.5; color: ThemeBackend.primary }
                 GradientStop { position: 1; color: "transparent" }
             }
-            XAnimator on x {
+            NumberAnimation on x {
                 from: -sweep.width
                 to: card.width
                 duration: 1600
@@ -195,6 +195,7 @@ Item {
                     Layout.preferredHeight: Scaler.s(10)
                     Rectangle {
                         id: halo
+                        visible: Tokens.active
                         anchors.centerIn: parent
                         width: parent.width
                         height: width
@@ -206,8 +207,8 @@ Item {
                         ParallelAnimation {
                             running: Tokens.active && root.visible
                             loops: Animation.Infinite
-                            ScaleAnimator { target: halo; from: 0.8; to: 2.4; duration: 1300; easing.type: Easing.OutCubic }
-                            OpacityAnimator { target: halo; from: 0.8; to: 0; duration: 1300; easing.type: Easing.OutCubic }
+                            NumberAnimation { target: halo; property: "scale"; from: 0.8; to: 2.4; duration: 1300; easing.type: Easing.OutCubic }
+                            NumberAnimation { target: halo; property: "opacity"; from: 0.8; to: 0; duration: 1300; easing.type: Easing.OutCubic }
                         }
                     }
                     Rectangle {

@@ -24,7 +24,6 @@ FocusScope {
     property bool caretOn: true
     property int letters: 0
     property real messageAt: -1
-    property real enteredAt: 0
     property real counter: 1
     property real faceShift: 0
     width: Math.min(engine.width - 28, msg.chat ? Math.max(320, Math.min(420,engine.width*.24)) : msg.reply ? Math.max(340, Math.min(520, engine.width * .3)) : report ? Math.max(340, Math.min(440, engine.width * .26)) : Math.max(290, Math.min(380, engine.width * .21)))
@@ -41,12 +40,12 @@ FocusScope {
     function refresh() {
         letters = reduced ? String(msg.line || "").length : 0;
         decoded = reduced ? String(msg.line || "") : "";
-        enteredAt = Date.now();
         counter = reduced ? 1 : 0;
         if (visible && !reduced) {
             enter.restart();
             decode.restart();
-            counts.restart();
+            if (report) counts.restart();
+            else counts.stop();
             glitch.restart();
         } else {
             decode.stop();
@@ -127,15 +126,13 @@ FocusScope {
         interval:600;repeat:true;running:panel.visible && !!panel.msg.chatBusy && !panel.reduced
         onTriggered:panel.caretOn=!panel.caretOn
     }
-    Timer {
+    NumberAnimation {
         id: counts
-        interval: 83
-        repeat: true
-        onTriggered: {
-            panel.counter = Math.min(1, (Date.now() - panel.enteredAt) / 1000);
-            if (panel.counter >= 1)
-                stop();
-        }
+        target: panel
+        property: "counter"
+        from: 0
+        to: 1
+        duration: 1000
     }
     CapriPlate {
         anchors.fill: parent

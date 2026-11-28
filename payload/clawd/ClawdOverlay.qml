@@ -146,7 +146,7 @@ PanelWindow {
 
     // The effort clock (seconds) and the sparks around him for the electric, gold and space looks.
     property real tintTime: 0
-    Timer { interval: 40; repeat: true; running: !!Clawd.effortStyle && !Clawd.lowMotion && viewport.visible; triggeredOnStart: true; onTriggered: overlay.tintTime = (Date.now() / 1000) % 4096 }
+    FrameAnimation { running: !!Clawd.effortStyle && Clawd.effortStyle.mode > 0 && !Clawd.lowMotion && viewport.visible; onTriggered: overlay.tintTime = (Date.now() / 1000) % 4096 }
     // What floats around him at the top efforts (electric, gold, space): shaders/aura.frag over his sprite grown by a margin.
     ShaderEffect {
         id: aura

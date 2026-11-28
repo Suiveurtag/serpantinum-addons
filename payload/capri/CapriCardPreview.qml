@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Effects
 
-// Independent of the desktop engine and its shared JS clock. Draws at 24 fps like fx.js, most motion on twos.
+// Face cuts and graphic accents keep their drawing cadence while position and scale follow the display.
 Item {
     id: art
     enabled: false
@@ -12,6 +12,7 @@ Item {
     readonly property real k: host.rootObj.s(1)
     readonly property real cx: host.faceX + host.faceSide / 2
     readonly property real cy: host.height / 2
+    property real motionFrame: 0
     property int frame: 0
     property int face: 0
     property int glitchUntil: -1
@@ -19,9 +20,18 @@ Item {
     property var shards: []
     property var wedges: []
     property var bursts: []
+    property var slices: []
 
     function rnd(a, b) { return a + Math.random() * (b - a); }
     function pick(list) { return list[Math.floor(Math.random() * list.length)]; }
+    function glitchSlices() {
+        const next = [];
+        for (let i = 0; i < 7; i++) {
+            next.push({x: rnd(-0.3, 0.6), y: rnd(0, 1), w: rnd(0.3, 1.1) * 0.5, h: rnd(2, 7),
+                color: pick(["#ff2152", "#36ff7a", "#7b3dff", "#fff4f6"])});
+        }
+        slices = next;
+    }
     function burst() {
         for (let i = 0; i < 26; i++) {
             const a = rnd(0, Math.PI * 2), v = rnd(220, 680) * k;
@@ -29,6 +39,7 @@ Item {
                 len: rnd(10, 36) * k, wid: rnd(3, 10) * k, color: pick(["#ff2152", "#ff2152", "#ff2152", "#14101c", "#36ff7a", "#fff4f6"]), born: frame, life: Math.round(rnd(6, 15))});
         }
         glitchUntil = frame + 6;
+        glitchSlices();
     }
     function step() {
         frame++;
@@ -49,9 +60,16 @@ Item {
                 next.push({a: rnd(0, Math.PI * 2), half: rnd(0.008, 0.026), tip: inner * rnd(1, 1.6), color: pick(["#fff4f6", "#fff4f6", "#fff4f6", "#7b3dff", "#ff2152"])});
             wedges = next;
         }
-        fx.requestPaint();
+        if (glitch) glitchSlices();
     }
-    Timer { interval: 42; repeat: true; running: art.visible; onTriggered: art.step() }
+    FrameAnimation {
+        running: art.visible
+        onTriggered: {
+            art.motionFrame += Math.min(frameTime, 0.1) / 0.042;
+            while (art.frame < Math.floor(art.motionFrame)) art.step();
+            fx.requestPaint();
+        }
+    }
     Component.onCompleted: if (Date.now() - host.ignitedAt < 600) burst()
 
     // the cut-in band: ink, face zooming slowly, red/violet misregistered copies while glitching
@@ -65,11 +83,11 @@ Item {
             Image {
                 required property int index
                 required property string modelData
-                readonly property real zoom: 1 + 0.08 * (art.frame % 86) / 86
+                readonly property real zoom: 1 + 0.08 * (art.motionFrame % 86) / 86
                 readonly property real shake: art.glitch ? ((art.frame * 7) % 9 - 4) * art.k : 0
                 width: art.host.faceSide * zoom; height: width
                 x: art.cx - width / 2 + shake + (modelData === "" ? 0 : (index ? -8 : 8) * art.k * (art.glitch ? 1.6 : 0.5))
-                y: art.cy - height / 2 + Math.round(Math.sin(Math.floor(art.frame / 2) / 6) * 3) * art.k + (index === 0 ? 4 * art.k : 0)
+                y: art.cy - height / 2 + Math.sin(art.motionFrame / 12) * 3 * art.k + (index === 0 ? 4 * art.k : 0)
                 source: Qt.resolvedUrl("assets/" + art.faces[art.face] + ".png"); sourceSize: Qt.size(art.host.faceSide, art.host.faceSide)
                 z: modelData === "" ? 1 : 0
                 smooth: true; mipmap: true
@@ -103,7 +121,7 @@ Item {
             c.closePath(); c.fill();
         }
         onPaint: {
-            const c = getContext("2d"), k = art.k, f = art.frame;
+            const c = getContext("2d"), k = art.k, f = art.motionFrame;
             c.reset();
             // manga focus lines around her face, kept inside the band
             c.save(); band(c); c.clip();
@@ -128,10 +146,10 @@ Item {
             // red top bar of the cut-in
             c.fillStyle = "#ff2152";
             c.beginPath(); c.moveTo(art.host.bandX, 0); c.lineTo(width, 0); c.lineTo(width, 4 * k); c.lineTo(art.host.bandX - art.host.skew * 4 * k / height, 4 * k); c.closePath(); c.fill();
-            // mane shards drift up and across the card, moved on twos
+            // Mane shards drift up and across the card with the original stepped fade.
             for (const s of art.shards) {
                 const t = (Math.floor((f - s.born) / 2) * 2) / s.life, age = (f - s.born) * 0.042;
-                const p = {x: Math.round(s.x + s.vx * age), y: Math.round(s.y + s.vy * age), rot: s.rot, wid: s.wid * (t > 0.6 ? (1 - t) / 0.4 : 1)};
+                const p = {x: s.x + s.vx * age, y: s.y + s.vy * age, rot: s.rot, wid: s.wid * (t > 0.6 ? (1 - t) / 0.4 : 1)};
                 const len = s.len * (t > 0.6 ? (1 - t) / 0.4 : 1);
                 shard(c, p, len, -2 * k, 2 * k, "#7b3dff");
                 shard(c, p, len, 0, 0, s.color);
@@ -162,9 +180,9 @@ Item {
             // glitch slices across the whole card
             if (art.glitch) {
                 c.globalAlpha = 0.9;
-                for (let i = 0; i < 7; i++) {
-                    c.fillStyle = art.pick(["#ff2152", "#36ff7a", "#7b3dff", "#fff4f6"]);
-                    c.fillRect(art.rnd(-0.3, 0.6) * width, art.rnd(0, height), art.rnd(0.3, 1.1) * width * 0.5, art.rnd(2, 7) * k);
+                for (const slice of art.slices) {
+                    c.fillStyle = slice.color;
+                    c.fillRect(slice.x * width, slice.y * height, slice.w * width, slice.h * k);
                 }
             }
         }
