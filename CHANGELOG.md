@@ -6,7 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Christmas: a new seasonal banner at the top of Addons → Banners. A glass bauble is the switch; it lights a string of C9 bulbs across the banner and opens the last door of an Advent calendar on Viggo Johansen's *Glade jul* (1891, public domain), and a garland drops over every screen. Across the shell: fairy lights in every bar section, panels that open like presents (satin ribbons, a bow that pops in gold stars, holly on a corner), frost on hovered settings rows, a candlelight glint and gold stars on buttons (a bell swing on icon buttons, a cracker on hold-to-confirm buttons), lights that run around a window as it takes the focus, and a satin sash on notifications. Four light styles (Classic, Warm white, Candy cane, Nordic), a Twinkle switch and a switch per area. No falling snow. IPC `christmas`; `--without-christmas` removes it.
+
 ### Changed
+- Snow Hush: Accumulate has separate Widgets, Bar and Shell surfaces switches (the two new ones start with the value Shell surfaces had). The engine rebuilds once.
+- Snow Hush: snow follows the shape of round widgets (circle gauges, dials, discs, the round weather pill) and falls through widgets without a background, such as simple lyrics.
 - Clawd: while he is off, the banner folds down to its terminal header, one text row at a time behind a front of ASCII static, and unfolds the same way when he wakes. The on/off control is now a large ╔═╗ button at the right of the header (centred underneath on a narrow card).
 - Snow Hush: the banner is redesigned. It sits on the shell's own surfaces, font and corner radius, with a title set in Shrikhand and the artwork as a perforated stamp with a turning postmark. A snow globe is the on/off switch (it shakes when pressed, snows inside and across the card while on), and the engine's controls unfold in panels: square weather buttons, staircase gauges for intensity and opacity (opacity now reads low to high), accumulation buttons and the shell's toggles.
 - Snow Hush: the banner takes the accent of the active effect (snow, autumn, rain, cherry blossom, Christmas, Halloween), with matching falling particles, stamp tint and globe emblem. Mixed sits apart as a switch over all kinds.

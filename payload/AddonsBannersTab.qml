@@ -50,6 +50,9 @@ Item {
         ColumnLayout {
             id: settings; width: parent.width; spacing: rootObj.s(8)
             BannerDivider { label: "ACTIVE" }
+            // BEGIN serpantinum-christmas-v2 option
+            ChristmasSettings { rootObj: root.rootObj; Layout.bottomMargin: rootObj.s(6) }
+            // END serpantinum-christmas-v2 option
             SnowHushCard { rootObj: root.rootObj; Layout.bottomMargin: rootObj.s(6) }
             // BEGIN serpantinum-clawd-v2 option
             ClawdSettings { rootObj: root.rootObj; viewport: addonsViewport; Layout.bottomMargin: rootObj.s(6) }

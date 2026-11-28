@@ -1,0 +1,10 @@
+{
+  "frost": {
+    "source_sha256": "96f3f5d34682c2adbb4b09fe43ac6d0d70ca4e80b8d2ced41a8ae80023b5f94c",
+    "package_sha256": "4c64078f6c72501b8e7995a6d2d9d09d75ca6a5c1db7827560229b4a63dc1986"
+  },
+  "lights": {
+    "source_sha256": "0b5b85b73c96c1d6011e8d43a0b0689ff0576a3635099e7c53b7162ff8bcfd3c",
+    "package_sha256": "53f90c08394e273ee96bbdd5e5963c667afa850b8faa0b3cf460fc142dee3e6d"
+  }
+}

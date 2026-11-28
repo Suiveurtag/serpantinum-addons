@@ -14,6 +14,7 @@ from test_changes import ROOT, control, installer
 
 sys.path.insert(0, str(ROOT))
 import capri  # noqa: E402
+import christmas  # noqa: E402
 import seasonal  # noqa: E402
 
 SCRIPTS = ROOT/'scripts/capri'
@@ -284,6 +285,11 @@ QtObject {
                 shutil.copytree(installer.QS/'reusables', fixture/'reusables')
                 shutil.copytree(ROOT/'payload/seasonal', fixture/'seasonal')
                 (fixture/'qmldir').write_text(seasonal.patch_qmldir((fixture/'qmldir').read_text()) + 'singleton Caching 1.0 Caching.qml\nsingleton Sounds 1.0 Sounds.qml\n')
+                # the installed buttons and rows carry the Christmas hooks
+                for path, blob in christmas.resources(ROOT/'payload/christmas', fixture):
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(blob)
+                (fixture/'qmldir').write_text(christmas.patch_qmldir((fixture/'qmldir').read_text()))
                 (fixture/'Caching.qml').write_text('pragma Singleton\nimport QtQuick\nQtObject { property string mainQml: "' + str(fixture/'Shell.qml') + '" }\n')
                 (fixture/'Sounds.qml').write_text('pragma Singleton\nimport QtQuick\nQtObject { function playSfx(path) {} }\n')
                 (fixture/'I18n.qml').write_text('pragma Singleton\nimport QtQuick\nQtObject { function t(key) { return key; } property string currentLang: "en"; property bool rtl: false; readonly property int layoutDirection: rtl ? Qt.RightToLeft : Qt.LeftToRight; readonly property int textAlignment: rtl ? Qt.AlignRight : Qt.AlignLeft }\n')

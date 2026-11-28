@@ -22,6 +22,7 @@ ADDONS = [
     ("clawd", "Clawd", "desktop pet with chat"),
     ("capri", "Capri", "AI assistant"),
     ("halloween", "Halloween", "seasonal effects"),
+    ("christmas", "Christmas", "seasonal lights and decorations"),
     ("tokens", "AI Tokens", "usage collector"),
     ("calendar", "Calendar", "Google Calendar & iCal agenda"),
     ("beamer", "Beamer", "KVM mouse/keyboard sharing"),
