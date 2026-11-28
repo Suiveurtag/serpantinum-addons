@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- Clawd: while he is off, the banner folds down to its terminal header, one text row at a time behind a front of ASCII static, and unfolds the same way when he wakes. The on/off control is now a large ╔═╗ button in the middle of the header.
 - Snow Hush: the banner is redesigned. It sits on the shell's own surfaces, font and corner radius, with a title set in Shrikhand and the artwork as a perforated stamp with a turning postmark. A snow globe is the on/off switch (it shakes when pressed, snows inside and across the card while on), and the engine's controls unfold in panels: square weather buttons, staircase gauges for intensity and opacity (opacity now reads low to high), accumulation buttons and the shell's toggles.
 - Snow Hush: the banner takes the accent of the active effect (snow, autumn, rain, cherry blossom, Christmas, Halloween), with matching falling particles, stamp tint and globe emblem. Mixed sits apart as a switch over all kinds.
 - Snow Hush: Halloween and the New Year switch, now labelled Festive, fold into the Snow tile as two small seals while Snow is not picked, and roll out of it when it is. Pressing Snow again leaves plain snow.

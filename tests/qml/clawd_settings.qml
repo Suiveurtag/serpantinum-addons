@@ -54,12 +54,13 @@ ShellRoot {
                 test.expect(!!card && !!Clawd.manifest && card.height > 0, "card and manifest");
                 test.expect(!!test.searchItems.addons_clawd, "search registration");
                 test.expect(card.animate, "animates while visible");
-                test.realClick("clawdSummon");
-                test.expect(get("addonsV2ClawdSummon", 0) === 0, "summon disabled while off");
+                test.expect(!test.find(settings, "clawdOptions").visible && !test.find(settings, "clawdSummon").enabled, "options folded while off");
                 test.realClick("clawdEnable");
                 break;
             case 1:
+                if (card.open < 1) { test.step--; break; }   // clipped rows take no clicks until unfolded
                 test.expect(get("addonsV2Clawd", false) === true && Clawd.enabled, "enable writes addonsV2Clawd");
+                test.expect(test.find(settings, "clawdOptions").visible, "options unfold when on");
                 test.click("clawdScaleUp"); test.expect(get("addonsV2ClawdScale", 0) === 5, "scale up");
                 for (let i = 0; i < 6; i++) test.click("clawdScaleUp");
                 test.expect(get("addonsV2ClawdScale", 0) === 8 && Clawd.scale === 8, "scale clamps at 8");
