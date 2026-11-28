@@ -23,7 +23,6 @@ import urllib.error
 import urllib.request
 import agenda
 import capri
-import desktop_glass
 import clawd
 import bar_outline
 import bootintro
@@ -1665,6 +1664,10 @@ EDGE_GUARD_BEGIN = '            // BEGIN serpantinum-addons-v2 beamer edge guard
 EDGE_GUARD_END = '            // END serpantinum-addons-v2 beamer edge guard\n'
 
 
+def remove_desktop_glass(text):
+    return re.sub(r'(?ms)^[ \t]*// BEGIN serpantinum-addons-v2 desktop glass\n.*?^[ \t]*// END serpantinum-addons-v2 desktop glass\n\n?', '', text)
+
+
 def remove_beamer_edge_guard(text):
     text = patch_floating(text)
     while EDGE_GUARD_BEGIN in text:
@@ -1773,7 +1776,6 @@ PAYLOAD_FILES = {
     **{name + '.qml': 'guide/' + name + '.qml' for name in ('AddonCursorSettings', 'AddonCursorPreview', 'AddonCursorRole', 'AddonCursorTestArea')},
     'AddonPaletteEditor.qml': 'guide/theme/AddonPaletteEditor.qml',
     'AddonGlassSurface.qml': 'reusables/AddonGlassSurface.qml',
-    'AddonDesktopGlass.qml': 'AddonDesktopGlass.qml',
     'AddonButtonEffect.qml': 'reusables/AddonButtonEffect.qml',
 }
 # Upstream files that the payload replaces outright (they exist upstream, so uninstall restores rather than deletes them).
@@ -1782,6 +1784,8 @@ OVERWRITES = ('calendar/CalendarPopup.qml',)
 WALLPAPER_FILES = ('singletons/theme/Wallpaper.qml', 'wallpaper/WallpaperEngine.qml', 'reusables/display/WallpaperBlur.qml')
 RETIRED_WALLPAPER_MARKER = 'BEGIN serpantinum-wallpaper-engine'
 BANNER_TAB = 'guide/AddonsBannersTab.qml'
+RETIRED_GLASS_MARKER = 'BEGIN serpantinum-addons-v2 desktop glass'
+RETIRED_GLASS_DECLARATION = 'singleton AddonDesktopGlass 1.0 AddonDesktopGlass.qml\n'
 
 
 class Plan:
@@ -1827,8 +1831,11 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
                 raise InstallError(f'Cannot restore {show_path(path)} from Serpantinum {commit}: {error}', show_path(path), 'wallpaper', 'Go online or set SERPANTINUM_UPSTREAM_CACHE, then run the installer again. Nothing was modified.') from error
             if blob is None: raise InstallError(f'Cannot restore {show_path(path)}: missing upstream copy', show_path(path), 'wallpaper', 'Run the installer again once Serpantinum is reachable.')
             pending[path] = blob.decode('utf-8')
+    # Retired live desktop glass: strip what an earlier install left behind.
     glass_path = QS/'reusables/display/WallpaperBlur.qml'
-    pending[glass_path] = patch_file(glass_path, desktop_glass.patch, pending.get(glass_path))
+    if glass_path.is_file() and RETIRED_GLASS_MARKER in (pending.get(glass_path) or read(glass_path)):
+        pending[glass_path] = patch_file(glass_path, remove_desktop_glass, pending.get(glass_path))
+    plan.blobs.append((QS/'AddonDesktopGlass.qml', b'', True))
     plan.screenshot = QS.parent/'scripts/screenshot.sh'
     text = patch_file(plan.screenshot, patch_screenshot_script)
     text = patch_file(plan.screenshot, patch_screenshot_cleanup, text)
@@ -1892,9 +1899,10 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
                                (QS/'reusables/qmldir', ['AddonGlassSurface 1.0 AddonGlassSurface.qml', 'AddonButtonEffect 1.0 AddonButtonEffect.qml']),
                                (QS/'guide/qmldir', [c + ' 1.0 ' + c + '.qml' for c in ('AddonCursorSettings', 'AddonCursorPreview', 'AddonCursorRole', 'AddonCursorTestArea')] + ['DnsControl 1.0 DnsControl.qml']),
                                (QS/'network/qmldir', ['DnsControl 1.0 DnsControl.qml']),
-                               (QS/'qmldir', ['singleton AddonDesktopGlass 1.0 AddonDesktopGlass.qml', 'AddonColorPicker 1.0 AddonColorPicker.qml', 'AddonMouseSpotlight 1.0 AddonMouseSpotlight.qml', 'AddonDesktopZoom 1.0 AddonDesktopZoom.qml',
+                               (QS/'qmldir', ['AddonColorPicker 1.0 AddonColorPicker.qml', 'AddonMouseSpotlight 1.0 AddonMouseSpotlight.qml', 'AddonDesktopZoom 1.0 AddonDesktopZoom.qml',
                                               'AddonDesktopDraw 1.0 AddonDesktopDraw.qml', 'AddonAwake 1.0 AddonAwake.qml', 'AddonWindowOutline 1.0 AddonWindowOutline.qml'])]:
         original = pending[path] if path in pending else (read(path) if path.exists() else '')
+        original = original.replace(RETIRED_GLASS_DECLARATION, '')
         for declaration in declarations:
             if declaration not in original:
                 original = original.rstrip() + '\n' + declaration + '\n'
