@@ -2008,6 +2008,8 @@ def build_plan(without_halloween=False, without_capri=False, without_clawd=False
     wrapper = QS/'calendar/CalendarPopup.qml'
     pending[wrapper] = patch_file(wrapper, agenda.remove if without_calendar else agenda.patch_wrapper, pending[wrapper])
     pending[native_calendar] = patch_file(native_calendar, agenda.remove if without_calendar else agenda.patch_native, pending[native_calendar])
+    pending[wrapper] = patch_file(wrapper, christmas.remove if without_christmas else christmas.patch_calendar_wrapper, pending[wrapper])
+    pending[native_calendar] = patch_file(native_calendar, christmas.remove if without_christmas else christmas.patch_native_calendar, pending[native_calendar])
     dashboard = QS/'calendar/Dashboard.qml'
     if dashboard.is_file():
         def focus_dashboard(text):

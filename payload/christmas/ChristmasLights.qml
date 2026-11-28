@@ -25,6 +25,11 @@ Item {
     property real lit: 0
     property bool keepDark: false       // draw the unlit string while off
     property int style: Christmas.lightsIndex
+    property bool randomStyle: Christmas.randomLights
+    readonly property int randomStyleIndex: Math.floor(Math.random() * 4)
+    property bool ready: false
+    onStyleChanged: if (ready && !randomStyle) relight()
+    onRandomStyleChanged: if (ready) relight()
     readonly property bool shown: visible && width > 1 && height > 1 && (on || lit > 0.001 || keepDark)
 
     function relight(): void {
@@ -46,6 +51,7 @@ Item {
         }
     }
     Component.onCompleted: {
+        ready = true;
         if (on) {
             if (Christmas.motion && !instant) rise.restart();
             else lit = 1;
@@ -80,7 +86,7 @@ Item {
         readonly property real lit: string.lit
         readonly property real origin: string.origin
         readonly property real inward: string.inward ? 1 : 0
-        readonly property real lights: string.style
+        readonly property real lights: string.randomStyle ? string.randomStyleIndex : string.style
         readonly property real glow: string.glow
         readonly property real seed: string.seed
         readonly property color wireColor: string.wireColor

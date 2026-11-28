@@ -1,4 +1,8 @@
 {
+  "freeze": {
+    "source_sha256": "9ae10361ff87be760f82ab2769a97bae335078d9412b37ba42b09e720779a95b",
+    "package_sha256": "3e3687cb0efac165bfe39e97b5cee09c59a232a877d5c9f4897db25a8043dc59"
+  },
   "frost": {
     "source_sha256": "de9d5e05f54a0ff9b40a31f9021a16ad675f5fb19989e13557a3e14eb103b2b7",
     "package_sha256": "2b65a7574711cb98e338c2592028f843ad51e1f99352ad4c6d84e2313d7f0b88"

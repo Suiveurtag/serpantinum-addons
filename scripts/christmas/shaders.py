@@ -30,7 +30,7 @@ def check():
 
 
 def build():
-    compiler = shutil.which('qsb') or '/usr/lib/qt6/bin/qsb'
+    compiler = shutil.which('qsb') or shutil.which('qsb-qt6') or '/usr/lib/qt6/bin/qsb'
     manifest = {}
     for source in sources():
         package = SHADERS/(source.name + '.qsb')

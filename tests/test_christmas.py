@@ -112,7 +112,7 @@ class ChristmasResourceTests(unittest.TestCase):
         for key in ('addonsV2Christmas"', 'addonsV2ChristmasLights', 'addonsV2ChristmasTwinkle', 'addonsV2ChristmasFx.', 'addonsV2ChristmasOpacity"'):
             self.assertIn(key, singleton)
         handler = singleton[singleton.index('IpcHandler {'):]
-        self.assertEqual(sorted(re.findall(r'function (\w+)\(', handler)), ['intro', 'setArea', 'setEnabled', 'setLights', 'setOpacity', 'status', 'toggle'])
+        self.assertEqual(sorted(re.findall(r'function (\w+)\(', handler)), ['intro', 'previewFreeze', 'setArea', 'setEnabled', 'setLights', 'setOpacity', 'status', 'toggle'])
         self.assertIn('target: "christmas"', handler)
 
 

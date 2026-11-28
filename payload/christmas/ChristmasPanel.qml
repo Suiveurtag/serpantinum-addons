@@ -2,8 +2,8 @@ import QtQuick
 import "../"
 
 // A panel opens like a present. Two satin ribbons cross it with a bow on the knot; the bow pops, the ribbons are
-// pulled apart toward the edges and the bow flies off in a puff of gold. Then a sprig of holly settles on the corner
-// away from the bar and stays there while the panel is open. On closing the holly folds up, whatever is still in
+// pulled apart toward the edges and the bow flies off in a puff of gold. Then, more often than not, a sprig of holly
+// settles on a corner away from the bar and stays there while the panel is open. On closing the holly folds up, whatever is still in
 // flight fades, and the host sends the panel off as a parcel (ChristmasSendOff). Sits over the panel in a
 // window-sized layer, never takes input, and is static between the two.
 Item {
@@ -27,16 +27,30 @@ Item {
     property real veil: 1               // fades the whole layer out while the panel leaves
     readonly property real sheer: Christmas.effectOpacity   // of the wrapping; the holly stays solid
 
+    // The holly is left to chance on each opening: whether it comes, and on which corner away from the bar.
+    // Settings always gets its sprig, top left.
+    property bool sprig: true
+    property string corner: "top-left"
+    function roll(): void {
+        if (scene === "guide") { sprig = true; corner = "top-left"; return; }
+        const corners = edge === "top" ? ["bottom-left", "bottom-right"] : edge === "bottom" ? ["top-left", "top-right"]
+            : edge === "left" ? ["top-right", "bottom-right"] : edge === "right" ? ["top-left", "bottom-left"]
+            : ["top-left", "top-right", "bottom-left", "bottom-right"];
+        sprig = Math.random() < 0.7;
+        corner = corners[Math.floor(Math.random() * corners.length)];
+    }
+
     function play(): void {
         if (!open) return;
         Christmas.panelOpened(screenName);
         fold.stop();
         veil = 1;
-        if (!Christmas.motion) { t = 1; sprigGrowth = 1; return; }
+        if (!Christmas.motion) { roll(); t = 1; sprigGrowth = 1; return; }
         if (!Christmas.allow("unwrap", 260)) {
-            if (!unwrap.running) { t = 1; sprigGrowth = 1; }
+            if (!unwrap.running) { roll(); t = 1; sprigGrowth = 1; }
             return;
         }
+        roll();
         unwrap.restart();
     }
     function leave(): void {
@@ -146,10 +160,8 @@ Item {
     // ── holly on the far corner ──────────────────────────────────────────────
     ChristmasHolly {
         readonly property real size: gift.unit * 64
-        readonly property string corner: gift.edge === "top" ? "bottom-left" : gift.edge === "bottom" ? "top-left"
-            : gift.edge === "left" ? "bottom-right" : gift.edge === "right" ? "bottom-left" : "top-left"
-        readonly property bool atRight: corner.indexOf("right") >= 0
-        readonly property bool atBottom: corner.indexOf("bottom") >= 0
+        readonly property bool atRight: gift.corner.indexOf("right") >= 0
+        readonly property bool atBottom: gift.corner.indexOf("bottom") >= 0
         readonly property real inset: Math.max(gift.unit * 6, gift.cornerRadius * 0.45)
         width: size; height: size
         x: gift.panelRect.x + (atRight ? gift.panelRect.width - inset : inset) - size / 2
@@ -157,6 +169,6 @@ Item {
         rotation: (atRight ? 1 : -1) * (atBottom ? 1 : -1) * 12 * (1 - gift.sprigGrowth)
         grown: gift.sprigGrowth
         opacity: gift.veil
-        visible: gift.sprigGrowth > 0 && gift.veil > 0 && gift.panelRect.width > size * 2
+        visible: gift.sprig && gift.sprigGrowth > 0 && gift.veil > 0 && gift.panelRect.width > size * 2
     }
 }

@@ -17,14 +17,30 @@ Scope {
     }
     readonly property int lightsIndex: styles.indexOf(lights)
     readonly property bool twinkle: Config.getSetting("addonsV2ChristmasTwinkle", true) !== false
+    readonly property bool randomLights: Config.getSetting("addonsV2ChristmasRandomLights", false) === true
     readonly property var styles: ["classic", "warm", "candy", "nordic"]
-    readonly property var areas: ["bar", "panels", "settings", "buttons", "windows", "notifications"]
+    readonly property var areas: ["bar", "system", "network", "launcher", "calendar", "widgets", "panels", "settings", "buttons", "windows", "notifications"]
+
+    // The weather now is below freezing, in whatever unit it is reported.
+    property bool freezePreview: false      // IPC: see the ice without waiting for the cold
+    readonly property bool freezing: {
+        if (freezePreview) return true;
+        const data = Weather.data;
+        if (!data || data.offline || data.current_temp === undefined || data.current_temp === null) return false;
+        const point = Weather.unit === "imperial" ? 32 : Weather.unit === "standard" ? 273.15 : 0;
+        return Number(data.current_temp) < point;
+    }
 
     // Areas default to on; each can be switched off from the banner. An area stays loaded a moment after the switch
     // goes off (`present`), so its lights can go out instead of vanishing; effects that start something check `enabled`.
     function area(name: string): bool { return Config.getSetting("addonsV2ChristmasFx." + name, true) !== false; }
     function setArea(name: string, value: bool): void { Config.setSetting("addonsV2ChristmasFx." + name, value); }
     readonly property bool bar: present && area("bar")
+    readonly property bool system: present && area("system")
+    readonly property bool network: present && area("network")
+    readonly property bool launcher: present && area("launcher")
+    readonly property bool calendar: present && area("calendar")
+    readonly property bool widgets: present && area("widgets")
     readonly property bool panels: present && area("panels")
     readonly property bool settings: present && area("settings")
     readonly property bool buttons: present && area("buttons")
@@ -116,8 +132,9 @@ Scope {
         function setArea(name: string, value: bool): void { if (xmas.areas.indexOf(name) >= 0) xmas.setArea(name, value); }
         function setOpacity(percent: int): void { xmas.setEffectOpacity(percent / 100); }
         function intro(): void { if (xmas.enabled) { xmas.introSerial++; xmas.lightsOnSerial++; } }
+        function previewFreeze(value: bool): void { xmas.freezePreview = value; }
         function status(): string {
-            return JSON.stringify({ enabled: xmas.enabled, motion: xmas.motion, lights: xmas.lights, twinkle: xmas.twinkle,
+            return JSON.stringify({ enabled: xmas.enabled, motion: xmas.motion, lights: xmas.lights, twinkle: xmas.twinkle, freezing: xmas.freezing,
                 areas: xmas.areas.reduce((all, name) => { all[name] = xmas[name]; return all; }, {}),
                 clockUsers: xmas.clockUsers, introSerial: xmas.introSerial });
         }

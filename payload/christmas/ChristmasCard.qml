@@ -73,7 +73,7 @@ Item {
         NumberAnimation { target: card; property: "unfold"; from: 0; to: 1; duration: 950; easing.type: Easing.OutCubic }
     }
 
-    // the candles in the painting flicker on the lights' clock
+    // Keep the shared clock running for the banner accents.
     property bool clocked: lively
     property bool registered: false
     onClockedChanged: syncClock()
@@ -261,6 +261,13 @@ Item {
                         on: Christmas.twinkle
                         onFlipped: Config.setSetting("addonsV2ChristmasTwinkle", !Christmas.twinkle)
                     }
+                    SwitchRow {
+                        Layout.fillWidth: true
+                        text: qsTr("Random")
+                        detail: qsTr("Each light decoration gets a random style")
+                        on: Christmas.randomLights
+                        onFlipped: Config.setSetting("addonsV2ChristmasRandomLights", !Christmas.randomLights)
+                    }
                 }
 
                 Section {
@@ -282,8 +289,13 @@ Item {
                         Repeater {
                             model: [
                                 { key: "bar", name: qsTr("Bar garland"), detail: qsTr("Fairy lights hang in every bar section") },
+                                { key: "system", name: qsTr("Fireside system panel"), detail: qsTr("The battery box burns with your power profile") },
+                                { key: "network", name: qsTr("Network garlands"), detail: qsTr("Lights run from a wreathed hub to each device") },
+                                { key: "launcher", name: qsTr("Launcher baubles"), detail: qsTr("Each letter hangs a bauble; erasing breaks it") },
+                                { key: "calendar", name: qsTr("Festive clock & calendar"), detail: qsTr("A lit arch and star on the clock, lights on the calendar") },
+                                { key: "widgets", name: qsTr("Decorated widgets"), detail: qsTr("Lights, holly and bows on desktop widgets") },
                                 { key: "panels", name: qsTr("Gift-wrapped panels"), detail: qsTr("Panels open like presents, with holly on a corner") },
-                                { key: "buttons", name: qsTr("Sparkling buttons"), detail: qsTr("A glint on hover, gold stars on a press") },
+                                { key: "buttons", name: qsTr("Sparkling buttons"), detail: qsTr("A glint on hover, gold stars on a press, a cracker on a hold") },
                                 { key: "windows", name: qsTr("Lit windows"), detail: qsTr("Lights run around a window as it takes the focus") },
                                 { key: "notifications", name: qsTr("Wrapped notifications"), detail: qsTr("A satin sash and a bow on each one") }
                             ]
@@ -355,7 +367,7 @@ Item {
     // The last door of an Advent calendar, hinged on its left, over the painting.
     component AdventWindow: Item {
         id: win
-        // the painting, its candles breathing a little while the lights are on
+        // The painting brightens as the door opens.
         Rectangle {
             id: mount
             anchors.fill: parent
@@ -374,7 +386,7 @@ Item {
                 sourceSize.width: width * 2
                 layer.enabled: true
                 layer.effect: MultiEffect {
-                    brightness: (card.reveal - 1) * 0.25 + card.reveal * (0.07 + 0.035 * Math.sin(Christmas.phase * 6.3) * Math.sin(Christmas.phase * 2.1))
+                    brightness: (card.reveal - 1) * 0.25 + card.reveal * 0.07
                     contrast: 0.12 * card.reveal
                     saturation: (card.reveal - 1) * 0.6 + 0.1 * card.reveal
                 }
@@ -706,7 +718,9 @@ Item {
         property string key
         property string name
         property int styleIndex: 0
-        readonly property bool on: Christmas.lights === key
+        readonly property bool on: !Christmas.randomLights && Christmas.lights === key
+        enabled: !Christmas.randomLights
+        opacity: enabled ? 1 : 0.45
         property real zoom: pressed ? 0.93 : hovered || visualFocus ? 1.04 : 1
         Behavior on zoom { enabled: card.motion; NumberAnimation { duration: 260; easing.type: Easing.OutBack; easing.overshoot: 2.2 } }
         padding: 0
@@ -744,6 +758,7 @@ Item {
                     on: card.active
                     instant: false
                     style: tile.styleIndex
+                    randomStyle: false
                     live: tile.on
                     spacing: card.s(18)
                     swag: spacing * 2
